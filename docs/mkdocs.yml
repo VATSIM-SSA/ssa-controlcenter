@@ -110,6 +110,8 @@ nav:
       - Members:
           - Training: concepts/training.md
           - Bookings: concepts/booking.md
+          - Buddies: concepts/buddies.md
+          - Themes: user-themes.md
       - Mentors:
           - Tasks: concepts/tasks.md
       - Division:
@@ -117,6 +119,7 @@ nav:
           - Mentoring: concepts/mentors.md
           - Ratings: concepts/ratings.md
   - Reference:
+      - Activity: activity.md
       - Contribute: contribute.md
       - API: api.md
       - Background jobs: background-jobs.md

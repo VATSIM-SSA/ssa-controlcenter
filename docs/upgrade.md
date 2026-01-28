@@ -16,6 +16,57 @@ php artisan migrate
 php artisan optimize:clear
 ```
 
+## Upgrading to 7.0.0
+
+This release contains breaking changes to the theme system.
+
+### Theme System Migration
+
+The theme system has been completely redesigned to support light/dark themes and user preferences.
+
+#### Breaking Changes
+
+1. **Environment Variables Removed**: All `VITE_THEME_*` color variables have been removed from `.env` file
+2. **Theme Files**: Themes are now defined in separate SCSS files under `resources/sass/themes/`
+3. **User Preference**: Theme selection is now a per-user setting stored in the database
+
+#### Migration Steps
+
+1. **Remove old environment variables** from your `.env` file:
+   - Remove any `VITE_THEME_*` color variables (these are no longer used)
+
+2. **Run the database migration**:
+   ```sh
+   php artisan migrate
+   ```
+   This adds the `setting_theme` column to the `users` table.
+
+3. **Rebuild frontend assets**:
+   ```sh
+   npm run build
+   ```
+
+4. **Clear caches**:
+   ```sh
+   php artisan optimize:clear
+   ```
+
+5. **Clear browser cache** and test the new theme system
+
+#### For Custom Theme Users
+
+If you had customized colors in your `.env` file:
+
+1. Create a custom theme file in `resources/sass/themes/_custom.scss`
+2. Copy the structure from `_light.scss` or `_dark.scss`
+3. Update your color variables to match your previous customizations
+4. Import your theme in `resources/sass/app.scss`
+5. See [User Theme Guide](user-themes.md) and [Theme Setup](setup/theme.md) for detailed instructions
+
+For detailed information on using themes as an end-user, see the [User Theme Guide](user-themes.md).  
+For customizing themes as an operator, see [Theme Setup](setup/theme.md)
+   
+
 ## Upgrading to 6.0.0
 
 This release contains breaking changes and requires you to backup your data before upgrading.

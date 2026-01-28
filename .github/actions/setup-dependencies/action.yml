@@ -7,6 +7,9 @@ inputs:
   setup-node:
     description: Whether to setup Node or not
     default: 'false'
+  php-version:
+    required: true
+    default: 8.5
 
 runs:
   using: composite
@@ -15,7 +18,7 @@ runs:
   - name: Set up PHP
     uses: shivammathur/setup-php@v2
     with:
-      php-version: '8.3.2'
+      php-version: '${{ inputs.php-version }}'
 
   - name: Validate composer
     run: composer validate
@@ -23,19 +26,19 @@ runs:
     working-directory: ./${{ inputs.path }}
 
   - name: Cache composer
-    uses: actions/cache@v4
+    uses: actions/cache@v5
     with:
       path: ${{ inputs.path }}/vendor
       key: composer-v1-${{ inputs.path }}-${{ hashFiles(format('{0}/composer.lock', inputs.path))}}
 
   - name: Install composer dependencies
-    run: composer install -q --no-ansi --no-interaction --no-scripts --no-suggest --no-progress --prefer-dist
+    run: composer install --no-ansi --no-interaction --no-scripts --no-suggest --no-progress --prefer-dist
     shell: bash
     working-directory: ./${{ inputs.path }}
 
   - name: Setup node
     if: inputs.setup-node == 'true'
-    uses: actions/setup-node@v4
+    uses: actions/setup-node@v6
     with:
       cache: 'npm'
       cache-dependency-path: ${{ inputs.path }}

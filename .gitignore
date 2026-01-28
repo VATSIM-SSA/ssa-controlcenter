@@ -21,11 +21,18 @@ public/images/logos/*
 public/js/*
 resources/sass/_env.scss
 yarn-error.log
+storage/.container-setup-complete
 
 # phpunit and results
 *.phpunit.cache
 *.phpunit.result.cache
 coverage/*
 
+# composer and mise helpers
+.composer-installed
+
 # mkdocs
 docs_site/
+
+# php type generation
+_ide_helper_models.php

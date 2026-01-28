@@ -10,6 +10,11 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 
+const GROUP_ADMINISTRATOR = 1;
+const GROUP_MODERATOR = 2;
+const GROUP_MENTOR = 3;
+const GROUP_BUDDY = 4;
+
 class User extends Authenticatable
 {
     use HasFactory, Notifiable;
@@ -167,7 +172,12 @@ class User extends Authenticatable
         return $this->hasMany(Feedback::class, 'reference_user_id');
     }
 
-    public function getNotificationEmailAttribute()
+    public function getPersonalNotificationEmailAttribute()
+    {
+        return $this->email;
+    }
+
+    public function getWorkNotificationEmailAttribute()
     {
         if ($this->setting_workmail_address) {
             return $this->setting_workmail_address;
@@ -439,13 +449,57 @@ class User extends Authenticatable
      */
     public function isExaminer(?Area $area = null)
     {
-        if ($area == null) {
-            return $this->endorsements->where('type', 'EXAMINER')->where('revoked', false)->where('expired', false)->count();
+        $query = $this->endorsements()
+            ->where('type', 'EXAMINER')
+            ->where('revoked', false)
+            ->where('expired', false);
+
+        if ($area === null) {
+            return $query->exists();
         }
 
-        // Check if the user has an active examiner endorsement for the area
-        if ($this->endorsements->where('type', 'EXAMINER')->where('revoked', false)->where('expired', false)->first()) {
-            return $this->endorsements->where('type', 'EXAMINER')->where('revoked', false)->where('expired', false)->first()->areas()->wherePivot('area_id', $area->id)->count();
+        return $query->whereHas('areas', function ($q) use ($area) {
+            $q->where('areas.id', $area->id);
+        })->exists();
+    }
+
+    /**
+     * Return if user is a buddy
+     *
+     * @return bool
+     */
+    public function isBuddy(?Area $area = null)
+    {
+        if ($area == null) {
+            return $this->groups->where('id', GROUP_BUDDY)->isNotEmpty();
+        }
+
+        // Check if user is buddy in the specified area
+        foreach ($this->groups->where('id', GROUP_BUDDY) as $group) {
+            if ($group->pivot->area_id == $area->id) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Return if user is a mentor or above
+     *
+     * @return bool
+     */
+    public function isBuddyOrAbove(?Area $area = null)
+    {
+        if ($area == null) {
+            return $this->groups->where('id', '<=', GROUP_BUDDY)->isNotEmpty();
+        }
+
+        // Check if user is buddy or above in the specified area
+        foreach ($this->groups->where('id', '<=', GROUP_BUDDY) as $group) {
+            if ($group->pivot->area_id == $area->id) {
+                return true;
+            }
         }
 
         return false;
@@ -459,11 +513,11 @@ class User extends Authenticatable
     public function isMentor(?Area $area = null)
     {
         if ($area == null) {
-            return $this->groups->where('id', 3)->isNotEmpty();
+            return $this->groups->where('id', GROUP_MENTOR)->isNotEmpty();
         }
 
         // Check if user is mentor in the specified area
-        foreach ($this->groups->where('id', 3) as $group) {
+        foreach ($this->groups->where('id', GROUP_MENTOR) as $group) {
             if ($group->pivot->area_id == $area->id) {
                 return true;
             }
@@ -480,11 +534,11 @@ class User extends Authenticatable
     public function isMentorOrAbove(?Area $area = null)
     {
         if ($area == null) {
-            return $this->groups->where('id', '<=', 3)->isNotEmpty();
+            return $this->groups->where('id', '<=', GROUP_MENTOR)->isNotEmpty();
         }
 
         // Check if user is mentor or above in the specified area
-        foreach ($this->groups->where('id', '<=', 3) as $group) {
+        foreach ($this->groups->where('id', '<=', GROUP_MENTOR) as $group) {
             if ($group->pivot->area_id == $area->id) {
                 return true;
             }
@@ -501,11 +555,11 @@ class User extends Authenticatable
     public function isModerator(?Area $area = null)
     {
         if ($area == null) {
-            return $this->groups->where('id', 2)->isNotEmpty();
+            return $this->groups->where('id', GROUP_MODERATOR)->isNotEmpty();
         }
 
         // Check if user is moderator in the specified area
-        foreach ($this->groups->where('id', 2) as $group) {
+        foreach ($this->groups->where('id', GROUP_MODERATOR) as $group) {
             if ($group->pivot->area_id == $area->id) {
                 return true;
             }
@@ -522,7 +576,7 @@ class User extends Authenticatable
     public function isModeratorOrAbove(?Area $area = null)
     {
         if ($area == null) {
-            return $this->groups->where('id', '<=', 2)->isNotEmpty();
+            return $this->groups->where('id', '<=', GROUP_MODERATOR)->isNotEmpty();
         }
 
         if ($this->isAdmin()) {
@@ -530,7 +584,7 @@ class User extends Authenticatable
         }
 
         // Check if user is moderator or above in the specified area
-        foreach ($this->groups->where('id', '<=', 2) as $group) {
+        foreach ($this->groups->where('id', '<=', GROUP_MODERATOR) as $group) {
             if ($group->pivot->area_id == $area->id) {
                 return true;
             }
@@ -546,6 +600,6 @@ class User extends Authenticatable
      */
     public function isAdmin()
     {
-        return $this->groups->contains('id', 1);
+        return $this->groups->contains('id', GROUP_ADMINISTRATOR);
     }
 }
