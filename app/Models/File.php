@@ -29,7 +29,7 @@ class File extends Model
      */
     public function getTrainingReportAttachmentAttribute()
     {
-        return count(TrainingObjectAttachment::where('file_id', $this->id)->get()) != 0 ? TrainingObjectAttachment::where('file_id', $this->id)->first() : null;
+        return TrainingObjectAttachment::where('file_id', $this->id)->first();
     }
 
     /**

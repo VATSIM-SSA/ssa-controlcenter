@@ -82,7 +82,7 @@ class SweatbookController extends Controller
         $booking->position_id = Position::firstWhere('callsign', $data['position'])->id;
         $booking->mentor_notes = $data['mentor_notes'];
 
-        if ($booking->start_at === $booking->end_at) {
+        if ($booking->start_at->eq($booking->end_at)) {
             return back()->withInput()->withErrors('Booking need to have a valid duration!');
         }
         if ($booking->start_at->diffInMinutes(Carbon::now(), false) > 0) {

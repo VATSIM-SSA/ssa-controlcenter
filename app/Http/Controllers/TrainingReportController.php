@@ -44,7 +44,7 @@ class TrainingReportController extends Controller
     {
         $this->authorize('create', [TrainingReport::class, $training]);
         if ($training->status < TrainingStatus::PRE_TRAINING->value) {
-            return redirect(null, 400)->back()->withErrors('Training report cannot be created for a training not in progress.');
+            return redirect()->back()->withErrors('Training report cannot be created for a training not in progress.');
         }
 
         $positions = Position::all();

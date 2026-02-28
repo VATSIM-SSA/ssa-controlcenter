@@ -25,7 +25,7 @@
                     </div>
 
                     <div class="mb-3">
-                        <labe class="form-label"l for="end_at">End (Zulu)</label>
+                        <label class="form-label" for="end_at">End (Zulu)</label>
                         <input id="end_at" class="form-control @error('end_at') is-invalid @enderror" type="time" name="end_at" placeholder="12:00" value="{{ empty(old('end_at')) ? \Carbon\Carbon::createFromFormat('Y-m-d H:i:s', $booking->time_end)->format('H:i') : old('end_at') }}" required>
                     </div>
 

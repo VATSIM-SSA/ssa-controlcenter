@@ -35,7 +35,7 @@ class TrainingExaminationController extends Controller
     {
         $this->authorize('create', [TrainingExamination::class, $training]);
         if ($training->status != TrainingStatus::AWAITING_EXAM->value) {
-            return redirect(null, 400)->to($training->path())->withSuccess('Training examination cannot be created for a training not awaiting exam.');
+            return redirect()->to($training->path())->withErrors('Training examination cannot be created for a training not awaiting exam.');
         }
 
         $positions = Position::all();

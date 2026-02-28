@@ -271,8 +271,8 @@ class BookingController extends Controller
             $booking->callsign = strtoupper($position);
 
             $positionModel = Position::firstWhere('callsign', $position);
-            if (isset($positionModel)) {
-                $booking->position_id = Position::firstWhere('callsign', $position)->id;
+            if ($positionModel !== null) {
+                $booking->position_id = $positionModel->id;
             } else {
                 return redirect(route('booking'))->withErrors('The position ' . $position . ' does not exist. The bulk booking stopped here, but previous positions in the list have been booked.')->withInput();
             }
@@ -429,7 +429,7 @@ class BookingController extends Controller
         if (($booking->position->rating > $bookingUser->rating) && ! $bookingUser->isModeratorOrAbove()) {
             $booking->training = 1;
             $forcedTrainingTag = true;
-        } elseif ($position->requiredRating && ! $user->hasEndorsementRating($position->requiredRating) && ! $user->isModeratorOrAbove()) {
+        } elseif ($position->requiredRating && ! $bookingUser->hasEndorsementRating($position->requiredRating) && ! $bookingUser->isModeratorOrAbove()) {
             $booking->training = 1;
             $forcedTrainingTag = true;
         } else {

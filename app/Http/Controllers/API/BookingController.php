@@ -69,7 +69,7 @@ class BookingController extends Controller
         $booking->user_id = $user->id;
         $booking->source = strtoupper($data['source']);
 
-        if ($booking->time_start === $booking->time_end) {
+        if ($booking->time_start->eq($booking->time_end)) {
             return response()->json([
                 'message' => 'Start and end time cannot be the same',
             ], 400);
@@ -232,7 +232,7 @@ class BookingController extends Controller
         $booking->callsign = strtoupper($data['position']);
         $booking->position_id = $position->id;
 
-        if ($booking->time_start === $booking->time_end) {
+        if ($booking->time_start->eq($booking->time_end)) {
             return response()->json([
                 'message' => 'Booking needs to have a valid duration!',
             ], 400);
@@ -352,9 +352,12 @@ class BookingController extends Controller
     public function destroy(booking $booking)
     {
         $booking->deleted = true;
-        $client = new \GuzzleHttp\Client();
-        $url = $this->getVatsimBookingUrl('delete', $booking->vatsim_booking);
-        $response = $this->makeHttpRequest($client, $url, 'delete');
+
+        if (App::environment('production')) {
+            $client = new \GuzzleHttp\Client();
+            $url = $this->getVatsimBookingUrl('delete', $booking->vatsim_booking);
+            $this->makeHttpRequest($client, $url, 'delete');
+        }
 
         $booking->save();
 

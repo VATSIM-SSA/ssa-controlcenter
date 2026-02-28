@@ -96,7 +96,7 @@ class Training extends Model
     {
 
         if ($vatsimRatingOnly) {
-            return $this->ratings->where('vatsim_rating', true)->pluck('name')->implode(' + ');
+            return $this->ratings->whereNotNull('vatsim_rating')->pluck('name')->implode(' + ');
         }
 
         return $this->ratings->pluck('name')->implode(' + ');
@@ -151,7 +151,7 @@ class Training extends Model
      */
     public function getHighestVatsimRating()
     {
-        return $this->ratings->where('vatsim_rating', true)->sortByDesc('vatsim_rating')->first();
+        return $this->ratings->whereNotNull('vatsim_rating')->sortByDesc('vatsim_rating')->first();
     }
 
     /**
