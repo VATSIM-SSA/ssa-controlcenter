@@ -1,31 +1,40 @@
 services:
-  web:
-    container_name: control-center
-    image: ghcr.io/vatsim-scandinavia/control-center:v6
-    ports:
-      - 8080:80
-      - 8443:443
+  control-center:
+    image: ghcr.io/vatsim-ssa/ssa-controlcenter:main
+    env_file: /mnt/volume_fra1_02/controlcenter/.env
+    restart: unless-stopped
+    networks: [ccnet]
     volumes:
-      - sessions:/app/storage/framework/sessions
-    environment:
-      # Please check the complete configure guide for all variables and their description
-      # You need to adjust this file to your needs
-      - APP_NAME=Control Center
-      - APP_OWNER=Your VACC Name
-      - APP_OWNER_SHORT=SCA
-      - APP_URL=https://cc.yourvacc.com
-      - APP_ENV=production
-      - DB_HOST=localhost
-      - DB_DATABASE=control-center
-      - DB_USERNAME=control-center
-      - DB_PASSWORD=yourPASShere
-      - OAUTH_ID=yourIDhere
-      - OAUTH_SECRET=yourSECREThere
-      - VATSIM_BOOKING_API_TOKEN=yourTOKENhere
-      - MAIL_HOST=smtp.mailgun.org
-      - MAIL_PORT=587
-      - MAIL_USERNAME=yourUSERNAMEhere
-      - MAIL_PASSWORD=yourPASSWORDhere
-      - MAIL_FROM_ADDRESS=noreply@yourvacc.com
+      - /mnt/volume_fra1_02/sessions:/app/storage/framework/sessions
+      - /mnt/volume_fra1_02/files:/app/storage/app/public/files
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+  scheduler:
+    image: ghcr.io/vatsim-ssa/ssa-controlcenter-scheduler:main
+    env_file: /mnt/volume_fra1_02/controlcenter/.env
+    restart: unless-stopped
+    networks: [ccnet]
+    depends_on: [control-center]
+    command: php artisan schedule:work
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    networks: [ccnet]
+    ports: ["80:80", "443:443"]
+    volumes:
+      - /mnt/volume_fra1_02/controlcenter/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: [control-center]
+
+networks:
+  ccnet: {}
+
 volumes:
-  sessions:
+  caddy_data: {}
+  caddy_config: {}
