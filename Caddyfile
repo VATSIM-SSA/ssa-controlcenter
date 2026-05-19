@@ -1,0 +1,8 @@
+cc.vatssa.com {
+  encode zstd gzip
+  reverse_proxy control-center:80
+  @static path_regexp static ^/(assets|build|images|fonts|favicon\.ico)
+  handle @static {
+    file_server
+  }
+}
