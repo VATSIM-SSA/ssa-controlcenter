@@ -98,18 +98,18 @@ class DatabaseSeeder extends Seeder
                 'rating_short' => FactoryHelper::shortRating($rating_id),
                 'rating_long' => FactoryHelper::longRating($rating_id),
                 'region' => 'EMEA',
-                'division' => 'EUD',
-                'subdivision' => 'SCA',
+                'division' => 'SSA',
+                'subdivision' => 'SSA',
             ])->groups()->attach(Group::find($group), ['area_id' => 1]);
         }
 
-        // Create random Scandinavian users
+        // Create random regional users
         for ($i = 12; $i <= 125; $i++) {
             User::factory()->create([
                 'id' => 10000000 + $i,
                 'region' => 'EMEA',
-                'division' => 'EUD',
-                'subdivision' => 'SCA',
+                'division' => 'SSA',
+                'subdivision' => 'SSA',
             ]);
         }
 
@@ -120,28 +120,45 @@ class DatabaseSeeder extends Seeder
             ]);
         }
 
-        // Populate trainings and other of the Scandinavian users
-        for ($i = 1; $i <= rand(100, 125); $i++) {
-            $training = Training::factory()->create();
-            $training->ratings()->attach(Rating::where('vatsim_rating', '>', 1)->inRandomOrder()->first());
+        // Target the regional users we just generated to safely build training profiles
+        $regionalUsers = User::whereBetween('id', [10000012, 10000125])->get();
+
+        // Randomly select users to fulfill roughly the 100-125 count allocation safely
+        $usersToTrain = $regionalUsers->random(min(rand(100, 110), $regionalUsers->count()));
+
+        foreach ($usersToTrain as $user) {
+            // Explicitly associate the training with the correct user
+            // We force area_id to 1 to match the group instantiation above, stopping FK constraint crashes
+            $training = Training::factory()->create([
+                'user_id' => $user->id,
+                'area_id' => 1,
+            ]);
+
+            $randomRating = Rating::where('vatsim_rating', '>', 1)->inRandomOrder()->first();
+            if ($randomRating) {
+                $training->ratings()->attach($randomRating);
+            }
 
             // Give all non-queued trainings a mentor
             if ($training->status != TrainingStatus::IN_QUEUE->value) {
-                $training->mentors()->attach(
-                    User::whereHas('groups', function ($query) {
-                        $query->where('id', 3);
-                    })->inRandomOrder()->first(),
-                    ['expire_at' => now()->addYears(5)]
-                );
-                TrainingReport::factory()->create([
-                    'training_id' => $training->id,
-                    'written_by_id' => $training->mentors()->inRandomOrder()->first(),
-                ]);
+                $mentor = User::whereHas('groups', function ($query) {
+                    $query->where('id', 3);
+                })->inRandomOrder()->first();
+
+                if ($mentor) {
+                    $training->mentors()->attach($mentor->id, ['expire_at' => now()->addYears(5)]);
+
+                    TrainingReport::factory()->create([
+                        'training_id' => $training->id,
+                        'written_by_id' => $mentor->id,
+                    ]);
+                }
             }
 
-            // Give all exam awaiting trainings a solo endorsement
+            // Give all exam awaiting or completed trainings a solo endorsement
             if ($training->status == TrainingStatus::AWAITING_EXAM->value
                 || $training->status == TrainingStatus::COMPLETED->value) {
+
                 if (! Endorsement::where('user_id', $training->user_id)->exists()) {
                     $soloEndorsement = Endorsement::factory()->create([
                         'user_id' => $training->user_id,
@@ -149,23 +166,27 @@ class DatabaseSeeder extends Seeder
                         'valid_to' => Carbon::now()->addWeeks(4),
                     ]);
 
-                    // Add position for solo
-                    $soloEndorsement->positions()->save(Position::where('rating', '>', 1)->inRandomOrder()->first());
+                    // Safe lookup for positions table reference
+                    $position = Position::where('rating', '>', 1)->inRandomOrder()->first();
+                    if ($position) {
+                        $soloEndorsement->positions()->save($position);
+                    }
                 }
 
-                // And some a exam result
-                Lottery::odds(3, 1)
-                    ->winner(fn () => TrainingExamination::factory()->create([
-                        'training_id' => $training->id,
-                        'examiner_id' => User::where('id', '!=', $training->user_id)
-                            ->inRandomOrder()->first(),
-                        'created_at' => $faker->dateTimeBetween(
-                            $startDate = $training->started_at,
-                            $endDate = 'now'),
-                        'position_id' => Position::inRandomOrder()->first()->id,
-                    ])
-                    )
-                    ->choose();
+                // Append an examination result via Lottery
+                $examiner = User::where('id', '!=', $training->user_id)->inRandomOrder()->first();
+                $examPosition = Position::inRandomOrder()->first();
+
+                if ($examiner && $examPosition) {
+                    Lottery::odds(3, 1)
+                        ->winner(fn () => TrainingExamination::factory()->create([
+                            'training_id' => $training->id,
+                            'examiner_id' => $examiner->id,
+                            'created_at' => $faker->dateTimeBetween($training->started_at, 'now'),
+                            'position_id' => $examPosition->id,
+                        ]))
+                        ->choose();
+                }
             }
         }
     }
