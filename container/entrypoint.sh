@@ -20,4 +20,6 @@ if [ -z "$APP_KEY" ] && [ ! -f "$CONTROL_CENTER_ROOT/.env" ]; then
     php artisan key:generate
 fi
 
+cron
+
 exec docker-php-entrypoint "$@"

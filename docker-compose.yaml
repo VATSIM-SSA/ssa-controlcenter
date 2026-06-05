@@ -13,14 +13,6 @@ services:
       timeout: 5s
       retries: 5
 
-  scheduler:
-    image: ghcr.io/vatsim-ssa/ssa-controlcenter-scheduler:main
-    env_file: /mnt/volume_fra1_02/controlcenter/.env
-    restart: unless-stopped
-    networks: [ccnet]
-    depends_on: [control-center]
-    command: php artisan schedule:work
-
   caddy:
     image: caddy:2
     restart: unless-stopped
