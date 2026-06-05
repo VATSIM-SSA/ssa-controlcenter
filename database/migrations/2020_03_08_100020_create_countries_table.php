@@ -22,7 +22,11 @@ class CreateCountriesTable extends Migration
         });
 
         DB::table('countries')->insert([
-            ['name' => 'VATSSA', 'contact' => 'atc@vatssa.com'],
+            ['name' => 'Denmark', 'contact' => 'training-denmark@vatsim-scandinavia.org'],
+            ['name' => 'Finland', 'contact' => 'training-finland@vatsim-scandinavia.org'],
+            ['name' => 'Iceland', 'contact' => 'training-iceland@vatsim-scandinavia.org'],
+            ['name' => 'Norway', 'contact' => 'training-norway@vatsim-scandinavia.org'],
+            ['name' => 'Sweden', 'contact' => 'training-sweden@vatsim-scandinavia.org'],
         ]);
     }
 

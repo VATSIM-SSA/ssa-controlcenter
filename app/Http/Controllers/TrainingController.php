@@ -39,9 +39,8 @@ class TrainingController extends Controller
         -1 => ['text' => 'Completed', 'color' => 'success', 'icon' => 'fas fa-check', 'assignableByStaff' => true],
         0 => ['text' => 'In queue', 'color' => 'warning', 'icon' => 'fas fa-hourglass', 'assignableByStaff' => true],
         1 => ['text' => 'Pre-training', 'color' => 'info', 'icon' => 'fas fa-book-open', 'assignableByStaff' => true],
-        2 => ['text' => 'Awaiting mentor', 'color' => 'warning', 'icon' => 'fas fa-user-friends', 'assignableByStaff' => true],
-        3 => ['text' => 'Active training', 'color' => 'success', 'icon' => 'fas fa-book-open', 'assignableByStaff' => true],
-        4 => ['text' => 'Awaiting exam', 'color' => 'warning', 'icon' => 'fas fa-graduation-cap', 'assignableByStaff' => true],
+        2 => ['text' => 'Active training', 'color' => 'success', 'icon' => 'fas fa-book-open', 'assignableByStaff' => true],
+        3 => ['text' => 'Awaiting exam', 'color' => 'warning', 'icon' => 'fas fa-graduation-cap', 'assignableByStaff' => true],
     ];
 
     /**
@@ -350,7 +349,6 @@ class TrainingController extends Controller
             'experience' => isset($data['experience']) ? $data['experience'] : null,
             'english_only_training' => array_key_exists('englishOnly', $data) ? true : false,
             'type' => isset($data['type']) ? $data['type'] : 1,
-            'discord_thread_url' => null,
         ]);
 
         if (isset($data['comment'])) {
@@ -483,7 +481,6 @@ class TrainingController extends Controller
         // Save the rest
         $training->type = $attributes['type'];
         $training->english_only_training = array_key_exists('englishOnly', $attributes) ? true : false;
-        $training->discord_thread_url = $attributes['discord_thread_url'] ?? null;
 
         $training->save();
 
@@ -863,7 +860,6 @@ class TrainingController extends Controller
             'type' => 'sometimes|required|integer',
             'englishOnly' => 'nullable',
             'ratings' => 'sometimes|required',
-            'discord_thread_url' => 'sometimes|nullable|url|max:255',
         ]);
     }
 }

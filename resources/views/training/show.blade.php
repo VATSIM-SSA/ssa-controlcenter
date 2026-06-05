@@ -149,15 +149,6 @@
                             -
                         @endif
                     </dd>
-
-                    <dt>Discord Thread</dt>
-                    <dd>
-                        @if($training->discord_thread_url)
-                            <a onclick="openDiscord('{{ $training->discord_thread_url }}')" class="btn btn-outline-secondary"><i class="fab fa-discord"></i>&nbsp;Open Thread</a>
-                        @else
-                            -
-                        @endif
-                    </dd>
                 </dl>
 
                 @can('edit', [\App\Models\Training::class, $training])
@@ -373,7 +364,7 @@
                             <i class="fas fa-flag"></i>
                             @isset($training->created_by)
                                 {{ \App\Models\User::find($training->created_by)->name }} —
-                            @endisset
+                            @endisset 
                             {{ $training->created_at->toEuropeanDateTime() }}
                         </div>
                         <p>
@@ -445,7 +436,7 @@
                         <button class="btn btn-light btn-icon dropdown-toggle" type="button" id="dropdownMenuButton" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
                             <i class="fas fa-plus"></i> Create
                         </button>
-
+                    
                         <div class="dropdown-menu" aria-labelledby="dropdownMenuButton">
                             @can('create', [\App\Models\TrainingReport::class, $training])
                                 @if($training->status >= \App\Helpers\TrainingStatus::PRE_TRAINING->value)
@@ -747,39 +738,7 @@
 
     <!-- One Time Links -->
     <script>
-        function openDiscord(fullUrl) {
-            // Fallback default in case parsing breaks
-            let appUrl = "discord://";
-            const webUrl = fullUrl;
 
-            try {
-                // Example: https://discord.com
-                // Extracts: channels/123456/789012
-                if (fullUrl.includes('channels/')) {
-                    const pathSegments = fullUrl.split('channels/')[1];
-                    appUrl = `discord://-/channels/${pathSegments}`;
-                }
-            } catch (e) {
-                console.error("Invalid Discord URL format context", e);
-            }
-
-            let pageBlurred = false;
-
-            // Detect if the app successfully pulled focus away from the browser
-            window.addEventListener('blur', function() {
-                pageBlurred = true;
-            }, { once: true });
-
-            // Force call to Discord Desktop App
-            window.location.href = appUrl;
-
-            // Fallback to standard web interface if app isn't found after 2 seconds
-            setTimeout(() => {
-                if (!pageBlurred) {
-                    window.open(webUrl, '_blank');
-                }
-            }, 2000);
-        }
         // Generate a one time report link
         var getOneTimeLinkReport = document.getElementById('getOneTimeLinkReport')
         if(getOneTimeLinkReport){

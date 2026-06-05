@@ -13,7 +13,6 @@ enum TrainingStatus: int
     case COMPLETED = -1;
     case IN_QUEUE = 0;
     case PRE_TRAINING = 1;
-    case AWAITING_MENTOR = 2;
-    case ACTIVE_TRAINING = 3;
-    case AWAITING_EXAM = 4;
+    case ACTIVE_TRAINING = 2;
+    case AWAITING_EXAM = 3;
 }
