@@ -10,7 +10,7 @@ on:
       - "**.md"
 
 env:
-  IMAGE_NAME: vatsim-scandinavia/control-center
+  IMAGE_NAME: vatsim-ssa/ssa-control-center
   TARGET_PLATFORMS: linux/amd64,linux/arm64
 
 jobs:

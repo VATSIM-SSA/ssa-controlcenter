@@ -22,6 +22,10 @@ EXPOSE 80 443
 # - ca-certificates for OAuth2
 RUN apt-get update && \
     apt-get install -y git unzip vim nano ca-certificates libpq-dev && \
+    echo "* * * * * root cd /app && php artisan schedule:run >> /var/log/cron.log 2>&1" > /etc/cron.d/laravel-cron && \
+    chmod 0644 /etc/cron.d/laravel-cron && \
+    crontab /etc/cron.d/laravel-cron && \
+    touch /var/log/cron.log && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* && \
     a2enmod rewrite ssl

@@ -31,7 +31,7 @@ jobs:
         if: ${{ github.event.inputs.prerelease_type == 'alpha' }}
         uses: googleapis/release-please-action@v4
         with:
-          token: ${{ secrets.VATSCA_BOT_TOKEN }}
+          token: ${{ secrets.VATSSA_BOT_TOKEN }}
           target-branch: ${{ github.event.inputs.target_branch }}
           config-file: .github/release-please/release-please-config-alpha.json
           versioning-strategy: prerelease
@@ -40,7 +40,7 @@ jobs:
         if: ${{ github.event.inputs.prerelease_type == 'beta' }}
         uses: googleapis/release-please-action@v4
         with:
-          token: ${{ secrets.VATSCA_BOT_TOKEN }}
+          token: ${{ secrets.VATSSA_BOT_TOKEN }}
           target-branch: ${{ github.event.inputs.target_branch }}
           config-file: .github/release-please/release-please-config-beta.json
           versioning-strategy: prerelease
@@ -49,7 +49,7 @@ jobs:
         if: ${{ github.event.inputs.prerelease_type == 'rc' }}
         uses: googleapis/release-please-action@v4
         with:
-          token: ${{ secrets.VATSCA_BOT_TOKEN }}
+          token: ${{ secrets.VATSSA_BOT_TOKEN }}
           target-branch: ${{ github.event.inputs.target_branch }}
           config-file: .github/release-please/release-please-config-rc.json
           versioning-strategy: prerelease
