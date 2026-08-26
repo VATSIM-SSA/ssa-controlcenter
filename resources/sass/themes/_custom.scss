@@ -1,0 +1,111 @@
+// VATSSA instance theme for ControlCentre.
+//
+// Upstream ships `themes/_custom.scss.example` and gitignores `_custom.scss`;
+// `app.scss` imports it unconditionally and `vite.config.js` writes an empty
+// stub only when the file is missing, never over an existing one. So this file
+// is an ADDED file that upstream will never touch. It is force-added past
+// .gitignore (`git add -f`) so it reaches the Docker build. Do not edit
+// .gitignore to achieve that: an unmodified upstream file cannot conflict.
+//
+// Tokens from the VATSSA brand sheet (palette / ssa-palette repos):
+//   teal #0197B0 (primary) · green #7BD758 (accent) · dark #07262C · ivory #F8F3F0
+//
+// Every value below is contrast-checked by `contrast-check.py`, which parses
+// THIS file. Re-run it after any colour change. Nothing here is eyeballed.
+//
+// Two deliberate departures from the raw brand tokens:
+//   1. Light theme fills use a darkened teal (#00788c). White on #0197B0 is
+//      3.47:1, which fails AA. The brand teal survives as --color-teal and as
+//      the dark theme's primary, where dark text sits on it instead.
+//   2. Brand green is a dark-theme accent only. On ivory it is 1.63:1.
+//   3. The light page is the brand ivory deepened one step to #f2e9e3. At the
+//      raw #F8F3F0 a white card sits 1.10:1 above the page, so cards would rely
+//      entirely on shadow to read as surfaces. One step down puts the card at
+//      1.22:1 and costs nothing else: every light pair still clears AA.
+
+// ---------------------------------------------------------------- light -----
+:root,
+[data-theme="light"] {
+    --color-primary: #00788c;
+    --color-tertiary: #07262c;
+
+    --color-on-primary: #ffffff;
+    --color-primary-emphasis: #00788c;
+    --color-primary-outline: #00697b;
+    --color-primary-text: #00697b;
+
+    --color-teal: #0197b0;
+
+    --color-body: #07262c;
+    --color-text-primary: #07262c;
+    --color-text-secondary: #5b6b6f;
+    --color-text-muted: #5b6b6f;
+    --color-text-dark: #07262c;
+
+    --bg-body: #f1e7e1;
+    --bg-card: #ffffff;
+    --bg-card-header: #f8f3f0;
+    --bg-sidebar: #07262c;
+    --bg-light: #f8f3f0;
+
+    // Warning and info are treated as FILLS (alert/badge backgrounds), so the
+    // bar is 3:1, not 4.5:1. Upstream's #ff9800 and #17a2b8 sit at 2.16 and
+    // 3.04 on white and fail even that; these are the same hues darkened to
+    // clear it. Candidate for an upstream contribution, not a VATSSA quirk.
+    --color-warning: #c67700;
+    --color-info: #0d7f92;
+
+    --border-color: #e6ded9;
+
+    --link-color: #00697b;
+    --link-hover-color: #005a69;
+}
+
+// ----------------------------------------------------------------- dark -----
+// The brand dark #07262C is the page, with two lifted teal-tinted surfaces
+// above it. Upstream's dark greys are neutral (#323232 and up) and are used for
+// elevation above --bg-card; left alone they would read as grey patches on a
+// teal card, so the low end is retinted to match.
+[data-theme="dark"] {
+    --color-primary: #0197b0;
+    --color-tertiary: #f8f3f0;
+
+    // Dark text on the teal fill, not white: white on #0197B0 is 3.47:1.
+    --color-on-primary: #07262c;
+    --color-primary-emphasis: #33abbf;
+    --color-primary-outline: #4db6c7;
+    --color-primary-text: #4db6c7;
+
+    --color-teal: #4dd0e1;
+    --color-green: #7bd758;
+
+    // Status colours re-brightened: upstream's dark ramp was tuned against a
+    // near-black #2a2a2a card. The teal-tinted card sits lighter, so danger and
+    // success both dropped under AA on it until these were lifted.
+    --color-danger: #ef9a9a;
+    --color-success: #6ec3a3;
+    --color-warning: #ffc266;
+    --color-info: #6fbcdd;
+
+    --color-gray-100: #17454f;
+    --color-gray-200: #1c4e59;
+    --color-gray-300: #215763;
+    --color-gray-400: #26606d;
+
+    --color-body: #f8f3f0;
+    --color-text-primary: #f8f3f0;
+    --color-text-secondary: #9fb3b8;
+    --color-text-muted: #9fb3b8;
+    --color-text-dark: #f8f3f0;
+
+    --bg-body: #07262c;
+    --bg-card: #123c45;
+    --bg-card-header: #16454f;
+    --bg-sidebar: #04191d;
+    --bg-topbar: #04191d;
+
+    --border-color: #2b5f6a;
+
+    --link-color: #4db6c7;
+    --link-hover-color: #7bd758;
+}
