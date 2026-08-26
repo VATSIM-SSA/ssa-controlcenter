@@ -115,7 +115,10 @@ for p in PERMISSIONS:
 lines += ["", "**Totals:** " + " · ".join(f"{r} **{len(held[r])}**" for r in ROLES)]
 if orphans:
     lines += ["", "**Held by nobody:** " + ", ".join(f"`{p}`" for p in orphans)]
-(pathlib.Path(__file__).resolve().parent / "matrix-table.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+# newline="\n" so the file is LF on Windows too, or it shows as permanently
+# modified in a repo that stores it as LF.
+(pathlib.Path(__file__).resolve().parent / "matrix-table.md").write_text(
+    "\n".join(lines) + "\n", encoding="utf-8", newline="\n")
 
 print(f"{len(PERMISSIONS)} permissions, {len(ROLES)} roles")
 for r in ROLES:
