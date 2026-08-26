@@ -54,6 +54,13 @@ fi
 
 run() { docker compose exec -T "$SERVICE" "$@"; }
 
+# VATSSA is a division, not a subdivision. User.php uses this string as a COLUMN
+# NAME -- where(config('app.mode'), config('app.owner_code')) -- so 'subdivision'
+# silently queries WHERE subdivision = 'SSA', matches nobody, and every
+# member check fails division-wide with no error anywhere.
+echo "==> Asserting division mode"
+run php -r 'exit(env("APP_MODE") === "division" ? 0 : 1);'     || { echo "APP_MODE must be 'division' for VATSSA. Refusing to continue." >&2; exit 1; }
+
 # Production must never run with debug on or a non-production APP_ENV. Assert it
 # rather than trusting the .env on the box, because a wrong APP_DEBUG leaks
 # stack traces containing database credentials on any 500.
