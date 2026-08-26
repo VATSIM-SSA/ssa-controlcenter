@@ -178,7 +178,11 @@ img.logo {
 // Hidden rather than nudged: the upstream version is not something VATSSA needs
 // on a public login page or in every mentor's sidebar, and it links to
 // Vatsim-Scandinavia's repository rather than anything of ours.
+// Two DIFFERENT classes: `version` in layouts/sidebar.blade.php and
+// `version-front` in front.blade.php. Hiding only `.version` leaves the
+// login page one untouched, which is what happened on the first attempt.
 a.version,
-.version {
+.version,
+.version-front {
     display: none !important;
 }
