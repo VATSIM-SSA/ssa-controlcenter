@@ -186,3 +186,31 @@ a.version,
 .version-front {
     display: none !important;
 }
+
+// ───────────────────────────────────────────────────────── login backdrop ────
+// Taken straight from the VATSSA brand sheet (`brand.css` in the ssa-palette
+// repo, the `.hero` treatment): solid brand dark with two soft radial glows,
+// teal upper-left and green lower-right, and a teal-to-green rule along the
+// bottom edge.
+//
+// This replaces `front.jpg` entirely. No image, no asset to maintain, no
+// modified upstream file -- and it is the actual brand rather than an
+// approximation of it.
+.front-cover {
+    background:
+        radial-gradient(58% 80% at 14% 8%, rgba(1, 151, 176, .40), transparent 60%),
+        radial-gradient(58% 82% at 90% 96%, rgba(123, 215, 88, .34), transparent 60%),
+        #07262c !important;
+    position: relative;
+
+    // The 4px gradient rule the brand sheet puts under every hero.
+    &::after {
+        content: "";
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 4px;
+        background: linear-gradient(90deg, #0197b0, #7bd758);
+    }
+}
