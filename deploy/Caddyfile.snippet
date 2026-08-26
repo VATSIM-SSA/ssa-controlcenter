@@ -1,0 +1,29 @@
+# Append to /srv/deploy/caddy/Caddyfile, then:
+#   docker exec caddy caddy validate --config /etc/caddy/Caddyfile
+#   cd /srv/deploy/caddy && docker compose restart
+# (reload is disabled on this box — see docs/adding-apps.md Step 6 note)
+
+# ── Control Center ──────────────────────────────────────────────────────────
+cc.vatssa.com {
+  import security_headers
+  reverse_proxy cc-prod:80 {
+    header_up X-Forwarded-Proto https
+  }
+  log { output file /var/log/caddy/cc-prod.log }
+}
+
+cc-staging.vatssa.com {
+  import security_headers
+  reverse_proxy cc-staging:80 {
+    header_up X-Forwarded-Proto https
+  }
+  log { output file /var/log/caddy/cc-staging.log }
+}
+
+cc-dev.vatssa.com {
+  import security_headers
+  reverse_proxy cc-dev:80 {
+    header_up X-Forwarded-Proto https
+  }
+  log { output file /var/log/caddy/cc-dev.log }
+}

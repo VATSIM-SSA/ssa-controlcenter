@@ -1,0 +1,38 @@
+# ControlCentre staging. Copy to /srv/apps/cc/staging/docker-compose.yml on the VPS.
+#
+# Pulls the image built and pushed by .github/workflows/deploy.yml. It does NOT
+# build on the box: the estate moved off local `build:` on 14 Jul so that what
+# runs in production is the exact artefact CI produced and tested.
+#
+# The ghcr package must be public. The VPS has no ghcr login, and giving it one
+# would put a registry credential on the box for no gain.
+
+services:
+  cc-staging:
+    image: ghcr.io/vatsim-ssa/ssa-controlcenter:staging
+    container_name: cc-staging
+    restart: unless-stopped
+    env_file: /srv/apps/cc/staging/.env
+    volumes:
+      - /srv/data/cc/staging/sessions:/app/storage/framework/sessions
+      - /srv/data/cc/staging/files:/app/storage/app/public/files
+    networks:
+      - app-staging
+      - db-staging
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      # v7.0.0 still has no /health route. `/` answers 200 or a 302 to login,
+      # and curl -f only fails on >= 400, so this is a valid liveness probe.
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1/"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+networks:
+  app-staging:
+    external: true
+  db-staging:
+    external: true
