@@ -59,16 +59,22 @@ run() { docker compose exec -T "$SERVICE" "$@"; }
 # silently queries WHERE subdivision = 'SSA', matches nobody, and every
 # member check fails division-wide with no error anywhere.
 echo "==> Asserting division mode"
-run php -r 'exit(env("APP_MODE") === "division" ? 0 : 1);'     || { echo "APP_MODE must be 'division' for VATSSA. Refusing to continue." >&2; exit 1; }
+# Read the environment variable directly. compose injects the .env through
+# env_file, so these are ordinary env vars inside the container. An earlier
+# version used `php -r 'env(...)'`, which fails with "Call to undefined
+# function env()" -- env() is a Laravel helper and `php -r` boots no framework.
+# It then failed CLOSED, reporting APP_MODE as wrong when it had never been read.
+run sh -c '[ "$APP_MODE" = "division" ]' \
+    || { echo "APP_MODE must be 'division' for VATSSA. Refusing to continue." >&2; exit 1; }
 
 # Production must never run with debug on or a non-production APP_ENV. Assert it
 # rather than trusting the .env on the box, because a wrong APP_DEBUG leaks
 # stack traces containing database credentials on any 500.
 if [ "$ENVIRONMENT" = "prod" ]; then
     echo "==> Asserting production configuration"
-    run php -r 'exit(env("APP_DEBUG") === false || env("APP_DEBUG") === "false" ? 0 : 1);' \
+    run sh -c '[ "$APP_DEBUG" = "false" ]' \
         || { echo "APP_DEBUG is not false in production. Refusing to continue." >&2; exit 1; }
-    run php -r 'exit(env("APP_ENV") === "production" ? 0 : 1);' \
+    run sh -c '[ "$APP_ENV" = "production" ]' \
         || { echo "APP_ENV is not production. Refusing to continue." >&2; exit 1; }
 fi
 
