@@ -1,0 +1,21 @@
+# Code owners for the VATSSA ControlCentre fork.
+#
+# The `Main` ruleset requires code-owner review on pull requests into `main`.
+# Without this file that rule has nobody to ask and blocks every merge.
+#
+# Repository admin is a bypass actor on that ruleset, because a sole code owner
+# cannot approve their own pull request. That is the same arrangement as
+# ssa-homepage, and the lesson from 14 July.
+
+* @RoboFun01
+
+# The two files that diverge from upstream. Every conflict at an upstream
+# absorption lands here, so they are worth naming explicitly even though the
+# wildcard above already covers them.
+/config/roles.php @RoboFun01
+/Dockerfile @RoboFun01
+
+# The drift detectors for everything the fork adds. Deleting either of these to
+# make a bump go green is exactly the change that needs a second pair of eyes.
+/tests/Feature/VatssaTest.php @RoboFun01
+/tools/ @RoboFun01
