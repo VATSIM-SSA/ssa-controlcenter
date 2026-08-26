@@ -23,7 +23,8 @@ underneath an added file. So each section below names its own detector, and
 
 ## Modified upstream files
 
-Exactly one. If this list ever grows, the divergence is growing with it.
+Two. If this list grows further, the divergence is growing with it, and each
+addition costs a conflict on some future release.
 
 ### `config/roles.php`
 
@@ -51,6 +52,35 @@ in CI.
 4. Re-run `python tools/expand.py config/roles.php` and
    `php artisan test --filter=VatssaTest`. Do not resolve the conflict without
    both passing.
+
+
+### `Dockerfile`
+
+**Why it diverges.** One added build arg, `INSTALL_DEV`, and a conditional
+around upstream's `composer install`. `php artisan db:seed` needs
+`fakerphp/faker`, which lives in `require-dev`, so a `--no-dev` image cannot
+seed. Dev and staging build with `true`; production builds with `false` and must
+never ship phpunit, faker, debugbar or boost.
+
+A **build arg, never an env var**, so it cannot be flipped by editing a `.env` on
+the box.
+
+**Detector:** a git merge conflict at absorption, plus the guard step in
+`.github/workflows/deploy.yml` that fails a production build carrying dev
+dependencies.
+
+**What to check when it conflicts.** Upstream restructuring its build stages is
+the likely cause. Reapply the arg to whichever stage ends up producing the
+shipped `vendor/`, and confirm with:
+
+```
+docker run --rm ghcr.io/vatsim-ssa/ssa-controlcenter:prod ls vendor/bin
+```
+
+`phpunit` must not be there.
+
+**In flight upstream:** `upstream-contrib/install-dev-arg`. If it lands, delete
+this entry and take upstream's version.
 
 ---
 
@@ -128,13 +158,34 @@ The two validators. Both parse the file they check rather than duplicating it.
 Logos. Selected by `APP_LOGO` and `APP_LOGO_MAIL`, upstream's own mechanism
 (`docs/setup/logo.md`). No code involved.
 
-### `deploy/**`, `Dockerfile` (`INSTALL_DEV` arg only)
+**Force-added.** `.gitignore` line 23 is `public/images/logos/*`, so the whole
+directory is ignored and upstream force-adds its own `vatsca.*` the same way.
+Second force-add in the fork, after `_custom.scss`. As there, do not edit
+`.gitignore` to avoid it.
 
-Compose files, env templates, the VATSIM fixture mock, the systemd units, and one
-build arg on upstream's Dockerfile.
+### `deploy/**` and `.github/workflows/deploy.yml`
 
-**`INSTALL_DEV` is a build arg, never an env var**, so it cannot be flipped by
-editing a `.env` on the box. Production builds with `false`.
+Three compose files, three env templates, the Caddy snippet, the VATSIM fixture
+mock, the two systemd units, `deploy-cc.sh`, and the build-and-deploy workflow.
+
+How the VPS is reached is identical to `ssa-homepage` and `ssa-handover`: build
+in Actions, push to ghcr, `appleboy/ssh-action` to a **per-environment**
+forced-command key, `docker compose pull && up -d`. The ghcr package must be
+public; the VPS has no registry login.
+
+Three things are specific to ControlCentre being Laravel: three environments
+rather than two, the `INSTALL_DEV` build arg, and `deploy-cc.sh` running
+maintenance mode plus **both** migration paths. Upstream's entrypoint does not
+migrate, and its `container/migrate.sh` omits `--force` (it would prompt and
+hang) and knows nothing about `database/migrations-vatssa`.
+
+**The env templates are blank on purpose.** The repository is public. Real values
+live only in `/srv/apps/cc/<env>/.env` on the VPS.
+
+**Gotcha carried forward from 15 Jul:** each environment's `VPS_SSH_KEY` must be
+this repo's own forced-command key. `ssa-handover`'s staging environment once
+held the homepage key, so every run silently redeployed the wrong app while the
+workflow went green.
 
 ---
 
