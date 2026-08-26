@@ -151,12 +151,6 @@
     transform: translateX(-50%);
 }
 
-// The version line under the wordmark collides with it and advertises the
-// upstream version on a public page. Kept in the sidebar, hidden here.
-.front-cover .version {
-    display: none !important;
-}
-
 // The Login button loses its top padding because upstream writes
 //   .content a { padding-top: 0.375; }
 // with NO UNIT. That is invalid CSS and every browser drops the declaration,
@@ -178,10 +172,13 @@ img.logo {
     width: 10rem !important;
 }
 
-// That version line collides with the wordmark in BOTH places -- upstream pulls
-// it up with `margin-top: -0.5rem`, which only works for a short mark. Hidden
-// rather than nudged: the upstream version number is not something VATSSA needs
-// on a public login page or in every mentor's sidebar.
-a.version {
+// The "Control Center v7.0.0" line, in BOTH the sidebar and the login page.
+// Upstream pulls it up under the mark with `margin-top: -0.5rem`, which only
+// works for a short logo, so with the VATSSA wordmark it lands inside it.
+// Hidden rather than nudged: the upstream version is not something VATSSA needs
+// on a public login page or in every mentor's sidebar, and it links to
+// Vatsim-Scandinavia's repository rather than anything of ours.
+a.version,
+.version {
     display: none !important;
 }
