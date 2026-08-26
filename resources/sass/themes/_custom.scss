@@ -109,3 +109,41 @@
     --link-color: #4db6c7;
     --link-hover-color: #7bd758;
 }
+
+// ──────────────────────────────────────────────────────────────── layout ────
+// Two layout fixes for the VATSSA marks. Colours are the job of this file;
+// these are here because they exist only because of the marks themselves.
+//
+// Upstream sizes both logos by WIDTH ONLY:
+//   navs/_sidebar.scss   img.logo  { width: 11rem; }
+//                        a.version { margin-top: -0.5rem; }
+//   _global.scss         .logo img { width: 14.5rem; }
+//
+// VATSCA's mark is roughly square, so a width-only rule bounds its height too.
+// The VATSSA wordmark is 2000x728, so at 14.5rem wide it stands 5.3rem tall,
+// and the version line that upstream deliberately pulls upward lands inside it.
+// Constraining width brings the height back under control.
+//
+// !important is deliberate and load-bearing here. app.scss imports
+// themes/custom BEFORE global.scss and the nav partials, so an equal-specificity
+// rule in this file LOSES to upstream's. For custom properties that does not
+// matter (they cascade by value, not source order), which is why nothing above
+// needs it. For these four declarations it does.
+
+#sidebar img.logo,
+img.logo {
+    width: 8.5rem !important;
+}
+
+#sidebar a.version,
+a.version {
+    margin-top: 0.4rem !important;
+}
+
+.logo {
+    bottom: 2rem !important;
+
+    img {
+        width: 11rem !important;
+    }
+}
