@@ -23,8 +23,23 @@ underneath an added file. So each section below names its own detector, and
 
 ## Modified upstream files
 
-Two. If this list grows further, the divergence is growing with it, and each
-addition costs a conflict on some future release.
+Twelve, but they are two different things and should be read as such.
+
+**Two are code and configuration.** These are the real divergence. Each one is
+a conflict on some future release, each needs judgement to resolve, and this
+list growing is the thing to resist.
+
+**Ten are replaced brand assets** — the favicon set and the header mark. Binary
+files upstream rarely touches, and a conflict on any of them is resolved by
+keeping ours without thinking. They are listed for completeness, not because
+they carry risk.
+
+| | Count |
+|---|---|
+| Code and configuration | 2 |
+| Brand assets | 10 |
+| Added files | 32 |
+| Force-added past `.gitignore` | 3 |
 
 ### `config/roles.php`
 
@@ -81,6 +96,42 @@ docker run --rm ghcr.io/vatsim-ssa/ssa-controlcenter:prod ls vendor/bin
 
 **In flight upstream:** `upstream-contrib/install-dev-arg`. If it lands, delete
 this entry and take upstream's version.
+
+---
+
+### Brand assets (10 files)
+
+```
+public/images/control-tower.svg          the header mark, inlined by front.blade.php
+public/favicon.ico
+public/images/favicon/favicon.ico
+public/images/favicon/favicon-16x16.png
+public/images/favicon/favicon-32x32.png
+public/images/favicon/apple-touch-icon.png
+public/images/favicon/android-chrome-192x192.png
+public/images/favicon/android-chrome-512x512.png
+public/images/favicon/mstile-150x150.png
+public/images/favicon/safari-pinned-tab.svg
+```
+
+All generated from `logo_icon.png` in the `ssa-palette` repo. Regenerate with
+the script in that repo rather than by hand.
+
+**On conflict: keep ours.** There is no merging a binary brand asset.
+
+Two choices worth not undoing:
+
+- `apple-touch-icon.png` and `mstile-150x150.png` are **flattened onto
+  `#07262C`**. iOS ignores alpha on the touch icon and fills transparent pixels
+  with black, which would put a black square behind the mark.
+- `favicon.ico` carries **seven sizes**, 16 through 256, so each surface picks a
+  properly-scaled version instead of resampling one.
+
+**`control-tower.svg` has a footgun.** `front.blade.php` inlines it with
+`file_get_contents`, so its `width`/`height` attributes go straight into the
+flex layout. The 1024x1024 mark broke the login page on 2026-08-26 until
+`_custom.scss` constrained it. Any replacement needs the same treatment, or the
+attributes stripped.
 
 ---
 
@@ -201,6 +252,9 @@ upstream's side wholesale, then delete the local branch and this entry.**
 | `upstream-contrib/mail-scheme` | `config/mail.php` feeds `MAIL_MAILER` into Symfony's transport `scheme`; should be `MAIL_SCHEME`. Same family as the `MAIL_ENCRYPTION` trap. | not opened yet |
 | `upstream-contrib/install-dev-arg` | `INSTALL_DEV` build arg. Every division has the same seeding problem. | not opened yet |
 | `upstream-contrib/sh-eol` | `.gitattributes` has `* text=auto` and no rule for `*.sh`. On a Windows checkout the six shell scripts, `container/entrypoint.sh` included, become CRLF, and the Dockerfile copies them straight into a Linux image. One line: `*.sh text eol=lf`. | not opened yet |
+| `upstream-contrib/flex-logo-width` | `.front-cover .content-title img, svg` is sized by `height` alone. `front.blade.php` inlines the SVG, so its intrinsic width drives the flex layout; any mark with a large `width` attribute blows the login page apart. `.content` is `width: fit-content` so it inherits, and the Login button (`width: 100%`) spans the viewport. Needs an explicit width. | not opened yet |
+| `upstream-contrib/logo-centring` | `_global.scss` centres the login wordmark with `left: calc(50vw - (14.5rem / 2))`, hardcoding VATSCA's logo width. Every other division's mark sits off-centre. `left: 50%` plus `translateX(-50%)` is width-independent. | not opened yet |
+| `upstream-contrib/button-padding` | `_global.scss` `.content a { padding-top: 0.375; }` — **no unit**. Invalid CSS, dropped by every browser, so the Login button loses its top padding. | not opened yet |
 
 ---
 
