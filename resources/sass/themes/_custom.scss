@@ -24,7 +24,14 @@
 //      1.22:1 and costs nothing else: every light pair still clears AA.
 
 // ---------------------------------------------------------------- light -----
-:root,
+// `:root:not([data-theme="dark"])` rather than a bare `:root`, and this is
+// load-bearing. app.scss imports themes/light, themes/dark, THEN this file.
+// `:root` and `[data-theme="dark"]` have equal specificity, so a bare `:root`
+// here would come later in source order and beat upstream's dark values --
+// meaning any token defined in light but not in dark leaks into dark mode.
+// That is what turned the search field and the Application panel cream on
+// 2026-08-26, via --bg-light. The :not() makes the leak impossible.
+:root:not([data-theme="dark"]),
 [data-theme="light"] {
     --color-primary: #00788c;
     --color-tertiary: #07262c;
@@ -103,6 +110,7 @@
     --bg-card-header: #16454f;
     --bg-sidebar: #04191d;
     --bg-topbar: #04191d;
+    --bg-light: #16454f;
 
     --border-color: #2b5f6a;
 

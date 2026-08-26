@@ -110,7 +110,25 @@ PAIRS = [
 ]
 
 fails = 0
-for name, selector in (("light", ":root,"), ("dark", '[data-theme="dark"]')):
+
+# Parity check. Any token defined in light but NOT in dark is a latent leak:
+# app.scss imports this file after upstream's dark block, so at equal
+# specificity the light rule wins in dark mode too. This is what made the
+# Application panel cream on 2026-08-26 via --bg-light.
+_light = {k for k, _ in re.findall(r"(--[a-z0-9\-]+)\s*:\s*(#[0-9a-fA-F]{3,6})\s*;", block(":root:not"))}
+_dark = {k for k, _ in re.findall(r"(--[a-z0-9\-]+)\s*:\s*(#[0-9a-fA-F]{3,6})\s*;", block('[data-theme="dark"] {'))}
+_orphans = sorted(_light - _dark)
+if _orphans:
+    print("PARITY FAIL - defined in light but not dark, will leak into dark mode:")
+    for o in _orphans:
+        print("  " + o)
+    fails += len(_orphans)
+else:
+    print("parity OK - every light token is also defined in dark")
+
+# The dark selector carries its brace on purpose: a bare '[data-theme="dark"]'
+# also matches the :not() inside the light selector and reads the wrong block.
+for name, selector in (("light", ":root:not"), ("dark", '[data-theme="dark"] {')):
     vals = theme(name, selector)
     print(f"\n--- {name} ---")
     for label, fg, bg, need in PAIRS:
