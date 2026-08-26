@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Database\Migrations\Migration;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -123,16 +124,16 @@ return new class extends Migration
             }
 
             if (! in_array($target, self::VALID_TARGETS, true)) {
-                throw new \RuntimeException("STAFF_CID_MAP: '{$target}' (CID {$cid}) is not a valid target role.");
+                throw new RuntimeException("STAFF_CID_MAP: '{$target}' (CID {$cid}) is not a valid target role.");
             }
 
             if (! array_key_exists($target, config('roles.roles', []))) {
-                throw new \RuntimeException("STAFF_CID_MAP: '{$target}' (CID {$cid}) is not in config/roles.php.");
+                throw new RuntimeException("STAFF_CID_MAP: '{$target}' (CID {$cid}) is not in config/roles.php.");
             }
         }
     }
 
-    private function assertEveryLegacyRowIsMapped(\Illuminate\Support\Collection $legacy): void
+    private function assertEveryLegacyRowIsMapped(Collection $legacy): void
     {
         $unmapped = $legacy
             ->reject(fn ($row) => array_key_exists($row->user_id, self::STAFF_CID_MAP))
@@ -145,10 +146,10 @@ return new class extends Migration
             return;
         }
 
-        throw new \RuntimeException(
-            'STAFF_CID_MAP does not cover '.$unmapped->count().' legacy role holder(s): '
-            .$unmapped->implode(', ').'. Add each CID with a target role, or with null to drop the row. '
-            .'Leaving them unmapped would put staff live with no permissions and no error.'
+        throw new RuntimeException(
+            'STAFF_CID_MAP does not cover ' . $unmapped->count() . ' legacy role holder(s): '
+            . $unmapped->implode(', ') . '. Add each CID with a target role, or with null to drop the row. '
+            . 'Leaving them unmapped would put staff live with no permissions and no error.'
         );
     }
 
@@ -168,9 +169,9 @@ return new class extends Migration
             ->values();
 
         if ($orphans->isNotEmpty()) {
-            throw new \RuntimeException(
+            throw new RuntimeException(
                 'role_user still holds role(s) absent from config/roles.php after the remap: '
-                .$orphans->implode(', ')
+                . $orphans->implode(', ')
             );
         }
     }

@@ -103,7 +103,7 @@ class VatssaSeeder extends Seeder
         if (app()->environment('production')) {
             throw new \RuntimeException(
                 'VatssaSeeder refuses to run with APP_ENV=production. '
-                .'Production data comes from the database dump, never from a seeder.'
+                . 'Production data comes from the database dump, never from a seeder.'
             );
         }
 
@@ -154,7 +154,7 @@ class VatssaSeeder extends Seeder
 
         $this->command?->warn(
             'VatssaSeeder: the database already has users, so fixtures were not re-seeded. '
-            .'Run migrate:fresh first, or set VATSSA_SEED_FORCE=1, to rebuild them.'
+            . 'Run migrate:fresh first, or set VATSSA_SEED_FORCE=1, to rebuild them.'
         );
 
         return false;
@@ -172,14 +172,14 @@ class VatssaSeeder extends Seeder
         if (DB::table('positions')->count() === 0) {
             throw new \RuntimeException(
                 'No positions in the database. Run the VATSSA reference-data migration first: '
-                .'php artisan migrate --path=database/migrations-vatssa'
+                . 'php artisan migrate --path=database/migrations-vatssa'
             );
         }
 
         if (DB::table('areas')->where('id', 1)->value('name') !== 'Southern Africa') {
             throw new \RuntimeException(
                 'Area 1 is not "Southern Africa". The VATSSA reference-data migration has not run, '
-                .'or upstream changed the seeded areas. Check database/migrations-vatssa.'
+                . 'or upstream changed the seeded areas. Check database/migrations-vatssa.'
             );
         }
     }
@@ -201,7 +201,7 @@ class VatssaSeeder extends Seeder
 
         if ($missing->isNotEmpty()) {
             throw new \RuntimeException(
-                'Seeder uses role(s) not present in config/roles.php: '.$missing->implode(', ')
+                'Seeder uses role(s) not present in config/roles.php: ' . $missing->implode(', ')
             );
         }
     }
@@ -213,7 +213,7 @@ class VatssaSeeder extends Seeder
 
             $user = User::factory()->create([
                 'id' => 10000000 + $i,
-                'email' => $account['email'] ?? 'auth.dev'.$i.'@vatsim.net',
+                'email' => $account['email'] ?? 'auth.dev' . $i . '@vatsim.net',
                 'first_name' => $account['first'] ?? 'Web',
                 'last_name' => $account['last'],
                 'rating' => $ratingId,

@@ -537,7 +537,7 @@ return new class extends Migration
 
         foreach (self::POSITIONS as [$callsign, $name, $fir, $rating]) {
             if (! array_key_exists($fir, self::FIR_AREA)) {
-                throw new \RuntimeException("FIR {$fir} has no area in FIR_AREA (position {$callsign}).");
+                throw new RuntimeException("FIR {$fir} has no area in FIR_AREA (position {$callsign}).");
             }
 
             $attributes = ['name' => $name, 'fir' => $fir, 'rating' => $rating];
