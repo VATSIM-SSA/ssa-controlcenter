@@ -109,3 +109,42 @@
     --link-color: #4db6c7;
     --link-hover-color: #7bd758;
 }
+
+// ──────────────────────────────────────────────────────────────── layout ────
+// One real bug, not a cosmetic tweak.
+//
+// `.front-cover .content-title` is a flex row, and upstream sizes its mark with
+// `height: 3rem` and NO width. The VATSSA circle carries width="1024"
+// height="1024", so the flex item's base size comes from that 1024px intrinsic
+// width even though the image DRAWS at 3rem. `.content` is `width: fit-content`
+// and inherits ~1030px; the Login button is `width: 100%` of that. Result: mark
+// hard left, title hard right, button across the whole viewport.
+//
+// Upstream's tower SVG had a small intrinsic size, so the missing width never
+// showed. Found 2026-08-26 by swapping the mark.
+//
+// !important is load-bearing: app.scss imports themes/custom BEFORE global.scss,
+// so an equal-specificity rule loses. The custom properties above are unaffected
+// by that ordering, which is why only this block needs it.
+.front-cover .content-title {
+    img,
+    svg {
+        width: 3rem !important;
+        height: 3rem !important;
+        flex: 0 0 auto !important;
+    }
+}
+
+// Upstream centres the login wordmark with `left: calc(50vw - (14.5rem / 2))`,
+// which hardcodes the VATSCA mark's width, so any other logo sits off-centre.
+// This is width-independent.
+.front-cover .logo {
+    left: 50% !important;
+    transform: translateX(-50%);
+}
+
+// The version line under the wordmark collides with it and advertises the
+// upstream version on a public page. Kept in the sidebar, hidden here.
+.front-cover .version {
+    display: none !important;
+}
