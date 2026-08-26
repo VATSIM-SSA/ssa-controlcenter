@@ -26,11 +26,17 @@ use Illuminate\Support\Lottery;
  *
  * An ADDED file. Upstream's `DatabaseSeeder.php` is left untouched so it can
  * never conflict on an upstream absorption. Because git therefore gives no
- * signal when upstream changes underneath this file, `VatssaFixturesTest`
+ * signal when upstream changes underneath this file, `tests/Feature/VatssaTest.php`
  * exercises it in CI. That test is this file's drift detector; do not delete it.
  *
  * DEV AND STAGING ONLY, guarded against APP_ENV=production below. Never remove
  * that guard: production data comes from the DigitalOcean dump.
+ *
+ * SAFE TO RUN ON EVERY DEPLOY. deploy-cc.sh calls this unconditionally on dev
+ * and staging. If the database already has users it prints a line and returns,
+ * because the eleven fixed accounts have hardcoded CIDs and re-inserting them
+ * would collide on the primary key. To rebuild fixtures deliberately, either
+ * `migrate:fresh` first or set VATSSA_SEED_FORCE=1.
  *
  * Fixtures only. Areas and positions are division reference data and live in
  * `database/migrations-vatssa/2026_08_26_100000_vatssa_reference_data.php`,
@@ -101,6 +107,10 @@ class VatssaSeeder extends Seeder
             );
         }
 
+        if (! $this->shouldSeed()) {
+            return;
+        }
+
         $this->assertReferenceDataPresent();
         $this->assertRolesExist();
 
@@ -128,6 +138,26 @@ class VatssaSeeder extends Seeder
 
         $this->seedFeedback();
         $this->seedTrainings($faker);
+    }
+
+    /**
+     * Fixtures go in once. The eleven fixed accounts carry hardcoded CIDs, so a
+     * second run would collide on the primary key. Returning quietly instead of
+     * throwing is what lets deploy-cc.sh call this on every dev deploy without
+     * a conditional in the shell.
+     */
+    private function shouldSeed(): bool
+    {
+        if (User::count() === 0 || env('VATSSA_SEED_FORCE')) {
+            return true;
+        }
+
+        $this->command?->warn(
+            'VatssaSeeder: the database already has users, so fixtures were not re-seeded. '
+            .'Run migrate:fresh first, or set VATSSA_SEED_FORCE=1, to rebuild them.'
+        );
+
+        return false;
     }
 
     /**

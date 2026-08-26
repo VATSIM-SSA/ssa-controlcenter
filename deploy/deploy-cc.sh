@@ -76,6 +76,14 @@ run php artisan migrate --force --no-interaction
 echo "==> Migrating (VATSSA)"
 run php artisan migrate --force --no-interaction --path=database/migrations-vatssa
 
+# Dev and staging seed themselves so a rebuilt environment is usable without a
+# manual step. The seeder returns quietly when the database already has users,
+# so this is safe on every deploy. It refuses outright on production.
+if [ "$ENVIRONMENT" != "prod" ]; then
+    echo "==> Seeding fixtures (no-op if the database already has users)"
+    run php artisan db:seed --class=VatssaSeeder --force --no-interaction
+fi
+
 echo "==> Clearing caches"
 run php artisan optimize:clear
 

@@ -191,6 +191,20 @@ class VatssaTest extends TestCase
     }
 
     #[Test]
+    public function the_seeder_is_safe_to_run_twice(): void
+    {
+        // deploy-cc.sh calls the seeder on every dev and staging deploy, so this
+        // property is load-bearing, not a nicety. The fixed accounts carry
+        // hardcoded CIDs and a second insert would collide.
+        $this->seed(VatssaSeeder::class);
+        $after = User::count();
+
+        $this->seed(VatssaSeeder::class);
+
+        $this->assertSame($after, User::count());
+    }
+
+    #[Test]
     public function the_seeder_refuses_to_run_in_production(): void
     {
         // The one guard that stands between a mistyped artisan command and
