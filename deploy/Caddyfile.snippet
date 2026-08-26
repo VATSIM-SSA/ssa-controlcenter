@@ -1,29 +1,63 @@
-# Append to /srv/deploy/caddy/Caddyfile, then:
+# ControlCentre blocks for the VATSSA VPS Caddyfile.
+#
+# Path is /srv/deploy/caddy/conf/Caddyfile — NOT /srv/deploy/caddy/Caddyfile,
+# which older docs still say.
+#
+# Apply with:
 #   docker exec caddy caddy validate --config /etc/caddy/Caddyfile
 #   cd /srv/deploy/caddy && docker compose restart
-# (reload is disabled on this box — see docs/adding-apps.md Step 6 note)
+#
+# `caddy reload` is DISABLED on this box: the global block sets `admin off`,
+# which kills the admin API reload depends on. A restart briefly drops every
+# site, so never do it during an event.
+#
+# Three things here are specific to this box and easy to get wrong:
+#
+#  1. `http://` prefixes. TLS terminates at Cloudflare and cloudflared speaks
+#     plain HTTP to Caddy, and the global block sets `auto_https off`. A bare
+#     hostname would make Caddy attempt its own ACME certificate, which cannot
+#     succeed here.
+#
+#  2. `security_headers_livewire`, not `security_headers`. CC v7.0.0 is
+#     Livewire 4 + Flux, and Alpine uses new Function(), so script-src needs
+#     'unsafe-eval'. The plain snippet omits it and CSP blocks the JS silently
+#     — role assignment included. This was correct for v6.4.3, which had no
+#     Livewire; the upgrade changed the requirement.
+#
+#  3. `header_up X-Forwarded-Proto https`. Without it Laravel behind the tunnel
+#     generates http:// URLs and can loop on secure-cookie redirects.
+#
+# cc.vatssa.com is defined here even before the production cutover. That is
+# safe: there is no Cloudflare Tunnel public hostname for it, so nothing
+# outside can reach it. Adding that hostname IS the cutover.
 
-# ── Control Center ──────────────────────────────────────────────────────────
-cc.vatssa.com {
-  import security_headers
+# ── ControlCentre ─────────────────────────────────────────────────────────────
+http://cc.vatssa.com {
+  import security_headers_livewire
   reverse_proxy cc-prod:80 {
     header_up X-Forwarded-Proto https
   }
-  log { output file /var/log/caddy/cc-prod.log }
+  log {
+    output file /var/log/caddy/cc-prod.log
+  }
 }
 
-cc-staging.vatssa.com {
-  import security_headers
+http://cc-staging.vatssa.com {
+  import security_headers_livewire
   reverse_proxy cc-staging:80 {
     header_up X-Forwarded-Proto https
   }
-  log { output file /var/log/caddy/cc-staging.log }
+  log {
+    output file /var/log/caddy/cc-staging.log
+  }
 }
 
-cc-dev.vatssa.com {
-  import security_headers
+http://cc-dev.vatssa.com {
+  import security_headers_livewire
   reverse_proxy cc-dev:80 {
     header_up X-Forwarded-Proto https
   }
-  log { output file /var/log/caddy/cc-dev.log }
+  log {
+    output file /var/log/caddy/cc-dev.log
+  }
 }
