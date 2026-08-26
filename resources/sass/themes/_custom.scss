@@ -148,3 +148,32 @@
 .front-cover .version {
     display: none !important;
 }
+
+// The Login button loses its top padding because upstream writes
+//   .content a { padding-top: 0.375; }
+// with NO UNIT. That is invalid CSS and every browser drops the declaration,
+// so the label sits high in the button. Third upstream bug found tonight.
+.front-cover .content a {
+    padding-top: 0.375rem !important;
+    padding-bottom: 0.375rem !important;
+}
+
+// The wordmark is 2000x728, far wider than VATSCA's mark, so upstream's
+// width-only sizing (img.logo 11rem in the sidebar, .logo img 14.5rem on the
+// login page) leaves it tall enough to collide with the version line beneath.
+#sidebar img.logo,
+img.logo {
+    width: 7.5rem !important;
+}
+
+.front-cover .logo img {
+    width: 10rem !important;
+}
+
+// That version line collides with the wordmark in BOTH places -- upstream pulls
+// it up with `margin-top: -0.5rem`, which only works for a short mark. Hidden
+// rather than nudged: the upstream version number is not something VATSSA needs
+// on a public login page or in every mentor's sidebar.
+a.version {
+    display: none !important;
+}
