@@ -3,82 +3,70 @@
 namespace App\Observers;
 
 use App\Models\Task;
-use App\Models\User;
+use App\Models\Vatssa\RequestTarget;
 use Illuminate\Support\Facades\Log;
 
 /**
- * VATSSA: send a request to the desk that handles it.
+ * VATSSA: send a request to the desk it was addressed to.
  *
- * Upstream leaves the assignee to whoever raises the task, helped by a list of
- * the three people who have received the most. That works when everybody knows
- * the org chart. It does not scale, and a request sent to the wrong person sits
- * unread until somebody complains.
+ * Upstream asks the requester to name a person, offering a datalist of everyone
+ * holding any role plus the three most-used shortcuts. That works while
+ * everybody knows the org chart, and fails quietly afterwards: the request
+ * lands on whoever came to mind and sits unread.
+ *
+ * The form now asks for a DESK -- coordinator for this rating, ATC training
+ * manager, VATSSA1, VATSSA2 -- and this resolves it to a person.
  *
  * AN OBSERVER, NOT A CONTROLLER CHANGE. `TaskController::store()` calls
- * `Task::create()`, so an Eloquent `creating` hook reaches every task without
- * upstream's controller being touched at all -- including tasks created by the
- * bridge, which never go through the controller.
+ * `Task::create()`, so an Eloquent `creating` hook catches every task including
+ * ones the bridge makes, and upstream's controller keeps its own logic.
  *
- * ## It is inert until configured
+ * ## What happens when a desk is empty
  *
- * `config('vatssa.task_routing')` maps a task type class to the permission that
- * defines its desk. It ships EMPTY, and an empty map means this changes
- * nothing: existing behaviour, unchanged, until somebody decides where each
- * request should go. That is deliberate -- a routing table invented rather than
- * decided would send real requests to the wrong people, quietly.
+ * The task stays with whoever the form sent it to -- in practice the requester
+ * -- and a warning is logged. That is deliberate. A request that visibly landed
+ * in the wrong place gets chased; one silently assigned to an arbitrary
+ * role-holder looks handled and is not. `tasks.assignee_user_id` is NOT NULL,
+ * so there is no third option.
  *
- * ## What it will not do
+ * ## The tier is kept on the task
  *
- * Reroute a task that already names somebody holding the right permission. If
- * a coordinator deliberately sends a solo endorsement to a specific colleague,
- * that is a decision, not a mistake, and silently overriding it would be worse
- * than the problem being solved.
+ * Resolving a desk to a person loses the desk, and then a request in somebody's
+ * inbox cannot say what it was addressed to. `vatssa_tier` keeps it, which is
+ * what lets a whole desk see its own queue rather than only the one person the
+ * round-robin picked.
  */
 class VatssaTaskObserver
 {
     public function creating(Task $task): void
     {
-        $routes = (array) config('vatssa.task_routing', []);
-
-        if ($routes === [] || ! is_string($task->type)) {
-            return;
+        if (! RequestTarget::isTier($task->vatssa_tier)) {
+            return;     // upstream's own tasks, and anything created directly
         }
 
-        $permission = $routes[$task->type] ?? null;
-        if (! is_string($permission) || $permission === '') {
-            return;
-        }
+        // The rating this request is about, so a coordinator request reaches
+        // the coordinator for THAT pipeline. Falls back to the training's own
+        // rating when the form did not say.
+        $ratingId = $task->vatssa_rating_id
+            ?? $task->subject_training_rating_id
+            ?? $task->subjectTraining?->ratings->first()?->id;
 
-        $area = $task->subjectTraining?->area;
-
-        // Already on the right desk. Leave it alone.
-        $current = $task->assignee_user_id
-            ? User::find($task->assignee_user_id)
+        $task->vatssa_rating_id = RequestTarget::isPerRating($task->vatssa_tier)
+            ? $ratingId
             : null;
-        if ($current && $current->hasPermission($permission, $area)) {
-            return;
-        }
 
-        $candidate = User::allWithPermission($permission, $area)
-            ->filter(fn (User $user) => $user->hasPermission('tasks.suggested-recipient'))
-            // Fewest open tasks first, so one person does not absorb the queue
-            // simply by having been there longest.
-            ->sortBy(fn (User $user) => $user->tasks()->count())
-            ->first();
+        $target = RequestTarget::nextAt($task->vatssa_tier, $ratingId);
 
-        if ($candidate === null) {
-            // Nobody holds the permission in this area. Leave the task where it
-            // was rather than dropping it: a request on the wrong desk is still
-            // a request, and one assigned to nobody is lost.
-            Log::warning('VATSSA task routing found no recipient', [
-                'type' => $task->type,
-                'permission' => $permission,
-                'area' => $area?->id,
+        if ($target === null) {
+            Log::warning('VATSSA request routing: nobody sits at this desk', [
+                'tier' => $task->vatssa_tier,
+                'rating_id' => $ratingId,
+                'training_id' => $task->subject_training_id,
             ]);
 
             return;
         }
 
-        $task->assignee_user_id = $candidate->id;
+        $task->assignee_user_id = $target->id;
     }
 }

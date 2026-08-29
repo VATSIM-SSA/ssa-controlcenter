@@ -4,13 +4,16 @@
 @section('title-flex')
     <div>
         <i class="fas fa-filter"></i>&nbsp;Filter:&nbsp;
-        <a class="btn btn-sm {{ (!in_array($activeFilter, ['sent', 'archived', 'all'])) ? 'btn-primary' : 'btn-outline-primary' }}" href="{{ route('tasks') }}">Open</a>
+        {{-- VATSSA: "To you" rather than "Open", because it now includes
+             anything sent to a desk you sit at, not only rows with your name on
+             them. Everybody and Everybody archived are the two views a single
+             inbox cannot give you. --}}
+        <a class="btn btn-sm {{ (!in_array($activeFilter, ['sent', 'archived', 'all', 'all-archived'])) ? 'btn-primary' : 'btn-outline-primary' }}" href="{{ route('tasks') }}">To you</a>
         <a class="btn btn-sm {{ ($activeFilter == 'sent') ? 'btn-primary' : 'btn-outline-primary' }}" href="{{ route('tasks.filtered', 'sent') }}">Sent</a>
         <a class="btn btn-sm {{ ($activeFilter == 'archived') ? 'btn-primary' : 'btn-outline-primary' }}" href="{{ route('tasks.filtered', 'archived') }}">Archived</a>
-        {{-- VATSSA: the whole board, for staff who need to see what is outstanding
-             across the division rather than only their own inbox. --}}
         @if($canSeeAll ?? false)
-            <a class="btn btn-sm {{ ($activeFilter == 'all') ? 'btn-primary' : 'btn-outline-primary' }}" href="{{ route('tasks.filtered', 'all') }}">Everyone</a>
+            <a class="btn btn-sm {{ ($activeFilter == 'all') ? 'btn-primary' : 'btn-outline-primary' }}" href="{{ route('tasks.filtered', 'all') }}">Everybody</a>
+            <a class="btn btn-sm {{ ($activeFilter == 'all-archived') ? 'btn-primary' : 'btn-outline-primary' }}" href="{{ route('tasks.filtered', 'all-archived') }}">Everybody archived</a>
         @endif
     </div>
 @endsection
@@ -33,15 +36,15 @@
                         <table class="table table-striped table-sm table-hover table-leftpadded mb-0" width="100%" cellspacing="0">
                             <thead class="table-light">
                                 <tr>
-                                    <th>{{ (in_array($activeFilter, ['archived'])) ? 'Closed' : 'Created' }}</th>
+                                    <th>{{ (in_array($activeFilter, ['archived', 'all-archived'])) ? 'Closed' : 'Created' }}</th>
                                     <th>Subject</th>
                                     <th>Request</th>
                                     <th>{{ (!in_array($activeFilter, ['sent'])) ? 'Creator' : 'Assigned to' }}</th>
-                                    @if($activeFilter == 'all')
-                                        {{-- VATSSA: on the overview the assignee is the point --}}
-                                        <th>Assigned to</th>
+                                    @if(in_array($activeFilter, ['all', 'all-archived']))
+                                        {{-- VATSSA: on the overview, whose desk it is on is the point --}}
+                                        <th>Desk</th>
                                     @endif
-                                    <th>{{ (!in_array($activeFilter, ['sent', 'archived', 'all'])) ? 'Actions' : 'Status' }}</th>
+                                    <th>{{ (!in_array($activeFilter, ['sent', 'archived', 'all', 'all-archived'])) ? 'Actions' : 'Status' }}</th>
                                 </tr>
                             </thead>
                             <tbody>

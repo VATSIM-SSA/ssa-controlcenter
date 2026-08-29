@@ -63,6 +63,11 @@ class ManagementReportPolicy
      */
     public function viewAccessReport(User $user)
     {
-        return $user->hasPermission('fir.management.reports.view');
+        // VATSSA: its own permission, split out of fir.management.reports.view.
+        // That permission also opens the training request queue, the mentor
+        // index and manual training creation, so gating the access report on it
+        // meant anybody who works the queue could audit every role in the
+        // division. See config/roles.php.
+        return $user->hasPermission('fir.management.access.view');
     }
 }

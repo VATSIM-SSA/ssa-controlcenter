@@ -10,7 +10,7 @@ use Illuminate\Contracts\Validation\ValidationRule;
 /**
  * VATSSA: staff may not hand-set the stages the pipeline owns.
  *
- * In queue, pre-training and awaiting-mentor are decided by the system --
+ * Awaiting theory, theory phase and awaiting mentor are decided by the system --
  * registration, a theory pass, a mentor being assigned. A human setting one by
  * hand puts Control Center and the bot into disagreement about where somebody
  * is, and the bot will move them straight back, which looks like a bug.

@@ -1,7 +1,8 @@
 <tr>
     <td>
-        <span data-bs-toggle="tooltip" data-bs-placement="top" title="{{ (in_array($activeFilter, ['archived'])) ? $task->closed_at->toEuropeanDateTime() : $task->created_at->toEuropeanDateTime() }}">
-            {{ (in_array($activeFilter, ['archived'])) ? $task->closed_at->diffForHumans() : $task->created_at->diffForHumans() }}
+        @php $showClosed = in_array($activeFilter, ['archived', 'all-archived']) && $task->closed_at; @endphp
+        <span data-bs-toggle="tooltip" data-bs-placement="top" title="{{ $showClosed ? $task->closed_at->toEuropeanDateTime() : $task->created_at->toEuropeanDateTime() }}">
+            {{ $showClosed ? $task->closed_at->diffForHumans() : $task->created_at->diffForHumans() }}
         </span>
     </td>
     <td><a href="{{ route('user.show', $task->subject) }}">{{ $task->subject->name }} ({{ $task->subject->id }})</a></td>
@@ -26,16 +27,23 @@
         @endif
     </td>
 
-    @if($activeFilter == 'all')
-        {{-- VATSSA: whose desk it is sitting on. The whole point of the overview. --}}
-        <td><a href="{{ route('user.show', $task->assignee) }}">{{ $task->assignee->name }} ({{ $task->assignee->id }})</a></td>
+    @if(in_array($activeFilter, ['all', 'all-archived']))
+        {{-- VATSSA: which desk it went to, and who is holding it. The desk is
+             the useful half -- "the S2 coordinator" survives a person leaving,
+             where a name does not. --}}
+        <td>
+            @if($task->vatssa_tier)
+                <span class="badge bg-secondary">{{ \App\Models\Vatssa\RequestTarget::label($task->vatssa_tier) }}</span>
+            @endif
+            <a class="d-block small" href="{{ route('user.show', $task->assignee) }}">{{ $task->assignee->name }} ({{ $task->assignee->id }})</a>
+        </td>
     @endif
 
     <td>
-        {{-- VATSSA: 'all' shows status, not buttons. These are other people's
-             tasks; offering Complete on one you do not own is an invitation to
-             a mistake the policy would refuse anyway. --}}
-        @if(!in_array($activeFilter, ['sent', 'archived', 'all']))
+        {{-- VATSSA: the overview shows status, not buttons. Those are other
+             people's tasks; offering Complete on one you do not own is an
+             invitation to a mistake the policy would refuse anyway. --}}
+        @if(!in_array($activeFilter, ['sent', 'archived', 'all', 'all-archived']))
             <div class="btn-toolbar" role="toolbar" aria-label="Task actions">
                 <div class="btn-group">
                     @if($task->type()->isApproval())

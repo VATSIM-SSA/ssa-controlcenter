@@ -19,39 +19,46 @@
                         @endif
                     </div>
 
+                    {{-- VATSSA: a DESK, not a name.
+
+                         Upstream asks who to send this to and offers every user
+                         holding any role, plus the three most-used shortcuts.
+                         That works while everybody knows the org chart and
+                         fails quietly afterwards -- the request lands on
+                         whoever came to mind and sits unread.
+
+                         Who currently sits at each desk is set in
+                         Administration -> Request routing. VatssaTaskObserver
+                         resolves it on the way in, so a cached form cannot send
+                         a request to somebody who left.
+
+                         assignee_user_id is still posted because upstream's
+                         validation requires a real user and the column is NOT
+                         NULL. It is the requester, and the observer replaces
+                         it. If a desk has nobody, the request stays with the
+                         requester rather than vanishing. --}}
                     <div class="mt-3">
-                        <label class="form-label" for="user">Send request to</label>
-                        <div class="mt-1">
-                            <input 
-                                id="{{ Str::camel($requestType->getName()) }}User"
-                                class="form-control"
-                                type="text"
-                                name="assignee_user_id"
-                                list="{{ Str::camel($requestType->getName()) }}UserList"
-                                autocomplete="off"
-                                placeholder="Write name here or quick add below"
-                                required
-                            >
-                            <datalist id="{{ Str::camel($requestType->getName()) }}UserList">
-                                @foreach(\App\Models\User::has('roleAssignments')->get() as $user)
-                                    <option value="{{ $user->id }}">{{ $user->name }}</option>
-                                @endforeach
-                            </datalist>
+                        <label class="form-label">Send request to</label>
+                        @php $tierField = Str::camel($requestType->getName()) . 'Tier'; @endphp
 
-                            <div>
-                                @foreach($requestPopularAssignees as $user)
-                                    <button type="button" class="btn btn-sm btn-outline-primary mt-1" onclick="document.getElementById('{{ Str::camel($requestType->getName()) }}User').value = '{{ $user->id }}'">
-                                        <i class="fas fa-bolt"></i>
-                                        {{ $user->name }}
-                                    </button>
-                                @endforeach
+                        @foreach(\App\Models\Vatssa\RequestTarget::TIERS as $tierKey => $tier)
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" required
+                                       name="vatssa_tier" value="{{ $tierKey }}"
+                                       id="{{ $tierField }}{{ $loop->index }}"
+                                       @checked($loop->first)>
+                                <label class="form-check-label" for="{{ $tierField }}{{ $loop->index }}">
+                                    {{ $tier['label'] }}
+                                    <small class="d-block text-muted">{{ $tier['hint'] }}</small>
+                                </label>
                             </div>
+                        @endforeach
 
-                            <div class="mt-3">
-                                <input type="hidden" name="type" value="{{ $requestType::class }}">
-                                <input type="hidden" name="subject_user_id" value="{{ $training->user->id }}">
-                                <input type="hidden" name="subject_training_id" value="{{ $training->id }}">
-                            </div>
+                        <div class="mt-3">
+                            <input type="hidden" name="type" value="{{ $requestType::class }}">
+                            <input type="hidden" name="subject_user_id" value="{{ $training->user->id }}">
+                            <input type="hidden" name="subject_training_id" value="{{ $training->id }}">
+                            <input type="hidden" name="assignee_user_id" value="{{ Auth::id() }}">
                         </div>
                     </div>
 

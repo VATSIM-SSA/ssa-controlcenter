@@ -3,11 +3,15 @@
 namespace App\Http\Controllers\Vatssa;
 
 use App\Http\Controllers\Controller;
+use App\Models\Rating;
+use App\Models\User;
 use App\Models\Vatssa\MessageTemplate;
 use App\Models\Vatssa\MoodleCourse;
+use App\Models\Vatssa\RequestTarget;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 
 /**
@@ -41,6 +45,68 @@ class SettingsController extends Controller
         $template->update($data + ['updated_by' => Auth::id()]);
 
         return redirect()->back()->with('success', "Template {$template->key} saved.");
+    }
+
+    /**
+     * Who sits at each request desk.
+     *
+     * The coordinator desk is per rating, because VATSSA's pipelines are per
+     * rating. Everything else is one list. Several people per desk is normal --
+     * the request goes to whichever of them has the fewest open tasks.
+     */
+    public function routing(): View
+    {
+        $this->authorize('system.settings.manage');
+
+        return view('vatssa.admin.routing', [
+            'tiers' => RequestTarget::TIERS,
+            'ratings' => Rating::whereNotNull('vatsim_rating')
+                ->orderBy('vatsim_rating')->get(),
+            'targets' => RequestTarget::with('user')->get(),
+            // Anybody who could plausibly staff a desk. Not filtered by role:
+            // VATSSA1 and VATSSA2 are people, not a Control Center role, and
+            // hard-coding which role may sit where would defeat the point of
+            // the page.
+            'candidates' => User::whereHas('roleAssignments')->orderBy('first_name')->get(),
+        ]);
+    }
+
+    public function updateRouting(Request $request): RedirectResponse
+    {
+        $this->authorize('system.settings.manage');
+
+        $data = $request->validate([
+            'targets' => 'sometimes|array',
+            'targets.*' => 'array',
+            'targets.*.*' => 'integer|exists:users,id',
+        ]);
+
+        // Replace wholesale inside a transaction. Diffing rows would be more
+        // code for no benefit -- the table is a handful of rows and a partial
+        // write here means requests routing to the wrong desk until somebody
+        // notices.
+        DB::transaction(function () use ($data) {
+            RequestTarget::query()->delete();
+
+            foreach ($data['targets'] ?? [] as $key => $userIds) {
+                // "coordinator:14" for a per-rating desk, "vatssa1" otherwise.
+                [$tier, $ratingId] = array_pad(explode(':', (string) $key, 2), 2, null);
+
+                if (! RequestTarget::isTier($tier)) {
+                    continue;
+                }
+
+                foreach (array_unique($userIds) as $userId) {
+                    RequestTarget::create([
+                        'tier' => $tier,
+                        'rating_id' => RequestTarget::isPerRating($tier) && $ratingId ? (int) $ratingId : null,
+                        'user_id' => $userId,
+                    ]);
+                }
+            }
+        });
+
+        return redirect()->back()->with('success', 'Request routing saved.');
     }
 
     public function courses(): View

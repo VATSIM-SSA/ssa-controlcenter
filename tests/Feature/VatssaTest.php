@@ -7,12 +7,14 @@ use App\Helpers\TrainingStatus;
 use App\Http\Controllers\TaskController;
 use App\Models\Area;
 use App\Models\Position;
+use App\Models\Rating;
 use App\Models\Task;
 use App\Models\Training;
 use App\Models\User;
 use App\Models\Vatssa\MessageLog;
 use App\Models\Vatssa\MessageTemplate;
 use App\Models\Vatssa\MoodleCourse;
+use App\Models\Vatssa\RequestTarget;
 use App\Models\Vatssa\TheoryAttempt;
 use App\Models\Vatssa\UserPlatform;
 use App\Services\PermissionMatrix;
@@ -421,6 +423,176 @@ class VatssaTest extends TestCase
         $this->assertStringNotContainsString("'examiner' =>", $source);
         $this->assertStringContainsString("'visiting' =>", $source);
         $this->assertStringContainsString("'solo' =>", $source);
+    }
+
+
+    // ---------------------------------------------------------------------
+    // Request routing
+    // ---------------------------------------------------------------------
+
+    #[Test]
+    public function a_request_goes_to_the_desk_not_to_whoever_was_typed(): void
+    {
+        // The whole point. Upstream takes the assignee from the form; the
+        // observer replaces it with whoever staffs the desk that was chosen.
+        $this->seedFixtures();
+
+        $requester = User::find(10000006);
+        $coordinator = User::find(10000008);
+        $rating = Rating::whereNotNull('vatsim_rating')->first();
+
+        RequestTarget::create([
+            'tier' => RequestTarget::COORDINATOR,
+            'rating_id' => $rating->id,
+            'user_id' => $coordinator->id,
+        ]);
+
+        $training = Training::where('user_id', 10000304)->firstOrFail();
+
+        $task = Task::create([
+            'type' => \App\Tasks\Types\LeaveOfAbsence::class,
+            'vatssa_tier' => RequestTarget::COORDINATOR,
+            'vatssa_rating_id' => $rating->id,
+            'subject_user_id' => $training->user_id,
+            'subject_training_id' => $training->id,
+            'assignee_user_id' => $requester->id,   // what the form posted
+            'creator_user_id' => $requester->id,
+        ]);
+
+        $this->assertSame($coordinator->id, $task->assignee_user_id);
+    }
+
+    #[Test]
+    public function an_empty_desk_leaves_the_request_with_the_requester(): void
+    {
+        // Not silent, but visible. A request that landed in the wrong place
+        // gets chased; one auto-assigned to an arbitrary role-holder looks
+        // handled and is not. assignee_user_id is NOT NULL, so there is no
+        // third option.
+        $this->seedFixtures();
+
+        $requester = User::find(10000006);
+        $training = Training::where('user_id', 10000304)->firstOrFail();
+
+        $task = Task::create([
+            'type' => \App\Tasks\Types\LeaveOfAbsence::class,
+            'vatssa_tier' => RequestTarget::VATSSA1,     // nobody assigned
+            'subject_user_id' => $training->user_id,
+            'subject_training_id' => $training->id,
+            'assignee_user_id' => $requester->id,
+            'creator_user_id' => $requester->id,
+        ]);
+
+        $this->assertSame($requester->id, $task->assignee_user_id);
+    }
+
+    #[Test]
+    public function the_coordinator_desk_is_per_rating(): void
+    {
+        // VATSSA runs a pipeline per rating, so "the S2 coordinator" is a
+        // different person from "the C1 coordinator". Control Center scopes
+        // roles by AREA, which is why this needed its own table.
+        $this->seedFixtures();
+
+        $ratings = Rating::whereNotNull('vatsim_rating')->orderBy('vatsim_rating')->take(2)->get();
+        $this->assertCount(2, $ratings, 'need two ratings for this test');
+
+        RequestTarget::create(['tier' => RequestTarget::COORDINATOR,
+            'rating_id' => $ratings[0]->id, 'user_id' => 10000008]);
+        RequestTarget::create(['tier' => RequestTarget::COORDINATOR,
+            'rating_id' => $ratings[1]->id, 'user_id' => 10000005]);
+
+        $this->assertSame(10000008, RequestTarget::nextAt(RequestTarget::COORDINATOR, $ratings[0]->id)?->id);
+        $this->assertSame(10000005, RequestTarget::nextAt(RequestTarget::COORDINATOR, $ratings[1]->id)?->id);
+    }
+
+    #[Test]
+    public function a_catch_all_coordinator_covers_every_rating(): void
+    {
+        // A division with one coordinator should not have to fill in four
+        // identical rows.
+        $this->seedFixtures();
+
+        RequestTarget::create(['tier' => RequestTarget::COORDINATOR,
+            'rating_id' => null, 'user_id' => 10000008]);
+
+        $rating = Rating::whereNotNull('vatsim_rating')->first();
+
+        $this->assertSame(10000008, RequestTarget::nextAt(RequestTarget::COORDINATOR, $rating->id)?->id);
+    }
+
+    #[Test]
+    public function the_missing_request_types_exist(): void
+    {
+        // STATE.md lists five student requests. Three had no type at all, so
+        // they would have arrived as free-text Custom Requests -- exactly the
+        // arbitrariness the desks are meant to remove.
+        $types = array_map(fn ($type) => $type::class, TaskController::getTypes());
+
+        $this->assertContains(\App\Tasks\Types\LeaveOfAbsence::class, $types);
+        $this->assertContains(\App\Tasks\Types\ReturnFromLeave::class, $types);
+        $this->assertContains(\App\Tasks\Types\CheckoutRequest::class, $types);
+    }
+
+    // ---------------------------------------------------------------------
+    // Status transitions
+    // ---------------------------------------------------------------------
+
+    #[Test]
+    public function nothing_advances_out_of_pre_training_by_hand(): void
+    {
+        // Pre-training means the theory is not passed. Advancing somebody past
+        // it manually asserts they passed an exam they did not sit.
+        foreach ([TrainingStatus::ACTIVE_TRAINING, TrainingStatus::AWAITING_MENTOR,
+            TrainingStatus::AWAITING_EXAM, TrainingStatus::IN_QUEUE] as $target) {
+            $this->assertFalse(
+                $target->isAssignableFrom(TrainingStatus::PRE_TRAINING),
+                "{$target->name} should not be settable from pre-training"
+            );
+        }
+    }
+
+    #[Test]
+    public function a_pre_training_student_can_still_be_closed(): void
+    {
+        // A student who drops out during theory has to be closable, and
+        // upstream closes them automatically when the interest confirmation
+        // goes unanswered. Closing is not progress.
+        $this->assertTrue(
+            TrainingStatus::CLOSED_BY_STAFF->isAssignableFrom(TrainingStatus::PRE_TRAINING)
+        );
+    }
+
+    #[Test]
+    public function a_lost_mentor_sends_a_student_back_to_the_queue(): void
+    {
+        // From active training, and from awaiting exam too -- a student waiting
+        // on a CPT whose mentor disappears needs this just as much.
+        $this->assertTrue(
+            TrainingStatus::AWAITING_MENTOR->isAssignableFrom(TrainingStatus::ACTIVE_TRAINING)
+        );
+        $this->assertTrue(
+            TrainingStatus::AWAITING_MENTOR->isAssignableFrom(TrainingStatus::AWAITING_EXAM)
+        );
+    }
+
+    #[Test]
+    public function the_training_manager_no_longer_audits_roles_or_edits_positions(): void
+    {
+        // Trimmed 2026-08-29. The access report needed its own permission
+        // first: upstream gated it on fir.management.reports.view, which ALSO
+        // opens the training request queue, so it could not be taken away
+        // without taking the queue with it.
+        $matrix = app(PermissionMatrix::class);
+
+        foreach (['fir.management.access.view', 'users.access.view', 'fir.positions.view'] as $permission) {
+            $this->assertNotContains('atc-training-manager', $matrix->rolesFor($permission), $permission);
+            $this->assertNotContains('pipeline-coordinator', $matrix->rolesFor($permission), $permission);
+        }
+
+        // And the queue itself survived the split, which was the whole risk.
+        $this->assertContains('atc-training-manager', $matrix->rolesFor('fir.management.reports.view'));
+        $this->assertContains('pipeline-coordinator', $matrix->rolesFor('fir.management.reports.view'));
     }
 
     #[Test]

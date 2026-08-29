@@ -33,7 +33,7 @@
             <span class="badge {{ $platforms->isStale() ? 'bg-warning text-dark' : 'bg-light text-dark' }}"
                   data-bs-toggle="tooltip"
                   title="{{ $platforms->checked_at->toEuropeanDateTime() }}{{ $platforms->isStale() ? ' — the daily check has not run recently, so treat this as unconfirmed' : '' }}">
-                {{ $platforms->checked_at->diffForHumans(null, true) }}
+                Updated {{ $platforms->checked_at->diffForHumans() }}
             </span>
         @endif
     </div>
@@ -55,9 +55,12 @@
                     @if($platforms->on_discord)
                         <span class="badge bg-success"><i class="fas fa-check"></i> On the server</span>
                         @if($platforms->discord_user_id)
-                            {{-- Eighteen digits. text-break so it wraps rather
-                                 than stretching the sidebar. --}}
-                            <small class="text-muted d-block text-break">{{ $platforms->discord_user_id }}</small>
+                            {{-- Labelled, because an unexplained eighteen-digit
+                                 number means nothing to most people. text-break
+                                 so it wraps rather than widening the column. --}}
+                            <small class="text-muted d-block text-break">
+                                Discord profile ID: {{ $platforms->discord_user_id }}
+                            </small>
                         @endif
                     @else
                         <span class="badge bg-danger"><i class="fas fa-xmark"></i> Not on the server</span>

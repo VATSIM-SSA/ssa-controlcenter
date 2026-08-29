@@ -55,8 +55,15 @@ enum TrainingStatus: int
             self::CLOSED_BY_STUDENT => 'Closed by student',
             self::CLOSED_BY_STAFF => 'Closed by staff',
             self::COMPLETED => 'Completed',
-            self::IN_QUEUE => 'In queue',
-            self::PRE_TRAINING => 'Pre-training',
+            // VATSSA: renamed, because both upstream labels describe a queue
+            // and neither says what the student is waiting FOR. "In queue"
+            // was especially ambiguous once awaiting-mentor existed -- two of
+            // the five stages are a queue, and this is the other one.
+            //
+            // Only the LABEL changes. The case names and backing values are
+            // untouched, so nothing in the database or the API moves.
+            self::IN_QUEUE => 'Awaiting theory',
+            self::PRE_TRAINING => 'Theory phase',
             self::ACTIVE_TRAINING => 'Active training',
             self::AWAITING_EXAM => 'Awaiting exam',
             self::AWAITING_MENTOR => 'Awaiting mentor',
@@ -128,8 +135,26 @@ enum TrainingStatus: int
             return true;    // saving the form without touching the status
         }
 
+        // NOTHING MOVES FORWARD OUT OF PRE-TRAINING BY HAND.
+        //
+        // Pre-training means the theory is not passed. Advancing somebody past
+        // it manually is asserting they passed an exam they did not sit, and
+        // the pipeline would move them straight back on its next cycle -- which
+        // looks like a bug rather than a rule.
+        //
+        // Closing IS allowed. A student who drops out during theory has to be
+        // closable, and upstream closes them automatically when the interest
+        // confirmation goes unanswered. Closing is not progress.
+        if ($current === self::PRE_TRAINING) {
+            return $this->isClosed() && $this->isAssignableByStaff();
+        }
+
+        // Back to awaiting a mentor, from anywhere a mentor could be lost.
+        // Active training is the obvious one; a student waiting on a CPT whose
+        // mentor disappears needs it just as much, and rejoining the queue is
+        // the honest answer for both.
         if ($this === self::AWAITING_MENTOR) {
-            return $current === self::ACTIVE_TRAINING;
+            return in_array($current, [self::ACTIVE_TRAINING, self::AWAITING_EXAM], true);
         }
 
         return $this->isAssignableByStaff();

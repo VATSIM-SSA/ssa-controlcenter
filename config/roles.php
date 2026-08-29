@@ -94,6 +94,16 @@ return [
         'fir.positions.view',
         'fir.positions.manage',
         'fir.management.reports.view',
+        // VATSSA: SPLIT OUT OF fir.management.reports.view.
+        //
+        // Upstream uses that one permission for four unrelated things: the
+        // training request queue, the mentor index, manual training creation
+        // and the ACCESS REPORT -- who holds which role across the division.
+        // The first three are daily coordinator work; the last is an audit
+        // surface. Taking the access report away from the ATC training manager
+        // was impossible while they shared a permission, because it would have
+        // taken the queue with it.
+        'fir.management.access.view',
 
         // Users
         'users.manage',
@@ -156,11 +166,12 @@ return [
             '!training.ratings.manage',         // admin only
             'examinations.**',                  // create BYPASSES the examiner-endorsement check — knowingly granted
             'endorsements.**',                  // solo + visiting + examiner; only role besides admin with examiner
-            'fir.positions.view',               // read-only; fir.positions.manage stays Nav Team + admin
-            'fir.management.reports.view',      // ALSO the training-request queue — never remove
-            'users.**',                         // manage + access.view + workmail.use
+            'fir.management.reports.view',      // the training-request queue and mentor index — never remove
+            '!fir.management.access.view',      // the access report is an audit surface, not training work
+            'users.**',                         // manage + workmail.use
+            '!users.access.view',               // who holds what role is admin business
             'notifications.inactivity.receive', // NOT notifications.templates.manage
-            'tasks.**',                         // includes tasks.overview
+            'tasks.**',                         // includes tasks.overview — see the note below
             'files.**',
             'bookings.**',
             'roles.mentor.manage',              // the only role ATM may grant
@@ -177,9 +188,12 @@ return [
             'examinations.manage',
             'endorsements.solo.*',
             'endorsements.rosters.view',        // the three roster pages
-            'fir.positions.view',
-            'fir.management.reports.view',      // ALSO the training-request queue — never remove
-            'users.access.view',
+            'fir.management.reports.view',      // the training-request queue and mentor index — never remove
+            // fir.positions.view and users.access.view were BOTH removed here
+            // when they came off the ATC training manager. A coordinator
+            // holding something their own manager does not is backwards, and
+            // the superset check in tools/expand.py refuses it outright --
+            // which is exactly what caught this.
             'users.workmail.use',
             'tasks.**',
             'files.**',

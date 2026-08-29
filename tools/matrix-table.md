@@ -1,6 +1,6 @@
 # Expanded matrix — roles.php
 
-57 permissions x 6 roles.
+58 permissions x 6 roles.
 
 | Permission | admin | atc-training-manager | pipeline-coordinator | mentor | nav-editor | feedback-team |
 |---|---|---|---|---|---|---|
@@ -32,11 +32,12 @@
 | `endorsements.visiting.delete` | O | O |  |  |  |  |
 | `endorsements.examiner.manage` | O | O |  |  |  |  |
 | `endorsements.examiner.delete` | O | O |  |  |  |  |
-| `fir.positions.view` | O | O | O |  | O |  |
+| `fir.positions.view` | O |  |  |  | O |  |
 | `fir.positions.manage` | O |  |  |  | O |  |
 | `fir.management.reports.view` | O | O | O |  |  |  |
+| `fir.management.access.view` | O |  |  |  |  |  |
 | `users.manage` | O | O |  |  |  |  |
-| `users.access.view` | O | O | O |  |  |  |
+| `users.access.view` | O |  |  |  |  |  |
 | `users.workmail.use` | O | O | O |  |  |  |
 | `tasks.manage` | O | O | O | O |  |  |
 | `tasks.suggested-recipient` | O | O | O |  |  |  |
@@ -62,4 +63,4 @@
 | `roles.mentor.manage` | O | O |  |  |  |  |
 | `roles.feedback-team.manage` | O |  |  |  |  |  |
 
-**Totals:** admin **57** · atc-training-manager **42** · pipeline-coordinator **31** · mentor **8** · nav-editor **2** · feedback-team **3**
+**Totals:** admin **58** · atc-training-manager **40** · pipeline-coordinator **29** · mentor **8** · nav-editor **2** · feedback-team **3**

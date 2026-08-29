@@ -24,6 +24,9 @@ Route::middleware(['web', 'auth', 'activity', 'suspended'])
         Route::get('/templates', [SettingsController::class, 'templates'])->name('templates');
         Route::patch('/templates/{template}', [SettingsController::class, 'updateTemplate'])->name('templates.update');
 
+        Route::get('/routing', [SettingsController::class, 'routing'])->name('routing');
+        Route::post('/routing', [SettingsController::class, 'updateRouting'])->name('routing.update');
+
         Route::get('/moodle-courses', [SettingsController::class, 'courses'])->name('courses');
         Route::post('/moodle-courses', [SettingsController::class, 'updateCourses'])->name('courses.update');
     });

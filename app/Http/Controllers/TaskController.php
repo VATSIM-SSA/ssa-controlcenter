@@ -6,11 +6,13 @@ use App\Helpers\TaskStatus;
 use App\Models\Area;
 use App\Models\Task;
 use App\Models\User;
+use App\Models\Vatssa\RequestTarget;
 use App\Rules\ValidTaskType;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\File;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 class TaskController extends Controller
@@ -22,20 +24,48 @@ class TaskController extends Controller
     {
         $this->authorize('update', Task::class);
 
-        // VATSSA: an overview tab for staff who need to see the whole board
-        // rather than their own inbox. Everything a request touches lives on a
-        // task, so without this nobody can answer "what is outstanding across
-        // the division" without a database query.
+        // VATSSA: five tabs, not three.
+        //
+        // Upstream gives you your own open tasks, what you sent, and your own
+        // archive. Two are missing and both matter: the whole board, and the
+        // whole board's archive -- "what is outstanding across the division"
+        // and "what did we do about that request in June" are the two questions
+        // a single inbox cannot answer.
         $canSeeAll = $user->hasPermission('tasks.overview');
+
+        // A REQUEST BELONGS TO A DESK, NOT TO A PERSON. The observer picks one
+        // person so the row has an assignee -- the column is NOT NULL -- but
+        // everybody at that desk should see it in their own list, or a
+        // coordinator on leave takes their queue with them.
+        $desks = \App\Models\Vatssa\RequestTarget::where('user_id', $user->id)
+            ->get(['tier', 'rating_id']);
+
+        $mine = function ($query) use ($user, $desks) {
+            $query->where('assignee_user_id', $user->id);
+
+            foreach ($desks as $desk) {
+                $query->orWhere(function ($q) use ($desk) {
+                    $q->where('vatssa_tier', $desk->tier);
+                    if ($desk->rating_id !== null) {
+                        $q->where(fn ($r) => $r->where('vatssa_rating_id', $desk->rating_id)
+                            ->orWhereNull('vatssa_rating_id'));
+                    }
+                });
+            }
+        };
+
+        $closed = [TaskStatus::COMPLETED->value, TaskStatus::DECLINED->value];
 
         if ($activeFilter == 'sent') {
             $tasks = Task::where('creator_user_id', $user->id)->get()->sortByDesc('created_at');
         } elseif ($activeFilter == 'archived') {
-            $tasks = Task::where('assignee_user_id', $user->id)->whereIn('status', [TaskStatus::COMPLETED->value, TaskStatus::DECLINED->value])->get()->sortByDesc('closed_at');
+            $tasks = Task::where($mine)->whereIn('status', $closed)->get()->sortByDesc('closed_at');
         } elseif ($activeFilter == 'all' && $canSeeAll) {
             $tasks = Task::where('status', TaskStatus::PENDING->value)->with('creator', 'subject', 'assignee', 'subjectTraining')->get()->sortBy('created_at');
+        } elseif ($activeFilter == 'all-archived' && $canSeeAll) {
+            $tasks = Task::whereIn('status', $closed)->with('creator', 'subject', 'assignee', 'subjectTraining')->get()->sortByDesc('closed_at');
         } else {
-            $tasks = Task::where('assignee_user_id', $user->id)->where('status', TaskStatus::PENDING->value)->with('creator', 'subject', 'assignee', 'subjectTraining')->get()->sortBy('created_at');
+            $tasks = Task::where($mine)->where('status', TaskStatus::PENDING->value)->with('creator', 'subject', 'assignee', 'subjectTraining')->get()->sortBy('created_at');
         }
 
         return view('tasks.index', compact('tasks', 'activeFilter', 'canSeeAll'));
@@ -56,6 +86,12 @@ class TaskController extends Controller
             'subject_training_id' => 'required|exists:trainings,id',
             'subject_training_rating_id' => 'nullable|exists:ratings,id',
             'assignee_user_id' => 'required|exists:users,id',
+            // VATSSA: the desk this was addressed to. validate() drops anything
+            // it is not told about, so without this line the tier never reaches
+            // Task::create() and the observer has nothing to route on. Rule::in
+            // over the tier list, so a hand-crafted POST cannot invent a desk.
+            'vatssa_tier' => ['sometimes', 'required', Rule::in(array_keys(RequestTarget::TIERS))],
+            'vatssa_rating_id' => 'sometimes|nullable|exists:ratings,id',
         ]);
 
         $data['creator_user_id'] = $user->id;
