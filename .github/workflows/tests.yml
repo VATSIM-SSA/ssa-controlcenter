@@ -1,0 +1,86 @@
+---
+name: Tests
+
+# Upstream's "Test & Build" (ci.yaml) cannot run on this fork: it hardcodes
+# IMAGE_NAME: vatsim-scandinavia/control-center and pushes to THEIR ghcr
+# namespace, which we have no permission for. The build job fails, cancels the
+# matrix, and takes the test suite down with it. It has been red on this fork
+# since before the migration and always would be.
+#
+# Rather than modify ci.yaml -- which would be a third divergent upstream file
+# and a conflict on every release -- this ADDED workflow runs only the half we
+# need. deploy.yml already builds and pushes the image to the right namespace,
+# so nothing is lost.
+#
+# This is the drift detector for everything the fork ADDS. PATCHES.md explains
+# why that matters: added files never conflict, so git gives no signal when
+# upstream moves underneath them. Tests are what replace that signal. Do not
+# disable this to make a bump go green.
+on:
+  push:
+    paths-ignore:
+      - "**.md"
+      - "LICENSE"
+      - "docs/**"
+  pull_request:
+    paths-ignore:
+      - "**.md"
+      - "LICENSE"
+      - "docs/**"
+
+jobs:
+  test:
+    name: Test suite (PHP ${{ matrix.php-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php-version: ["8.4", "8.5"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          path: controlcenter
+
+      - name: Setup dependencies
+        uses: ./controlcenter/.github/actions/setup-dependencies
+        with:
+          path: controlcenter
+          php-version: ${{ matrix.php-version }}
+          setup-node: true
+
+      # seed-database is FALSE on purpose. Upstream's DatabaseSeeder assigns
+      # director, moderator and buddy, none of which exist in the VATSSA
+      # config/roles.php, so it would either fail outright or leave role_user
+      # rows the matrix cannot resolve. VatssaTest seeds VatssaSeeder itself.
+      - name: Setup project
+        uses: ./controlcenter/.github/actions/setup-project
+        with:
+          path: controlcenter
+          setup-node: true
+          seed-database: false
+        env:
+          DB_CONNECTION: sqlite-testing
+
+      # The VATSSA reference data lives on its own migration path, so the
+      # default `migrate` in setup-project does not run it. VatssaTest asserts
+      # 401 positions across 27 FIRs, which is exactly what this loads.
+      - name: Run the VATSSA migrations
+        working-directory: ./controlcenter
+        run: php artisan migrate --force --no-interaction --path=database/migrations-vatssa
+        env:
+          DB_CONNECTION: sqlite-testing
+
+      - name: Validate the permission matrix
+        working-directory: ./controlcenter
+        run: python3 tools/expand.py config/roles.php
+
+      - name: Validate the theme contrast
+        working-directory: ./controlcenter
+        run: python3 tools/contrast-check.py resources/sass/themes/_custom.scss
+
+      - name: Execute unit and feature tests via PHPUnit
+        working-directory: ./controlcenter
+        run: ./vendor/bin/phpunit --color=always --testdox
+        env:
+          DB_CONNECTION: sqlite-testing

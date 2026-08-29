@@ -58,8 +58,27 @@ COPY --from=frontend --chown=www-data:www-data /app/public/ /app/public/
 
 WORKDIR /app
 
+# VATSSA: the only change to upstream's Dockerfile.
+#
+# `php artisan db:seed` needs fakerphp/faker, which lives in require-dev, so a
+# --no-dev image cannot seed. Dev and staging build with INSTALL_DEV=true;
+# production builds with false and must never ship phpunit, faker, debugbar or
+# boost.
+#
+# This is a BUILD ARG, not an env var, so it cannot be flipped by editing a
+# .env on the box. .github/workflows/deploy.yml sets it per environment and
+# fails the run outright if a production build ever carries dev dependencies.
+#
+# Candidate for upstream: every division running CC has the same seeding
+# problem. See PATCHES.md, upstream-contrib/install-dev-arg.
+ARG INSTALL_DEV=false
+
 RUN chmod -R 755 storage bootstrap/cache && \
-        composer install --no-dev --no-interaction --prefer-dist && \
+        if [ "$INSTALL_DEV" = "true" ]; then \
+            composer install --no-interaction --prefer-dist; \
+        else \
+            composer install --no-dev --no-interaction --prefer-dist; \
+        fi && \
         mkdir -p /app/storage/app/public/files
 
 # Wrap around the default PHP entrypoint with a custom entrypoint

@@ -1,0 +1,13 @@
+{
+  "_comment": "PLACEHOLDER shape — replace with a real (sanitised) atc-bookings.vatsim.net/api response before using on staging. CID below is the standard VATSIM test/dummy CID pattern, not a real member.",
+  "bookings": [
+    {
+      "id": 1,
+      "cid": 10000010,
+      "callsign": "FACT_TWR",
+      "start": "2026-07-18T10:00:00Z",
+      "end": "2026-07-18T12:00:00Z",
+      "type": "booking"
+    }
+  ]
+}

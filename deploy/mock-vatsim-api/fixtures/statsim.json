@@ -1,0 +1,12 @@
+{
+  "_comment": "PLACEHOLDER shape — replace with a real (sanitised) api.statsim.net response before using on staging.",
+  "sessions": [
+    {
+      "cid": 10000010,
+      "callsign": "FACT_TWR",
+      "start": "2026-07-17T08:00:00Z",
+      "end": "2026-07-17T09:30:00Z",
+      "minutes": 90
+    }
+  ]
+}

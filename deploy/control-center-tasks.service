@@ -1,0 +1,7 @@
+[Unit]
+Description=Process Control Center background jobs
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/controlcenter
+ExecStart=/usr/bin/docker exec --user www-data -i control-center php artisan schedule:run

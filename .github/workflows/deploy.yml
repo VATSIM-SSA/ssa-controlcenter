@@ -1,0 +1,119 @@
+name: Build & Deploy ControlCentre
+
+# dev     -> builds ghcr :dev     -> deploys cc-dev     (dev environment)
+# staging -> builds ghcr :staging -> deploys cc-staging (staging environment)
+# main    -> builds ghcr :prod    -> deploys cc-prod    (production environment)
+#
+# Same shape as ssa-homepage and ssa-handover. Three differences, all because
+# ControlCentre is a Laravel app rather than a static site:
+#
+#  1. INSTALL_DEV is a BUILD ARG, true on dev and staging so `db:seed` works,
+#     false on production. A build arg, never an env var, so it cannot be
+#     flipped by editing a .env on the box.
+#  2. The deploy script runs migrations. Upstream's entrypoint does not, and
+#     its container/migrate.sh is a manual script that calls `php artisan
+#     migrate` with no --force (it would prompt and hang) and no --path for
+#     database/migrations-vatssa.
+#  3. Three environments instead of two.
+on:
+  push:
+    branches: [main, staging, dev]
+    paths-ignore:
+      - "**.md"
+      - "LICENSE"
+      - "docs/**"
+
+# Never let two deploys of the same branch overlap. A second migrate running
+# against a half-migrated database is the one thing worth serialising for.
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    # The environment gates which SSH key and branch policy applies. Each
+    # environment is locked to its branch in the repo settings, so a staging
+    # run cannot reach the production key.
+    environment: >-
+      ${{ github.ref == 'refs/heads/main' && 'production'
+       || github.ref == 'refs/heads/staging' && 'staging'
+       || 'dev' }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve target and build flags
+        id: vars
+        run: |
+          case "${{ github.ref }}" in
+            refs/heads/main)    echo "target=prod"    >> "$GITHUB_OUTPUT"
+                                echo "install_dev=false" >> "$GITHUB_OUTPUT" ;;
+            refs/heads/staging) echo "target=staging" >> "$GITHUB_OUTPUT"
+                                echo "install_dev=true"  >> "$GITHUB_OUTPUT" ;;
+            refs/heads/dev)     echo "target=dev"     >> "$GITHUB_OUTPUT"
+                                echo "install_dev=true"  >> "$GITHUB_OUTPUT" ;;
+            *) echo "Unexpected ref ${{ github.ref }}" >&2; exit 1 ;;
+          esac
+
+      # Belt and braces: production must never ship an image carrying phpunit,
+      # faker, debugbar and boost, whatever the case statement above did.
+      - name: Refuse a production build with dev dependencies
+        if: steps.vars.outputs.target == 'prod' && steps.vars.outputs.install_dev != 'false'
+        run: echo "INSTALL_DEV must be false for a production build." >&2; exit 1
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          build-args: |
+            INSTALL_DEV=${{ steps.vars.outputs.install_dev }}
+          tags: |
+            ghcr.io/vatsim-ssa/ssa-controlcenter:${{ steps.vars.outputs.target }}
+            ghcr.io/vatsim-ssa/ssa-controlcenter:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Deploy over SSH (forced-command key picks the target)
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          port: ${{ secrets.VPS_PORT }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          # The server's forced command ignores this and runs
+          # deploy-cc.sh <env> for whichever key this environment holds.
+          #
+          # GOTCHA, cost a day on 15 Jul: each environment's VPS_SSH_KEY must be
+          # THIS repo's own forced-command key. ssa-handover's staging env once
+          # held the homepage key, so every run silently redeployed the wrong
+          # app and the workflow still went green.
+          script: ${{ steps.vars.outputs.target }}
+
+      - name: Notify Discord on failure
+        if: failure()
+        run: |
+          curl -sS -H "Content-Type: application/json" -X POST "${{ secrets.DISCORD_WEBHOOK }}" -d '{
+            "username": "SSA Deploy",
+            "embeds": [{
+              "title": "❌ ControlCentre deploy failed — ${{ steps.vars.outputs.target }}",
+              "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+              "color": 15158332,
+              "description": "Branch **${{ github.ref_name }}** · commit `${{ github.sha }}` by **${{ github.actor }}**\nClick the title for the failed run logs.",
+              "footer": { "text": "ssa-controlcenter CI" }
+            }]
+          }'

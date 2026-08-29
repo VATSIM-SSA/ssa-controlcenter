@@ -1,73 +1,48 @@
 <?php
 
+// VATSSA config/roles.php — drafted 2026-08-26 against upstream v7.0.0.
+// This is the ONLY upstream file VATSSA modifies. Everything else is an addition.
+// Diverges from upstream in three places, all marked VATSSA:
+//   1. the roles catalogue          (six VATSSA roles replace upstream's eight)
+//   2. the roles.*.manage entries   (renamed to match the VATSSA role keys)
+//   3. the matrix                   (VATSSA's own grants)
+// The permission catalogue is otherwise upstream's, verbatim. Keep it that way:
+// a permission must be listed to exist, and adding one here does not create a gate.
+
 return [
-    /*
-    |--------------------------------------------------------------------------
-    | Role Definitions
-    |--------------------------------------------------------------------------
-    |
-    | Define all available roles here instead of in the database.
-    | The string key is the identifier used in the system.
-    |
-    | Each role has a `scope` (where it may be HELD: global|area|both) and an
-    | optional `grant_scope` (where grant-authority must be HELD to grant/revoke
-    | it: 'area' [default] accepts area-or-global authority, 'global' requires an
-    | area-less assignment even for an area-scoped grant).
-    */
     'roles' => [
         'admin' => [
             'name' => 'Administrator',
             'description' => 'System-wide administrator, assignable only via the user:makeadmin CLI command',
             'scope' => 'global',
         ],
-        'director' => [
-            'name' => 'Director',
-            'description' => 'Director of an area or the whole organisation',
-            'scope' => 'both',
-            'grant_scope' => 'global', // only global directors may grant the director role
-        ],
-        'moderator' => [
-            'name' => 'Moderator',
-            'description' => 'Area moderator',
+        'atc-training-manager' => [
+            'name' => 'ATC Training Manager',
+            'description' => 'Division training authority',
             'scope' => 'both',
         ],
-        'training-staff' => [
-            'name' => 'Training Staff',
-            'description' => 'Training staff, e.g. leads, coordinators, with access to all training-related data',
-            'scope' => 'area',
-        ],
-        'staff' => [
-            'name' => 'Staff',
-            'description' => 'Generic staff member with view-only access to positions',
+        'pipeline-coordinator' => [
+            'name' => 'Pipeline Coordinator',
+            'description' => 'Day-to-day running of the training pipeline',
             'scope' => 'both',
-        ],
-        'nav-editor' => [
-            'name' => 'Navigational Editor',
-            'description' => 'Editor of navigational and operationally relevant sector data',
-            'scope' => 'area',
         ],
         'mentor' => [
             'name' => 'Mentor',
             'description' => 'Training mentor',
             'scope' => 'area',
         ],
-        'buddy' => [
-            'name' => 'Buddy',
-            'description' => 'Training buddy',
+        'nav-editor' => [
+            'name' => 'Navigational Editor',
+            'description' => 'Editor of navigational and operationally relevant sector data',
             'scope' => 'area',
+        ],
+        'feedback-team' => [
+            'name' => 'Feedback Team',
+            'description' => 'Reviews controller feedback',
+            'scope' => 'global',
         ],
     ],
 
-    /*
-    |--------------------------------------------------------------------------
-    | Permission Catalogue
-    |--------------------------------------------------------------------------
-    |
-    | The flat, authoritative list of every concrete permission. This drives
-    | gate registration and the expansion of wildcard patterns in the matrix.
-    | A permission must appear here to exist.
-    |
-    */
     'permissions' => [
         // Training
         'training.view',
@@ -138,87 +113,60 @@ return [
         'system.votes.manage',
         'system.activity-log.view',
 
-        // Role management — one grant-authority permission per grantable role.
-        // Governs both granting and revoking that role (both go through UserPolicy::updateRole).
-        'roles.director.manage',
-        'roles.moderator.manage',
-        'roles.training-staff.manage',
-        'roles.staff.manage',
+        // VATSSA: grant authority, one per grantable role. Renamed from upstream's
+        // director/moderator/training-staff/staff/buddy to the VATSSA role keys.
+        // UserPolicy::updateRole builds "roles.{$requestedRole}.manage", so these
+        // MUST stay spelled exactly like the keys above or nobody can grant anything.
+        'roles.atc-training-manager.manage',
+        'roles.pipeline-coordinator.manage',
         'roles.nav-editor.manage',
         'roles.mentor.manage',
-        'roles.buddy.manage',
+        'roles.feedback-team.manage',
     ],
 
-    /*
-    |--------------------------------------------------------------------------
-    | Permission Matrix
-    |--------------------------------------------------------------------------
-    |
-    | Maps each role to the permission patterns it grants. Patterns support
-    | dot-wildcards: '*' matches exactly one segment, '**' matches one or more,
-    | and a leading '!' negates (deny always wins over allow).
-    |
-    */
     'matrix' => [
+        // Everything, no denies. Upstream withholds one-time-link and
+        // attachments.view-hidden from admin; VATSSA grants them (2026-07-17).
         'admin' => [
             '**',
-            '!training.reports.one-time-link',
-            '!training.attachments.view-hidden',
         ],
-        'director' => [
-            '**',
-            '!system.**',
-            '!examinations.create',
-            '!training.reports.one-time-link',
-            '!training.attachments.view-hidden',
-            'roles.*.manage',
-        ],
-        'moderator' => [
+
+        // Training authority. MUST remain a superset of pipeline-coordinator.
+        'atc-training-manager' => [
             'training.**',
-            '!training.delete',
-            '!training.ratings.manage',
-            '!training.reports.one-time-link',
-            '!training.attachments.view-hidden',
+            '!training.delete',                 // admin only
+            '!training.ratings.manage',         // admin only
+            'examinations.**',                  // create BYPASSES the examiner-endorsement check — knowingly granted
+            'endorsements.**',                  // solo + visiting + examiner; only role besides admin with examiner
+            'fir.positions.view',               // read-only; fir.positions.manage stays Nav Team + admin
+            'fir.management.reports.view',      // ALSO the training-request queue — never remove
+            'users.**',                         // manage + access.view + workmail.use
+            'notifications.inactivity.receive', // NOT notifications.templates.manage
+            'tasks.**',
+            'files.**',
+            'bookings.**',
+            'roles.mentor.manage',              // the only role ATM may grant
+        ],
+
+        // Day-to-day pipeline.
+        'pipeline-coordinator' => [
+            'training.**',
+            '!training.delete',                 // admin only
+            '!training.reports.delete',         // ATM + admin only
+            '!training.ratings.manage',         // admin only
             'examinations.manage',
             'endorsements.solo.*',
-            'fir.positions.manage',
-            'fir.management.reports.view',
-            'bookings.**',
-            'feedback.**',
-            'files.**',
-            'notifications.**',
-            'tasks.**',
-            'users.**',
-            'roles.mentor.manage',
-            'roles.buddy.manage',
-        ],
-        'training-staff' => [
-            'training.**',
-            '!training.delete',
-            '!training.ratings.manage',
-            '!training.reports.one-time-link',
-            '!training.attachments.view-hidden',
-            'endorsements.solo.*',
-            'examinations.manage',
-            'fir.management.reports.view',
-            'bookings.**',
-            'feedback.**',
-            'files.**',
-            'notifications.**',
-            'tasks.**',
-            'users.**',
-            'roles.mentor.manage',
-            'roles.buddy.manage',
-        ],
-        'staff' => [
             'fir.positions.view',
+            'fir.management.reports.view',      // ALSO the training-request queue — never remove
+            'users.access.view',
+            'users.workmail.use',
+            'tasks.**',
+            'files.**',
+            'bookings.**',
         ],
-        'nav-editor' => [
-            'fir.positions.*',
-        ],
+
+        // Mentors: their own students only; cannot create training for others.
         'mentor' => [
-            'training.view',
-            'training.create',
             'training.mentor',
             'training.mentor-dashboard.view',
             'training.reports.one-time-link',
@@ -228,9 +176,13 @@ return [
             'bookings.bypass-restrictions',
             'bookings.sweatbox.use',
         ],
-        'buddy' => [
-            'training.view',
-            'training.reports.one-time-link',
+
+        'nav-editor' => [
+            'fir.positions.*',                  // now expands to view + manage
+        ],
+
+        'feedback-team' => [
+            'feedback.**',                      // now includes the new feedback.update
         ],
     ],
 ];
