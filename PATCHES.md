@@ -43,7 +43,7 @@ they carry risk.
 
 | | Count |
 |---|---|
-| Code and configuration | 7 |
+| Code and configuration | 8 |
 | Blades | 5 |
 | Brand assets | 10 |
 | Deleted | 1 |
@@ -105,6 +105,22 @@ because a hidden `<option>` is two seconds of DevTools away.
 looking correct. Check this file by hand on every absorption.
 
 **On conflict.** Keep `new AssignableTrainingStatus` in the `status` rule array.
+
+### `app/Http/Controllers/EndorsementController.php`
+
+**Why it diverges.** Three `authorize()` calls, on `indexSolos`,
+`indexExaminers` and `indexVisitors`. Upstream ships all three with **no
+authorization at all**, so any logged-in member can read every solo, examiner
+and visiting endorsement in the division. Who holds an examiner endorsement is
+not something VATSSA publishes.
+
+Every permission is a gate (`AuthServiceProvider` defines them from the
+catalogue), so this needs no policy method and no route change.
+
+**Detector.** `VatssaTest::the_endorsement_rosters_are_staff_only`.
+
+**On conflict.** Re-add the three one-liners. **Worth raising upstream** — an
+unauthenticated-by-oversight index page is a bug, not a design choice.
 
 ### `app/Http/Controllers/TaskController.php`
 
@@ -391,7 +407,7 @@ fallback for when the bridge is unreachable.
 re-migrates from the default path only. `deploy-cc.sh` keeps its explicit
 `--path` call, which is now a harmless second pass.
 
-**Detectors.** Twenty-seven of the forty-one tests in `VatssaTest` cover the
+**Detectors.** Twenty-nine of the forty-four tests in `VatssaTest` cover the
 pipeline additions, and `tools/expand.py` covers the
 permission matrix. The one thing nothing detects: whether the deployment sets
 `VATSSA_BRIDGE_TOKEN` and whether Caddy 403s `/api/vatssa/bridge/*`. Both are

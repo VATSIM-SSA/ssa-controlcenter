@@ -396,6 +396,34 @@ class VatssaTest extends TestCase
     }
 
     #[Test]
+    public function the_endorsement_rosters_are_staff_only(): void
+    {
+        // Upstream ships indexSolos, indexExaminers and indexVisitors with NO
+        // authorize() call, so any logged-in member can read every solo,
+        // examiner and visiting endorsement in the division. Who examines is
+        // not something VATSSA publishes.
+        $matrix = app(PermissionMatrix::class);
+
+        $this->assertSame(
+            ['admin', 'atc-training-manager', 'pipeline-coordinator'],
+            $matrix->rolesFor('endorsements.rosters.view')
+        );
+    }
+
+    #[Test]
+    public function the_public_roster_never_names_an_examiner(): void
+    {
+        // Absent from the payload rather than filtered by the caller. An
+        // endpoint that hands out something sensitive and trusts every
+        // consumer to drop it will eventually meet one that does not.
+        $source = file_get_contents(app_path('Http/Controllers/Vatssa/RosterController.php'));
+
+        $this->assertStringNotContainsString("'examiner' =>", $source);
+        $this->assertStringContainsString("'visiting' =>", $source);
+        $this->assertStringContainsString("'solo' =>", $source);
+    }
+
+    #[Test]
     public function the_bridge_refuses_everything_without_a_token(): void
     {
         // An unconfigured VATSSA_BRIDGE_TOKEN must never mean "let everyone in".

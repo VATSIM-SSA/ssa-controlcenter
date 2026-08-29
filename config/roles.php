@@ -78,6 +78,11 @@ return [
         'examinations.create',
 
         // Endorsements
+        // VATSSA: the three endorsement roster pages. Upstream leaves them
+        // open to any logged-in member -- indexSolos, indexExaminers and
+        // indexVisitors carry no authorize() call at all -- and who holds an
+        // examiner endorsement is not something the division publishes.
+        'endorsements.rosters.view',
         'endorsements.solo.manage',
         'endorsements.solo.delete',
         'endorsements.visiting.manage',
@@ -171,6 +176,7 @@ return [
             '!training.results.grades',         // ATM + admin only; pass/fail is enough
             'examinations.manage',
             'endorsements.solo.*',
+            'endorsements.rosters.view',        // the three roster pages
             'fir.positions.view',
             'fir.management.reports.view',      // ALSO the training-request queue — never remove
             'users.access.view',

@@ -28,6 +28,13 @@ class EndorsementController extends Controller
      */
     public function indexSolos()
     {
+        // VATSSA: upstream ships these three index pages with no authorize()
+        // call, so any logged-in member can read every solo, examiner and
+        // visiting endorsement in the division. Examiners in particular are
+        // not public. Every permission is a gate (AuthServiceProvider defines
+        // them from the catalogue), so this needs no policy method.
+        $this->authorize('endorsements.rosters.view');
+
         $endorsements = Endorsement::where('type', 'SOLO')->with('positions', 'user')
             ->where(function ($q) {
                 $q->orWhere(function ($q2) {
@@ -59,6 +66,8 @@ class EndorsementController extends Controller
      */
     public function indexExaminers()
     {
+        $this->authorize('endorsements.rosters.view');
+
         $endorsements = Endorsement::where('type', 'EXAMINER')->where('revoked', false)->get();
         $areas = Area::all();
 
@@ -72,6 +81,8 @@ class EndorsementController extends Controller
      */
     public function indexVisitors()
     {
+        $this->authorize('endorsements.rosters.view');
+
         $endorsements = Endorsement::where('type', 'VISITING')->where('revoked', false)->with('user', 'ratings', 'areas.ratings')->get();
         $areas = Area::all();
 

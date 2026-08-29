@@ -24,8 +24,14 @@ use Illuminate\Support\Facades\Cache;
  * in ANY area, with the areas they are active in listed alongside.
  *
  * Excludes nobody for being staff. Mentors and examiners who still control are
- * still controllers -- the caller can filter on the endorsements if it wants a
- * different cut.
+ * still controllers.
+ *
+ * WHAT IT DOES NOT PUBLISH: who holds an examiner endorsement. That is a staff
+ * fact, not a public one, and it is deliberately absent from this payload
+ * rather than filtered by the caller -- an endpoint that hands out something
+ * sensitive and trusts every consumer to drop it will eventually meet one that
+ * does not. Solo and visiting endorsements ARE published: they say what
+ * somebody may control, which is the question the roster exists to answer.
  */
 class RosterController extends Controller
 {
@@ -75,7 +81,7 @@ class RosterController extends Controller
                     'facility' => $this->named($live, 'FACILITY'),
                     'solo' => $this->named($live, 'SOLO'),
                     'visiting' => $this->named($live, 'VISITING'),
-                    'examiner' => $live->where('type', 'EXAMINER')->isNotEmpty(),
+                    // No 'examiner' key, on purpose. See the class docblock.
                 ],
                 'last_online' => $user->atcActivity->max('last_online')?->toIso8601String(),
             ];

@@ -1,6 +1,6 @@
 # Expanded matrix — roles.php
 
-56 permissions x 6 roles.
+57 permissions x 6 roles.
 
 | Permission | admin | atc-training-manager | pipeline-coordinator | mentor | nav-editor | feedback-team |
 |---|---|---|---|---|---|---|
@@ -25,6 +25,7 @@
 | `training.results.grades` | O | O |  |  |  |  |
 | `examinations.manage` | O | O | O |  |  |  |
 | `examinations.create` | O | O |  |  |  |  |
+| `endorsements.rosters.view` | O | O | O |  |  |  |
 | `endorsements.solo.manage` | O | O | O |  |  |  |
 | `endorsements.solo.delete` | O | O | O |  |  |  |
 | `endorsements.visiting.manage` | O | O |  |  |  |  |
@@ -61,4 +62,4 @@
 | `roles.mentor.manage` | O | O |  |  |  |  |
 | `roles.feedback-team.manage` | O |  |  |  |  |  |
 
-**Totals:** admin **56** · atc-training-manager **41** · pipeline-coordinator **30** · mentor **8** · nav-editor **2** · feedback-team **3**
+**Totals:** admin **57** · atc-training-manager **42** · pipeline-coordinator **31** · mentor **8** · nav-editor **2** · feedback-team **3**

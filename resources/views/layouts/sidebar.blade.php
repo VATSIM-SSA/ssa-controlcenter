@@ -104,12 +104,23 @@
              longer advertised. The roster people actually read is the public
              one on vatssa.com, served by `/api/vatssa/roster`. --}}
 
-        {{-- Nav Item - Pages Collapse Menu --}}
-        <x-sidebar.section icon="fa-check-square" title="Endorsements" :active="Route::is('endorsements.*')" id="collapseEndorsements">
-            <x-sidebar.item :href="route('endorsements.solos')" title="Solo" collapse />
-            <x-sidebar.item :href="route('endorsements.examiners')" title="Examiner" collapse />
-            <x-sidebar.item :href="route('endorsements.visiting')" title="Visiting" collapse />
-        </x-sidebar.section>
+        {{-- VATSSA: the endorsement rosters are staff tools, not a member menu.
+
+             Solo and visiting endorsements belong on the PUBLIC roster at
+             vatssa.com, where members actually look, rather than behind a login
+             here. Examiners are not published at all.
+
+             The pages still exist for the staff who work from them --
+             pipeline coordinator, ATC training manager and admin -- and are now
+             gated on `endorsements.rosters.view`, which upstream does not have:
+             its three index methods carry no authorize() call whatsoever. --}}
+        @can('endorsements.rosters.view')
+            <x-sidebar.section icon="fa-check-square" title="Endorsements" :active="Route::is('endorsements.*')" id="collapseEndorsements">
+                <x-sidebar.item :href="route('endorsements.solos')" title="Solo" collapse />
+                <x-sidebar.item :href="route('endorsements.examiners')" title="Examiner" collapse />
+                <x-sidebar.item :href="route('endorsements.visiting')" title="Visiting" collapse />
+            </x-sidebar.section>
+        @endcan
 
 
 
