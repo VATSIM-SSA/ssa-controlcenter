@@ -43,6 +43,10 @@ class BridgeController extends Controller
             'on_discord' => 'required|boolean',
             'moodle_user_id' => 'nullable|integer',
             'on_moodle' => 'required|boolean',
+            // Enrolment is not the same fact as having an account. null means
+            // registered but in no course, which is the stall worth seeing.
+            'moodle_enrolment' => 'sometimes|nullable|in:active,suspended',
+            'moodle_course' => 'sometimes|nullable|string|max:20',
             'vatsim_member' => 'sometimes|boolean',
         ]);
 

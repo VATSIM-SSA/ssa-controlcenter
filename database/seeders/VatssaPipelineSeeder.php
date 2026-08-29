@@ -105,9 +105,12 @@ class VatssaPipelineSeeder extends Seeder
         [
             'name' => 'Theory Started',
             'status' => TrainingStatus::PRE_TRAINING,
-            'platforms' => ['discord' => true, 'moodle' => true],
+            // Registered on Moodle but NEVER ENROLLED in a course. Two green
+            // ticks on the old panel and nothing happening -- the stall the
+            // enrolment indicator exists to make visible.
+            'platforms' => ['discord' => true, 'moodle' => true, 'enrolment' => null],
             'theory' => [],
-            'note' => 'On both platforms, inside the 90-day window, no attempt yet.',
+            'note' => 'Registered on Moodle but never enrolled in a course. Stalled, invisibly.',
         ],
         [
             'name' => 'Theory Failed',
@@ -166,6 +169,7 @@ class VatssaPipelineSeeder extends Seeder
             'name' => 'Moodle Orphan',
             'status' => TrainingStatus::PRE_TRAINING,
             'platforms' => ['discord' => false, 'moodle' => true],
+            // Registered AND enrolled -- they are working, just unreachable.
             'theory' => [['S2', 71.0, false, 8]],
             'note' => 'On Moodle, never joined Discord. Has sat the exam anyway.',
         ],
@@ -290,6 +294,7 @@ class VatssaPipelineSeeder extends Seeder
                 $spec['platforms']['discord'],
                 $spec['platforms']['moodle'],
                 $spec['platforms']['vatsim_member'] ?? true,
+                array_key_exists('enrolment', $spec['platforms']) ? $spec['platforms']['enrolment'] : 'active',
             );
 
             foreach ($spec['theory'] as $attemptIndex => [$forRating, $grade, $passed, $daysAgo]) {
@@ -624,9 +629,15 @@ class VatssaPipelineSeeder extends Seeder
     // Keyed writes. Every one of these is safe to repeat.
     // -----------------------------------------------------------------
 
-    private function writePlatforms(int $userId, bool $discord, bool $moodle, bool $vatsimMember): void
+    private function writePlatforms(int $userId, bool $discord, bool $moodle, bool $vatsimMember,
+        ?string $enrolment = 'active'): void
     {
         UserPlatform::updateOrCreate(['user_id' => $userId], [
+            // Registered but never enrolled is a real and common state, so the
+            // fixtures have to contain it or the panel that exists to show it
+            // never gets looked at.
+            'moodle_enrolment' => $moodle ? $enrolment : null,
+            'moodle_course' => $moodle && $enrolment ? 'S2' : null,
             // A plausible snowflake so the panel renders one. Not a real
             // account: these CIDs do not exist on VATSIM either.
             'discord_user_id' => $discord ? 900000000000000000 + $userId : null,

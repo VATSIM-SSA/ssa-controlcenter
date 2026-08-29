@@ -22,7 +22,8 @@ class UserPlatform extends Model
 
     protected $fillable = [
         'user_id', 'discord_user_id', 'on_discord',
-        'moodle_user_id', 'on_moodle', 'vatsim_member', 'checked_at',
+        'moodle_user_id', 'on_moodle', 'moodle_enrolment', 'moodle_course',
+        'vatsim_member', 'checked_at',
     ];
 
     protected $casts = [
@@ -35,6 +36,28 @@ class UserPlatform extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    /**
+     * Whether they are enrolled in a theory course right now.
+     *
+     * Distinct from `on_moodle`, which only says they have an account. A
+     * student with an account and no enrolment is the commonest stall in the
+     * whole pipeline and the hardest to see: two green ticks, nothing
+     * obviously wrong, and nothing happening.
+     */
+    public function isEnrolled(): bool
+    {
+        return $this->moodle_enrolment === 'active';
+    }
+
+    public function enrolmentLabel(): string
+    {
+        return match ($this->moodle_enrolment) {
+            'active' => $this->moodle_course ? $this->moodle_course . ' theory' : 'Enrolled',
+            'suspended' => 'Enrolment suspended',
+            default => 'Not enrolled in a course',
+        };
     }
 
     /**
