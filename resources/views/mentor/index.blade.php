@@ -8,6 +8,15 @@
 
 @section('content')
 
+{{-- VATSSA: capacity and resources, above the student list.
+
+     These two panels were the reason a separate mentor portal was going to
+     exist at mentors.vatssa.com. They did not justify one -- three auth layers
+     and a second source of truth, to show a number and half a dozen links, on a
+     page Control Center already has and already fills with the right
+     students. --}}
+@include('vatssa.parts.mentor-panels', ['user' => $user])
+
 <div class="row">
     <div class="col-xl-12 col-md-12 mb-12">
         <div class="card shadow mb-4">

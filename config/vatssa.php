@@ -1,5 +1,6 @@
 <?php
 
+use App\Tasks\Types\MentorCapacityRequest;
 use App\Tasks\Types\RatingUpgrade;
 
 /*
@@ -74,6 +75,19 @@ return [
     */
     'fixed_desks' => [
         RatingUpgrade::class => 'membership',
+        // Capacity is the ATC training manager's call, always.
+        MentorCapacityRequest::class => 'training-manager',
     ],
+
+    /*
+    | How many students a mentor is assumed to be willing to run.
+    |
+    | A starting point, not a rule -- nothing enforces it. Overridden per mentor,
+    | and per rating, on the mentorship admin page. Null means no default limit,
+    | which is different from a limit of zero and is shown differently.
+    */
+    'default_mentor_capacity' => env('VATSSA_DEFAULT_MENTOR_CAPACITY') !== null
+        ? (int) env('VATSSA_DEFAULT_MENTOR_CAPACITY')
+        : null,
 
 ];

@@ -84,8 +84,8 @@
                 @else
                     <span class="badge bg-warning text-dark">{{ $platform->enrolmentLabel() }}</span>
                     <small class="text-muted d-block mt-1">
-                        Registered on Moodle but in no course. Nothing will happen
-                        until somebody enrols them.
+                        Registered on Moodle but in no course. The system will
+                        enrol them within the next 24 hours.
                     </small>
                 @endif
             </div>

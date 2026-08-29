@@ -55,6 +55,9 @@ Route::middleware(['web', 'auth', 'activity', 'suspended'])
         Route::get('/templates', [SettingsController::class, 'templates'])->name('templates');
         Route::patch('/templates/{template}', [SettingsController::class, 'updateTemplate'])->name('templates.update');
 
+        Route::get('/mentorship', [SettingsController::class, 'mentorship'])->name('mentorship');
+        Route::post('/mentorship', [SettingsController::class, 'updateMentorship'])->name('mentorship.update');
+
         Route::get('/routing', [SettingsController::class, 'routing'])->name('routing');
         Route::post('/routing', [SettingsController::class, 'updateRouting'])->name('routing.update');
 

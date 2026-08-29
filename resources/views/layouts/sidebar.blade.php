@@ -180,6 +180,7 @@
                      code does, so neither should need a deploy. --}}
                 @can('system.settings.manage')
                     <x-sidebar.item :href="route('vatssa.admin.routing')" title="Request routing" collapse />
+                    <x-sidebar.item :href="route('vatssa.admin.mentorship')" title="Mentorship" collapse />
                     <x-sidebar.item :href="route('vatssa.admin.templates')" title="Pipeline templates" collapse />
                     <x-sidebar.item :href="route('vatssa.admin.courses')" title="Moodle courses" collapse />
                 @endcan
