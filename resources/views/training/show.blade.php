@@ -176,7 +176,10 @@
                             <label class="form-label" for="trainingStateSelect">Select training state</label>
                             <select class="form-select" name="status" id="trainingStateSelect" @if(Auth::user()->cannot('update', $training)) disabled @endif>
                                 @foreach(\App\Helpers\TrainingStatus::cases() as $status)
-                                    @if($status->isAssignableByStaff())
+                                    {{-- VATSSA: context-aware. The pipeline owns in-queue,
+                                         pre-training and awaiting-mentor; the one manual move
+                                         is active training back to awaiting a mentor. --}}
+                                    @if($status->isAssignableFrom($training->status))
                                         <option value="{{ $status->value }}" @selected($training->status === $status)>{{ $status->label() }}</option>
                                     @endif
                                 @endforeach
@@ -601,6 +604,13 @@
             </div>
         </div>
 
+    </div>
+</div>
+
+{{-- VATSSA: every email this student has received, from either system. --}}
+<div class="row">
+    <div class="col-xl-12 col-md-12 mb-12">
+        @include('vatssa.parts.message-log', ['training' => $training])
     </div>
 </div>
 

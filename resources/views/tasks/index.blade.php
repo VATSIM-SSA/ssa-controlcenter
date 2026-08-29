@@ -4,9 +4,14 @@
 @section('title-flex')
     <div>
         <i class="fas fa-filter"></i>&nbsp;Filter:&nbsp;
-        <a class="btn btn-sm {{ ($activeFilter != 'sent' && $activeFilter != 'archived') ? 'btn-primary' : 'btn-outline-primary' }}" href="{{ route('tasks') }}">Open</a>
+        <a class="btn btn-sm {{ (!in_array($activeFilter, ['sent', 'archived', 'all'])) ? 'btn-primary' : 'btn-outline-primary' }}" href="{{ route('tasks') }}">Open</a>
         <a class="btn btn-sm {{ ($activeFilter == 'sent') ? 'btn-primary' : 'btn-outline-primary' }}" href="{{ route('tasks.filtered', 'sent') }}">Sent</a>
         <a class="btn btn-sm {{ ($activeFilter == 'archived') ? 'btn-primary' : 'btn-outline-primary' }}" href="{{ route('tasks.filtered', 'archived') }}">Archived</a>
+        {{-- VATSSA: the whole board, for staff who need to see what is outstanding
+             across the division rather than only their own inbox. --}}
+        @if($canSeeAll ?? false)
+            <a class="btn btn-sm {{ ($activeFilter == 'all') ? 'btn-primary' : 'btn-outline-primary' }}" href="{{ route('tasks.filtered', 'all') }}">Everyone</a>
+        @endif
     </div>
 @endsection
 
@@ -32,7 +37,11 @@
                                     <th>Subject</th>
                                     <th>Request</th>
                                     <th>{{ (!in_array($activeFilter, ['sent'])) ? 'Creator' : 'Assigned to' }}</th>
-                                    <th>{{ (!in_array($activeFilter, ['sent', 'archived'])) ? 'Actions' : 'Status' }}</th>
+                                    @if($activeFilter == 'all')
+                                        {{-- VATSSA: on the overview the assignee is the point --}}
+                                        <th>Assigned to</th>
+                                    @endif
+                                    <th>{{ (!in_array($activeFilter, ['sent', 'archived', 'all'])) ? 'Actions' : 'Status' }}</th>
                                 </tr>
                             </thead>
                             <tbody>

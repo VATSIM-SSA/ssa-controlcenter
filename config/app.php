@@ -7,6 +7,7 @@ use App\Providers\DivisionApiServiceProvider;
 use App\Providers\EventServiceProvider;
 use App\Providers\RouteServiceProvider;
 use App\Providers\VatsimBookingApiServiceProvider;
+use App\Providers\VatssaServiceProvider;
 use Illuminate\Support\Facades\Facade;
 use Illuminate\Support\ServiceProvider;
 
@@ -258,6 +259,11 @@ return [
         CarbonServiceProvider::class,
         DivisionApiServiceProvider::class,
         VatsimBookingApiServiceProvider::class,
+
+        // VATSSA. Registers everything this fork adds -- the bridge middleware,
+        // routes/vatssa.php and the task observer -- so Kernel.php, api.php and
+        // AppServiceProvider stay verbatim upstream.
+        VatssaServiceProvider::class,
 
     ])->toArray(),
 

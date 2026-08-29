@@ -2,9 +2,13 @@
 
 namespace Tests\Feature;
 
+use App\Helpers\TrainingStatus;
 use App\Models\Area;
 use App\Models\Position;
 use App\Models\User;
+use App\Models\Vatssa\MoodleCourse;
+use App\Models\Vatssa\TheoryAttempt;
+use App\Models\Vatssa\UserPlatform;
 use App\Services\PermissionMatrix;
 use Database\Seeders\VatssaSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -188,6 +192,283 @@ class VatssaTest extends TestCase
             ->all();
 
         $this->assertSame([], $orphans);
+    }
+
+
+    // ---------------------------------------------------------------------
+    // The training pipeline
+    // ---------------------------------------------------------------------
+
+    #[Test]
+    public function awaiting_mentor_does_not_disturb_the_status_order(): void
+    {
+        // THE detector for the appended-not-inserted decision.
+        //
+        // AWAITING_MENTOR belongs between PRE_TRAINING and ACTIVE_TRAINING in
+        // the lifecycle, but is stored as 4 so that nothing has to be
+        // renumbered under a live database -- `training_activities` records
+        // past transitions as bare integers, and renumbering would rewrite
+        // history silently.
+        //
+        // That is only safe while upstream's own values stay where they are. If
+        // upstream ever adds a case at 4, or moves one of these, this fails
+        // loudly rather than two stages quietly becoming one.
+        $this->assertSame(0, TrainingStatus::IN_QUEUE->value);
+        $this->assertSame(1, TrainingStatus::PRE_TRAINING->value);
+        $this->assertSame(2, TrainingStatus::ACTIVE_TRAINING->value);
+        $this->assertSame(3, TrainingStatus::AWAITING_EXAM->value);
+        $this->assertSame(4, TrainingStatus::AWAITING_MENTOR->value);
+    }
+
+    #[Test]
+    public function awaiting_mentor_counts_as_open_and_in_progress(): void
+    {
+        // Every ordered comparison in the codebase is `>= IN_QUEUE` or
+        // `>= PRE_TRAINING`. Appending as 4 gives the right answer for both,
+        // which is precisely why appending is safe.
+        $this->assertTrue(TrainingStatus::AWAITING_MENTOR->isOpen());
+        $this->assertTrue(TrainingStatus::AWAITING_MENTOR->isInProgress());
+        $this->assertFalse(TrainingStatus::AWAITING_MENTOR->isClosed());
+    }
+
+    #[Test]
+    public function the_pipeline_stages_cannot_be_set_by_hand(): void
+    {
+        // A human setting one of these puts Control Center and the bot into
+        // disagreement about where somebody is, and the bot moves them back --
+        // which looks like a bug rather than a rule.
+        $this->assertFalse(TrainingStatus::IN_QUEUE->isAssignableByStaff());
+        $this->assertFalse(TrainingStatus::PRE_TRAINING->isAssignableByStaff());
+        $this->assertFalse(TrainingStatus::AWAITING_MENTOR->isAssignableByStaff());
+
+        $this->assertTrue(TrainingStatus::ACTIVE_TRAINING->isAssignableByStaff());
+        $this->assertTrue(TrainingStatus::COMPLETED->isAssignableByStaff());
+    }
+
+    #[Test]
+    public function a_student_can_be_returned_to_awaiting_mentor_from_active_training(): void
+    {
+        // The one manual move that IS wanted: a mentor leaves, and the student
+        // goes back into the queue rather than sitting in a training nobody is
+        // running.
+        $this->assertTrue(
+            TrainingStatus::AWAITING_MENTOR->isAssignableFrom(TrainingStatus::ACTIVE_TRAINING)
+        );
+
+        // And from nowhere else.
+        $this->assertFalse(
+            TrainingStatus::AWAITING_MENTOR->isAssignableFrom(TrainingStatus::IN_QUEUE)
+        );
+        $this->assertFalse(
+            TrainingStatus::AWAITING_MENTOR->isAssignableFrom(TrainingStatus::PRE_TRAINING)
+        );
+    }
+
+    #[Test]
+    public function saving_a_training_without_touching_the_status_is_always_allowed(): void
+    {
+        // The status field is submitted with every save of the details form, so
+        // a rule that rejected the CURRENT value would make a training in a
+        // system stage impossible to edit at all.
+        foreach (TrainingStatus::cases() as $status) {
+            $this->assertTrue(
+                $status->isAssignableFrom($status),
+                "{$status->name} cannot be saved as itself"
+            );
+        }
+    }
+
+    #[Test]
+    public function the_interest_chase_still_reaches_people_waiting_for_a_mentor(): void
+    {
+        // SendTrainingInterestNotifications used to bound on `<= PRE_TRAINING`.
+        // With AWAITING_MENTOR appended as 4 that would silently exclude the
+        // people who have been waiting longest -- exactly who should be asked
+        // whether they are still interested. It is a whereIn now, and this is
+        // the thing that catches a revert to a range.
+        $source = file_get_contents(app_path('Console/Commands/SendTrainingInterestNotifications.php'));
+
+        $this->assertStringNotContainsString("'<=', TrainingStatus::PRE_TRAINING", $source);
+        $this->assertStringContainsString('TrainingStatus::AWAITING_MENTOR', $source);
+    }
+
+    #[Test]
+    public function the_theoretical_exam_task_type_is_gone(): void
+    {
+        // Task types are directory-scanned, so deleting the file removes the
+        // option. VATSSA's theory exam lives inside the Moodle course; there is
+        // no access to grant, and an option nobody should ever pick is worse
+        // than no option.
+        $this->assertFileDoesNotExist(app_path('Tasks/Types/TheoreticalExam.php'));
+
+        $types = array_map(
+            fn ($type) => $type::class,
+            \App\Http\Controllers\TaskController::getTypes()
+        );
+        $this->assertNotContains('App\\Tasks\\Types\\TheoreticalExam', $types);
+    }
+
+    #[Test]
+    public function manual_training_creation_has_its_own_permission(): void
+    {
+        // Upstream gates this on fir.management.reports.view, which ALSO opens
+        // the training request queue. Narrowing it there would take the queue
+        // away from the coordinators who work out of it every day.
+        $matrix = app(PermissionMatrix::class);
+
+        $this->assertContains('training.create.manual', config('roles.permissions'));
+        $this->assertSame(
+            ['admin', 'atc-training-manager'],
+            $matrix->rolesFor('training.create.manual')
+        );
+    }
+
+    #[Test]
+    public function only_the_training_manager_sees_theory_marks(): void
+    {
+        // Two tiers, deliberately. A coordinator needs to know somebody failed
+        // twice; they do not need to know the mark was 62%.
+        $matrix = app(PermissionMatrix::class);
+
+        $this->assertContains('pipeline-coordinator', $matrix->rolesFor('training.results.view'));
+        $this->assertNotContains('pipeline-coordinator', $matrix->rolesFor('training.results.grades'));
+        $this->assertContains('atc-training-manager', $matrix->rolesFor('training.results.grades'));
+    }
+
+    #[Test]
+    public function mentors_cannot_see_theory_results_at_all(): void
+    {
+        // Mentors see their own students' training, not the division's exam
+        // record. Nothing in the mentor role expands to a wildcard, so this
+        // catches a stray addition rather than a wildcard leak.
+        $matrix = app(PermissionMatrix::class);
+
+        $this->assertNotContains('mentor', $matrix->rolesFor('training.results.view'));
+        $this->assertNotContains('mentor', $matrix->rolesFor('tasks.overview'));
+    }
+
+    #[Test]
+    public function the_bridge_refuses_everything_without_a_token(): void
+    {
+        // An unconfigured VATSSA_BRIDGE_TOKEN must never mean "let everyone in".
+        // This is the property that makes shipping the routes before the bot
+        // exists safe.
+        config(['vatssa.bridge_token' => null]);
+
+        $this->postJson('/api/vatssa/bridge/users/1/platforms', [
+            'on_discord' => true,
+            'on_moodle' => true,
+        ])->assertStatus(401);
+    }
+
+    #[Test]
+    public function the_bridge_refuses_a_wrong_token(): void
+    {
+        config(['vatssa.bridge_token' => 'the-real-one']);
+
+        $this->withHeader('Authorization', 'Bearer not-the-real-one')
+            ->postJson('/api/vatssa/bridge/users/1/platforms', [
+                'on_discord' => true,
+                'on_moodle' => true,
+            ])->assertStatus(401);
+    }
+
+    #[Test]
+    public function the_bridge_writes_platforms_idempotently(): void
+    {
+        // The bot re-reads the same state on every sweep by design, so downtime
+        // costs freshness rather than data. Writes that were not idempotent
+        // would turn that into duplicates.
+        config(['vatssa.bridge_token' => 'test-token']);
+        $user = User::factory()->create();
+
+        $payload = [
+            'discord_user_id' => 123456789012345678,
+            'on_discord' => true,
+            'on_moodle' => false,
+            'vatsim_member' => true,
+        ];
+
+        for ($i = 0; $i < 2; $i++) {
+            $this->withHeader('Authorization', 'Bearer test-token')
+                ->postJson("/api/vatssa/bridge/users/{$user->id}/platforms", $payload)
+                ->assertOk();
+        }
+
+        $this->assertSame(1, UserPlatform::where('user_id', $user->id)->count());
+        $this->assertTrue(UserPlatform::find($user->id)->on_discord);
+    }
+
+    #[Test]
+    public function a_theory_pass_is_the_latest_attempt_not_the_best(): void
+    {
+        // The rule the whole gate rests on. Somebody who passed two years ago
+        // and failed a retake last week does not currently know the material.
+        $user = User::factory()->create();
+
+        TheoryAttempt::create([
+            'user_id' => $user->id, 'rating' => 'S2',
+            'moodle_course_id' => 14, 'moodle_quiz_id' => 52, 'moodle_attempt_id' => 1,
+            'grade' => 95, 'passed' => true, 'taken_at' => now()->subYear(),
+        ]);
+        TheoryAttempt::create([
+            'user_id' => $user->id, 'rating' => 'S2',
+            'moodle_course_id' => 14, 'moodle_quiz_id' => 52, 'moodle_attempt_id' => 2,
+            'grade' => 40, 'passed' => false, 'taken_at' => now()->subWeek(),
+        ]);
+
+        $this->assertFalse(TheoryAttempt::passedRating($user->id, 'S2'));
+
+        TheoryAttempt::create([
+            'user_id' => $user->id, 'rating' => 'S2',
+            'moodle_course_id' => 14, 'moodle_quiz_id' => 52, 'moodle_attempt_id' => 3,
+            'grade' => 82, 'passed' => true, 'taken_at' => now(),
+        ]);
+
+        $this->assertTrue(TheoryAttempt::passedRating($user->id, 'S2'));
+    }
+
+    #[Test]
+    public function a_theory_result_survives_the_training_that_produced_it(): void
+    {
+        // Keyed to person plus rating, never to a training. Close a training,
+        // open a new one, and the pass is still there -- because the training
+        // looks the result up rather than owning it.
+        $user = User::factory()->create();
+
+        TheoryAttempt::create([
+            'user_id' => $user->id, 'rating' => 'S2',
+            'moodle_course_id' => 14, 'moodle_quiz_id' => 52, 'moodle_attempt_id' => 1,
+            'grade' => 88, 'passed' => true, 'taken_at' => now()->subMonths(6),
+        ]);
+
+        $columns = \Illuminate\Support\Facades\Schema::getColumnListing('vatssa_theory_attempts');
+        $this->assertNotContains('training_id', $columns);
+        $this->assertTrue(TheoryAttempt::passedRating($user->id, 'S2'));
+    }
+
+    #[Test]
+    public function an_unconfigured_moodle_course_is_left_out_of_the_map(): void
+    {
+        // Placeholder ids must not read as "this student has no attempts",
+        // which is indistinguishable from a room full of failures. Dropping the
+        // rating instead makes it visibly need no theory, which gets fixed.
+        MoodleCourse::create(['rating' => 'S2', 'course_id' => 14, 'exam_quiz_id' => 52, 'pass_mark' => 80]);
+        MoodleCourse::create(['rating' => 'S3', 'course_id' => 0, 'exam_quiz_id' => 0, 'pass_mark' => 80]);
+
+        $map = MoodleCourse::map();
+
+        $this->assertArrayHasKey('S2', $map);
+        $this->assertArrayNotHasKey('S3', $map);
+    }
+
+    #[Test]
+    public function task_routing_is_inert_until_it_is_configured(): void
+    {
+        // It ships with an empty map on purpose. A routing table guessed at
+        // rather than agreed would send real requests to the wrong people,
+        // quietly -- worse than the manual choice it replaces.
+        $this->assertSame([], config('vatssa.task_routing'));
     }
 
     #[Test]

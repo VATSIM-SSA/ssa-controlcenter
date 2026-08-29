@@ -96,6 +96,10 @@
             @livewire('user-roles', ['user' => $user])
         @endcan
 
+        {{-- VATSSA: Discord, Moodle and theory results. Both platforms are
+             mandatory to train here and Control Center can see neither. --}}
+        @include('vatssa.parts.platforms', ['user' => $user])
+
         <div class="card shadow mb-4">
             <div class="card-header bg-primary py-3 d-flex flex-row align-items-center justify-content-between">
                 <h6 class="m-0 fw-bold text-white">

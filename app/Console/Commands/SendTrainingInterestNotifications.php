@@ -45,7 +45,16 @@ class SendTrainingInterestNotifications extends Command
      */
     public function handle()
     {
-        $trainings = Training::where([['status', '>=', TrainingStatus::IN_QUEUE], ['status', '<=', TrainingStatus::PRE_TRAINING], ['created_at', '<=', Carbon::now()->subDays(30)]])->get();
+        // VATSSA: a list, not a range. AWAITING_MENTOR is appended as 4 rather
+        // than inserted as 2 (see TrainingStatus), so a `<= PRE_TRAINING` bound
+        // would silently exclude it -- and somebody who has been waiting for a
+        // mentor is exactly who should be asked whether they are still
+        // interested.
+        $trainings = Training::whereIn('status', [
+            TrainingStatus::IN_QUEUE,
+            TrainingStatus::PRE_TRAINING,
+            TrainingStatus::AWAITING_MENTOR,
+        ])->where('created_at', '<=', Carbon::now()->subDays(30))->get();
 
         foreach ($trainings as $training) {
             $lastInterestRequest = TrainingInterest::where('training_id', $training->id)->orderBy('created_at')->get()->last();

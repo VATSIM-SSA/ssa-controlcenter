@@ -23,23 +23,140 @@ underneath an added file. So each section below names its own detector, and
 
 ## Modified upstream files
 
-Twelve, but they are two different things and should be read as such.
+Twenty-two, and they are three different things which should be read as such.
 
-**Two are code and configuration.** These are the real divergence. Each one is
+**Seven are code and configuration.** These are the real divergence. Each one is
 a conflict on some future release, each needs judgement to resolve, and this
 list growing is the thing to resist.
+
+**Five are Blades.** Cheaper than they look. A Blade conflict is visual and
+obvious — you open the page and see it — where a controller conflict carries
+logic and fails silently. The fork deliberately accepts modified views to avoid
+modified controllers.
 
 **Ten are replaced brand assets** — the favicon set and the header mark. Binary
 files upstream rarely touches, and a conflict on any of them is resolved by
 keeping ours without thinking. They are listed for completeness, not because
 they carry risk.
 
+**One is a deletion.**
+
 | | Count |
 |---|---|
-| Code and configuration | 2 |
+| Code and configuration | 7 |
+| Blades | 5 |
 | Brand assets | 10 |
-| Added files | 32 |
+| Deleted | 1 |
+| Added files | 46 |
 | Force-added past `.gitignore` | 3 |
+
+### The training pipeline, in one place
+
+Most of what follows exists for one reason, so it is worth stating once. VATSSA
+runs an external training pipeline bot. **The bot computes; Control Center
+stores and shows.** No pipeline logic lives in PHP — logic in two places drifts,
+and the bot already carries the tests for these rules.
+
+Control Center therefore gains tables, panels and write endpoints, and never
+gains a decision. Where a change below looks like it is missing its logic, that
+is why.
+
+---
+
+### `app/Helpers/TrainingStatus.php`
+
+**Why it diverges.** Adds `AWAITING_MENTOR`: theory passed, no mentor yet.
+Upstream cannot express it — both the theory window and the mentor wait are
+"pre-training" — and it is the stage the whole pipeline turns on. Also closes
+the three system-owned stages to manual assignment.
+
+**The decision worth knowing.** It is appended as `4`, not inserted as `2`,
+even though the lifecycle position is between 1 and 2. Inserting means
+renumbering under a live database, and `training_activities` stores past
+transitions as bare integers — renumbering silently rewrites history, and
+nothing in the application would ever tell you. Appending is free because no
+ordered comparison in the codebase uses a bound above `PRE_TRAINING`.
+
+**Detector.** `VatssaTest::awaiting_mentor_does_not_disturb_the_status_order`
+pins all five values. If upstream adds a case at 4, that fails loudly rather
+than two stages quietly becoming one.
+
+**On conflict.** Keep both sets of cases. Never renumber upstream's.
+
+### `app/Console/Commands/SendTrainingInterestNotifications.php`
+
+**Why it diverges.** One line: the 30-day interest chase bounded on
+`status <= PRE_TRAINING`, which with `AWAITING_MENTOR` at 4 would skip exactly
+the people who have been waiting longest. It is a `whereIn` now.
+
+**Detector.**
+`VatssaTest::the_interest_chase_still_reaches_people_waiting_for_a_mentor`
+greps the source, so a revert to a range fails.
+
+**On conflict.** Re-apply the `whereIn`, adding whatever statuses upstream added.
+
+### `app/Http/Controllers/TrainingController.php`
+
+**Why it diverges.** One rule added to the `status` validation, so the pipeline
+stages cannot be set by hand. The Blade dropdown hides them; this refuses them,
+because a hidden `<option>` is two seconds of DevTools away.
+
+**Detector.** None automatic — a merge that drops the rule leaves the dropdown
+looking correct. Check this file by hand on every absorption.
+
+**On conflict.** Keep `new AssignableTrainingStatus` in the `status` rule array.
+
+### `app/Http/Controllers/TaskController.php`
+
+**Why it diverges.** An `all` filter on the task list for holders of
+`tasks.overview`. Every request in the division lives on a task, and without
+this nobody can see what is outstanding across it.
+
+**On conflict.** Re-add the `elseif` branch and the `$canSeeAll` variable.
+
+### `app/Policies/TrainingPolicy.php`
+
+**Why it diverges.** `create()` checks `training.create.manual` instead of
+`fir.management.reports.view`. The upstream permission ALSO opens the training
+request queue, the mentor index and the access report, so narrowing manual
+creation there would take the queue away from the coordinators who work out of
+it every day.
+
+**Detector.** `VatssaTest::manual_training_creation_has_its_own_permission`.
+
+### `config/app.php`
+
+**Why it diverges.** One provider registered: `VatssaServiceProvider`. It exists
+precisely so that `app/Http/Kernel.php`, `routes/api.php`, `routes/web.php` and
+`AppServiceProvider` stay verbatim upstream — the middleware alias, both route
+files and the task observer all register from there.
+
+**On conflict.** Keep the line. Losing it silently disables every VATSSA route.
+
+### Blades (5 files)
+
+`layouts/sidebar.blade.php` · `training/show.blade.php` ·
+`user/show.blade.php` · `tasks/index.blade.php` · `tasks/parts/row.blade.php`
+
+Each carries one small VATSSA change, marked with a `{{-- VATSSA: --}}` comment:
+the roster removed from the nav and the two pipeline admin pages added; the
+message log included on a training; the platforms panel included on a profile;
+the task overview tab and its assignee column.
+
+**On conflict, take upstream's version and re-apply the marked block.** These
+are the cheapest conflicts in the fork — open the page and you can see whether
+you got it right.
+
+### Deleted: `app/Tasks/Types/TheoreticalExam.php`
+
+Task types are directory-scanned, so deleting the file removes the option.
+VATSSA's theory exam lives inside the Moodle course; there is no access to
+grant, and an option nobody should ever pick is worse than no option.
+
+**Detector.** `VatssaTest::the_theoretical_exam_task_type_is_gone`.
+
+**On conflict.** Upstream restoring the file shows up as an add, not a conflict.
+Delete it again.
 
 ### `config/roles.php`
 
@@ -199,6 +316,45 @@ with no error anywhere.
 **Detector:** `python tools/contrast-check.py resources/sass/themes/_custom.scss`,
 which also carries upstream's defaults and so fails when a name it expects has
 gone. Run it on every absorption that touches `resources/sass/`.
+
+### The pipeline additions
+
+`config/vatssa.php` · `routes/vatssa.php` · `routes/vatssa-web.php` ·
+`app/Providers/VatssaServiceProvider.php` ·
+`app/Http/Middleware/VatssaBridgeToken.php` ·
+`app/Http/Controllers/Vatssa/*` · `app/Models/Vatssa/*` ·
+`app/Observers/VatssaTaskObserver.php` ·
+`app/Rules/AssignableTrainingStatus.php` · `resources/views/vatssa/**` ·
+`database/migrations-vatssa/2026_08_29_*`
+
+**Five tables**, each for a fact Control Center v7.0.0 has nowhere to put:
+platforms (it has no concept of Discord), theory attempts (no theory field at
+all), the message log (it cannot see what its own mailer sent), message
+templates (its editor is append-only, on three emails, per area) and the Moodle
+course map.
+
+**Two are worth understanding rather than just knowing about:**
+
+*Theory attempts are keyed to person plus rating, never to a training.* A result
+owned by a training dies with it — close it, open a new one, and the pass is
+gone even though the person still knows the material. And the pass is derived
+from the **latest** attempt, not the best: somebody who passed two years ago and
+failed a retake last week does not currently know it.
+
+*The bridge refuses everything when `VATSSA_BRIDGE_TOKEN` is unset.* An
+unconfigured token must never mean "let everyone in". That property is what
+makes shipping these routes before the bot exists safe.
+
+**Two things ship deliberately inert**, and both are Daniël's to fill in:
+`vatssa.task_routing` is empty, so tasks route exactly as upstream until it has
+been *decided* where each request goes; and the Moodle course map drops any
+rating whose ids are still `0`, so an unconfigured rating visibly needs no
+theory rather than silently giving every student no attempts.
+
+**Detectors.** Fourteen tests in `VatssaTest`, and `tools/expand.py` for the
+permission matrix. The one thing nothing detects: whether the deployment sets
+`VATSSA_BRIDGE_TOKEN` and whether Caddy 403s `/api/vatssa/bridge/*`. Both are
+outside the repository. **Neither is optional.**
 
 ### `tools/expand.py`, `tools/contrast-check.py`
 

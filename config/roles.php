@@ -47,6 +47,11 @@ return [
         // Training
         'training.view',
         'training.create',
+        // VATSSA: creating a training for somebody else, by hand. Upstream gates
+        // this on fir.management.reports.view, which ALSO gates the request queue
+        // -- so restricting manual creation there would take the queue away from
+        // the coordinators who work out of it. A separate permission instead.
+        'training.create.manual',
         'training.update',
         'training.delete',
         'training.mentor',
@@ -61,6 +66,12 @@ return [
         'training.activities.view',
         'training.statistics.view',
         'training.notifications.receive',
+        // VATSSA: theory results, in two tiers. `view` is every attempt and
+        // whether each passed; `grades` is the actual marks. The split is
+        // deliberate -- a coordinator needs to know somebody failed twice, and
+        // does not need to know they got 62%.
+        'training.results.view',
+        'training.results.grades',
 
         // Examinations
         'examinations.manage',
@@ -87,6 +98,8 @@ return [
         // Tasks
         'tasks.manage',
         'tasks.suggested-recipient',
+        // VATSSA: see every task, not only your own and your area's.
+        'tasks.overview',
 
         // Files
         'files.manage',
@@ -142,7 +155,7 @@ return [
             'fir.management.reports.view',      // ALSO the training-request queue — never remove
             'users.**',                         // manage + access.view + workmail.use
             'notifications.inactivity.receive', // NOT notifications.templates.manage
-            'tasks.**',
+            'tasks.**',                         // includes tasks.overview
             'files.**',
             'bookings.**',
             'roles.mentor.manage',              // the only role ATM may grant
@@ -154,6 +167,8 @@ return [
             '!training.delete',                 // admin only
             '!training.reports.delete',         // ATM + admin only
             '!training.ratings.manage',         // admin only
+            '!training.create.manual',          // ATM + admin only
+            '!training.results.grades',         // ATM + admin only; pass/fail is enough
             'examinations.manage',
             'endorsements.solo.*',
             'fir.positions.view',

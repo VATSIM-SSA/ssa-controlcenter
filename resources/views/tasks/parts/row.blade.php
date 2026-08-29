@@ -25,9 +25,17 @@
             @endisset
         @endif
     </td>
-    
+
+    @if($activeFilter == 'all')
+        {{-- VATSSA: whose desk it is sitting on. The whole point of the overview. --}}
+        <td><a href="{{ route('user.show', $task->assignee) }}">{{ $task->assignee->name }} ({{ $task->assignee->id }})</a></td>
+    @endif
+
     <td>
-        @if(!in_array($activeFilter, ['sent', 'archived']))
+        {{-- VATSSA: 'all' shows status, not buttons. These are other people's
+             tasks; offering Complete on one you do not own is an invitation to
+             a mistake the policy would refuse anyway. --}}
+        @if(!in_array($activeFilter, ['sent', 'archived', 'all']))
             <div class="btn-toolbar" role="toolbar" aria-label="Task actions">
                 <div class="btn-group">
                     @if($task->type()->isApproval())

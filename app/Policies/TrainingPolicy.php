@@ -115,11 +115,18 @@ class TrainingPolicy
     /**
      * Check if the user has access to frontend of creationg a manual training request
      *
+     * VATSSA: gated on its own permission rather than on
+     * `fir.management.reports.view`. That permission ALSO opens the training
+     * request queue, the mentor index and the access report -- so narrowing
+     * manual creation there would take the queue away from the coordinators who
+     * work out of it every day. A separate permission costs one catalogue entry
+     * and leaves everything else where it was.
+     *
      * @return bool
      */
     public function create(User $user)
     {
-        return $user->hasPermission('fir.management.reports.view');
+        return $user->hasPermission('training.create.manual');
     }
 
     /**

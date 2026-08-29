@@ -22,15 +22,23 @@ class TaskController extends Controller
     {
         $this->authorize('update', Task::class);
 
+        // VATSSA: an overview tab for staff who need to see the whole board
+        // rather than their own inbox. Everything a request touches lives on a
+        // task, so without this nobody can answer "what is outstanding across
+        // the division" without a database query.
+        $canSeeAll = $user->hasPermission('tasks.overview');
+
         if ($activeFilter == 'sent') {
             $tasks = Task::where('creator_user_id', $user->id)->get()->sortByDesc('created_at');
         } elseif ($activeFilter == 'archived') {
             $tasks = Task::where('assignee_user_id', $user->id)->whereIn('status', [TaskStatus::COMPLETED->value, TaskStatus::DECLINED->value])->get()->sortByDesc('closed_at');
+        } elseif ($activeFilter == 'all' && $canSeeAll) {
+            $tasks = Task::where('status', TaskStatus::PENDING->value)->with('creator', 'subject', 'assignee', 'subjectTraining')->get()->sortBy('created_at');
         } else {
             $tasks = Task::where('assignee_user_id', $user->id)->where('status', TaskStatus::PENDING->value)->with('creator', 'subject', 'assignee', 'subjectTraining')->get()->sortBy('created_at');
         }
 
-        return view('tasks.index', compact('tasks', 'activeFilter'));
+        return view('tasks.index', compact('tasks', 'activeFilter', 'canSeeAll'));
     }
 
     /**

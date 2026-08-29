@@ -30,10 +30,24 @@
 # cc.vatssa.com is defined here even before the production cutover. That is
 # safe: there is no Cloudflare Tunnel public hostname for it, so nothing
 # outside can reach it. Adding that hostname IS the cutover.
+#
+#  4. THE TRAINING PIPELINE BRIDGE IS BLOCKED AT THE EDGE. The bot reaches
+#     cc-prod directly over the Docker network, so /api/vatssa/bridge/* has no
+#     reason to be reachable from the internet at all. The application checks a
+#     bearer token as well -- this is the second lock, not the only one, and
+#     removing it does not open a hole on its own. Do not remove it anyway.
+#
+#     /api/vatssa/roster is deliberately NOT blocked: it is the public roster
+#     the website reads, and it carries nothing that is not already published.
 
 # ── ControlCentre ─────────────────────────────────────────────────────────────
 http://cc.vatssa.com {
   import security_headers_livewire
+
+  # The pipeline bridge is internal only. See note 4 above.
+  @bridge path /api/vatssa/bridge/*
+  respond @bridge 403
+
   reverse_proxy cc-prod:80 {
     header_up X-Forwarded-Proto https
   }
@@ -44,6 +58,11 @@ http://cc.vatssa.com {
 
 http://cc-staging.vatssa.com {
   import security_headers_livewire
+
+  # The pipeline bridge is internal only. See note 4 above.
+  @bridge path /api/vatssa/bridge/*
+  respond @bridge 403
+
   reverse_proxy cc-staging:80 {
     header_up X-Forwarded-Proto https
   }
@@ -54,6 +73,11 @@ http://cc-staging.vatssa.com {
 
 http://cc-dev.vatssa.com {
   import security_headers_livewire
+
+  # The pipeline bridge is internal only. See note 4 above.
+  @bridge path /api/vatssa/bridge/*
+  respond @bridge 403
+
   reverse_proxy cc-dev:80 {
     header_up X-Forwarded-Proto https
   }

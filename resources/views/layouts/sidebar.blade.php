@@ -91,20 +91,18 @@
 
         @endif
 
-        {{-- Nav Item - Pages Collapse Menu --}}
-        @php
-            $areas = \App\Models\Area::all();
-        @endphp
+        {{-- VATSSA: the ATC roster is not in the sidebar.
 
-        @if($areas->count() > 1)
-            <x-sidebar.section icon="fa-address-book" title="ATC Roster" :active="Route::is('roster')" id="collapseRosters">
-                @foreach($areas as $area)
-                    <x-sidebar.item :href="route('roster', $area->id)" :title="$area->name" collapse />
-                @endforeach
-            </x-sidebar.section>
-        @else
-            <x-sidebar.item :href="route('roster', $areas->first()->id)" icon="fa-address-book" title="ATC Roster" :active="Route::is('roster')" />
-        @endif
+             Upstream lists one roster per area, which is right for a division
+             where each area has its own controllers. VATSSA's rule is that
+             active in one area is active everywhere, so a per-area list is a
+             misleading answer to the question people are asking, and four
+             sidebar entries for four views of the same set is noise.
+
+             The per-area pages still exist and the `roster` route is untouched,
+             so a bookmarked or shared link still works -- they are simply no
+             longer advertised. The roster people actually read is the public
+             one on vatssa.com, served by `/api/vatssa/roster`. --}}
 
         {{-- Nav Item - Pages Collapse Menu --}}
         <x-sidebar.section icon="fa-check-square" title="Endorsements" :active="Route::is('endorsements.*')" id="collapseEndorsements">
@@ -155,6 +153,13 @@
                 @endcan
                 @can('viewAny', App\Models\Position::class)
                     <x-sidebar.item :href="route('positions.index')" title="Positions" collapse />
+                @endcan
+                {{-- VATSSA: what the training pipeline says, and which Moodle
+                     course each rating sits. Both change more often than the
+                     code does, so neither should need a deploy. --}}
+                @can('system.settings.manage')
+                    <x-sidebar.item :href="route('vatssa.admin.templates')" title="Pipeline templates" collapse />
+                    <x-sidebar.item :href="route('vatssa.admin.courses')" title="Moodle courses" collapse />
                 @endcan
             </x-sidebar.section>
 

@@ -24,6 +24,7 @@ use App\Notifications\TrainingClosedNotification;
 use App\Notifications\TrainingCreatedNotification;
 use App\Notifications\TrainingMentorNotification;
 use App\Notifications\TrainingPreStatusNotification;
+use App\Rules\AssignableTrainingStatus;
 use App\Services\ActivityLogService;
 use Carbon\Carbon;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -800,7 +801,9 @@ class TrainingController extends Controller
             'ratings' => 'sometimes|required',
             'ratings.*' => 'integer|exists:ratings,id',
             'training_area' => 'sometimes|required',
-            'status' => ['sometimes', 'required', Rule::enum(TrainingStatus::class)],
+            // VATSSA: AssignableTrainingStatus keeps staff out of the stages
+            // the pipeline owns. The dropdown hides them; this refuses them.
+            'status' => ['sometimes', 'required', Rule::enum(TrainingStatus::class), new AssignableTrainingStatus],
             'type' => 'sometimes|integer',
             'mentors' => 'sometimes',
             'closed_reason' => 'sometimes|max:65',
