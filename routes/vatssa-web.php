@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Vatssa\InternalNoteController;
 use App\Http\Controllers\Vatssa\SettingsController;
 use Illuminate\Support\Facades\Route;
 
@@ -16,6 +17,21 @@ use Illuminate\Support\Facades\Route;
 | code should not need a deploy to change.
 |
 */
+
+/*
+| Internal notes. Not under admin/ -- they are written from a member profile and
+| from a training, which is where the context is. Each action authorises on its
+| own SCOPE permission, so a training-note permission can never delete a member
+| note that happened to be listed nearby.
+*/
+Route::middleware(['web', 'auth', 'activity', 'suspended'])
+    ->prefix('vatssa/notes')
+    ->name('vatssa.notes.')
+    ->group(function () {
+        Route::post('/user/{user}', [InternalNoteController::class, 'storeUserNote'])->name('user');
+        Route::post('/training/{training}', [InternalNoteController::class, 'storeTrainingNote'])->name('training');
+        Route::delete('/{note}', [InternalNoteController::class, 'destroy'])->name('destroy');
+    });
 
 Route::middleware(['web', 'auth', 'activity', 'suspended'])
     ->prefix('admin/vatssa')

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Helpers\TaskStatus;
 use App\Models\Area;
+use App\Models\Rating;
 use App\Models\Task;
 use App\Models\User;
 use App\Models\Vatssa\RequestTarget;
@@ -24,51 +25,66 @@ class TaskController extends Controller
     {
         $this->authorize('update', Task::class);
 
-        // VATSSA: five tabs, not three.
+        // VATSSA: two questions, not one list of tabs.
         //
-        // Upstream gives you your own open tasks, what you sent, and your own
-        // archive. Two are missing and both matter: the whole board, and the
-        // whole board's archive -- "what is outstanding across the division"
-        // and "what did we do about that request in June" are the two questions
-        // a single inbox cannot answer.
+        //   which desk   -- yours, one you sit at, every desk, or what you sent
+        //   which state  -- pending or archived
+        //
+        // Upstream mixed the two into a single filter ("open", "sent",
+        // "archived"), which cannot express "the archive of the S2 desk". Both
+        // come off the query string so a link to any combination is shareable.
+        $desks = RequestTarget::desksFor($user);
         $canSeeAll = $user->hasPermission('tasks.overview');
 
-        // A REQUEST BELONGS TO A DESK, NOT TO A PERSON. The observer picks one
-        // person so the row has an assignee -- the column is NOT NULL -- but
-        // everybody at that desk should see it in their own list, or a
-        // coordinator on leave takes their queue with them.
-        $desks = \App\Models\Vatssa\RequestTarget::where('user_id', $user->id)
-            ->get(['tier', 'rating_id']);
+        $desk = request('desk', 'mine');
+        $state = request('state') === 'archived' ? 'archived' : 'pending';
 
-        $mine = function ($query) use ($user, $desks) {
-            $query->where('assignee_user_id', $user->id);
+        // Sent is a desk option rather than a state, because "things I asked
+        // for" is a different collection, not a different view of the same one.
+        if ($desk === 'sent') {
+            $query = Task::where('creator_user_id', $user->id);
+        } elseif ($desk === 'all' && $canSeeAll) {
+            $query = Task::query();
+        } elseif (str_contains((string) $desk, ':') || RequestTarget::isTier($desk)) {
+            [$tier, $ratingId] = array_pad(explode(':', (string) $desk, 2), 2, null);
+            $one = collect([['tier' => $tier, 'rating_id' => $ratingId ? (int) $ratingId : null]]);
 
-            foreach ($desks as $desk) {
-                $query->orWhere(function ($q) use ($desk) {
-                    $q->where('vatssa_tier', $desk->tier);
-                    if ($desk->rating_id !== null) {
-                        $q->where(fn ($r) => $r->where('vatssa_rating_id', $desk->rating_id)
-                            ->orWhereNull('vatssa_rating_id'));
-                    }
-                });
-            }
-        };
+            // Only desks you actually sit at, unless you can see everything.
+            // Otherwise the picker is a suggestion and the query string is the
+            // real permission check.
+            $allowed = $canSeeAll || $desks->contains(
+                fn ($d) => $d['tier'] === $tier
+                    && ($d['rating_id'] === null || (string) $d['rating_id'] === (string) $ratingId)
+            );
+
+            $query = $allowed
+                ? RequestTarget::scopeToDesks(Task::query(), $one)
+                : Task::whereRaw('1 = 0');
+        } else {
+            $desk = 'mine';
+            // Your desks, plus anything addressed to you personally -- upstream
+            // tasks carry no tier and would otherwise be invisible.
+            $query = Task::where(function ($q) use ($user, $desks) {
+                $q->where('assignee_user_id', $user->id);
+                $q->orWhere(fn ($inner) => RequestTarget::scopeToDesks($inner, $desks));
+            });
+        }
 
         $closed = [TaskStatus::COMPLETED->value, TaskStatus::DECLINED->value];
 
-        if ($activeFilter == 'sent') {
-            $tasks = Task::where('creator_user_id', $user->id)->get()->sortByDesc('created_at');
-        } elseif ($activeFilter == 'archived') {
-            $tasks = Task::where($mine)->whereIn('status', $closed)->get()->sortByDesc('closed_at');
-        } elseif ($activeFilter == 'all' && $canSeeAll) {
-            $tasks = Task::where('status', TaskStatus::PENDING->value)->with('creator', 'subject', 'assignee', 'subjectTraining')->get()->sortBy('created_at');
-        } elseif ($activeFilter == 'all-archived' && $canSeeAll) {
-            $tasks = Task::whereIn('status', $closed)->with('creator', 'subject', 'assignee', 'subjectTraining')->get()->sortByDesc('closed_at');
-        } else {
-            $tasks = Task::where($mine)->where('status', TaskStatus::PENDING->value)->with('creator', 'subject', 'assignee', 'subjectTraining')->get()->sortBy('created_at');
-        }
+        $tasks = $state === 'archived'
+            ? $query->whereIn('status', $closed)->with('creator', 'subject', 'subjectTraining')->get()->sortByDesc('closed_at')
+            : $query->where('status', TaskStatus::PENDING->value)->with('creator', 'subject', 'subjectTraining')->get()->sortBy('created_at');
 
-        return view('tasks.index', compact('tasks', 'activeFilter', 'canSeeAll'));
+        return view('tasks.index', [
+            'tasks' => $tasks,
+            'activeFilter' => $activeFilter,
+            'canSeeAll' => $canSeeAll,
+            'desk' => $desk,
+            'state' => $state,
+            'myDesks' => $desks,
+            'ratings' => Rating::whereNotNull('vatsim_rating')->orderBy('vatsim_rating')->get(),
+        ]);
     }
 
     /**

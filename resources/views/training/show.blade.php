@@ -6,13 +6,13 @@
         @can('close', $training)
             <a href="{{ route('training.action.close', $training->id) }}" onclick="return confirm('Are you sure you want to close your training?')" class="btn btn-danger"><i class="fas fa-xmark"></i> Close my training</a>
         @endcan
-        @can('togglePreTrainingCompleted', $training)
-            @if($training->pre_training_completed)
-                <a href="{{ route('training.action.pretraining', $training->id) }}" onclick="return confirm('Are you sure you want to mark this pre-training as not completed?')" class="btn btn-primary"><i class="fas fa-xmark"></i> Mark pre-training as not completed</a>
-            @else
-                <a href="{{ route('training.action.pretraining', $training->id) }}" onclick="return confirm('Are you sure you want to mark this pre-training as completed?')" class="btn btn-success"><i class="fas fa-check"></i> Mark pre-training as completed</a>
-            @endif
-        @endcan
+        {{-- VATSSA: upstream's "mark pre-training as completed" button is gone.
+
+             It is a self-declared tickbox with nothing behind it -- it gates no
+             transition, blocks nothing and is not read by any rule. Its only
+             effect was a tick next to the status, which alongside a stage now
+             called "Theory phase" read as "the theory is done" when it meant
+             nothing of the sort. The theory pass comes from Moodle. --}}
     </div>
 @endsection
 @section('content')
@@ -55,21 +55,25 @@
                     @endforeach
                 </h6>
 
+                {{-- VATSSA: buttons, not a dropdown.
+
+                     There are six request types and they are the main thing a
+                     mentor or student comes to this page to do. Behind a
+                     dropdown labelled "Request" they are invisible -- people
+                     ask in Discord instead, which is exactly the behaviour the
+                     request system exists to replace. --}}
                 @can('create', [\App\Models\Task::class])
-                    <button class="btn btn-light btn-icon dropdown-toggle" type="button" id="dropdownMenuButton" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
-                        <i class="fas fa-hand"></i> Request
-                    </button>
-                    <div class="dropdown">
-                        <div class="dropdown-menu" aria-labelledby="dropdownMenuButton">
-                            @foreach($requestTypes as $requestType)
-                                @if($requestType->allowNonVatsimRatings() == true || ($requestType->allowNonVatsimRatings() == false && $training->hasVatsimRatings() == true))
-                                    <button class="dropdown-item" data-bs-toggle="modal" data-bs-target="#{{ Str::camel($requestType->getName()) }}">
-                                        <i class="fas {{ $requestType->getIcon() }}"></i>&nbsp;
-                                        {{ $requestType->getName() }}
-                                    </button>
-                                @endif
-                            @endforeach
-                        </div>
+                    <div class="d-flex flex-wrap gap-1 justify-content-end">
+                        @foreach($requestTypes as $requestType)
+                            @if($requestType->allowNonVatsimRatings() == true || ($requestType->allowNonVatsimRatings() == false && $training->hasVatsimRatings() == true))
+                                <button class="btn btn-sm btn-light btn-icon" type="button"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#{{ Str::camel($requestType->getName()) }}">
+                                    <i class="fas {{ $requestType->getIcon() }}"></i>&nbsp;
+                                    {{ $requestType->getName() }}
+                                </button>
+                            @endif
+                        @endforeach
                     </div>
                 @endcan
 
@@ -79,9 +83,6 @@
                     <dt>State</dt>
                     <dd>
                         <i class="{{ $training->status->icon() }} text-{{ $training->status->color() }}"></i>
-                        @if($training->status === \App\Helpers\TrainingStatus::PRE_TRAINING && $training->pre_training_completed)
-                            <i class="fas fa-check text-success"></i>
-                        @endif
                         {{ $training->status->label() }}
                         {{ isset($training->paused_at) ? ' (PAUSED)' : '' }}
                     </dd>
@@ -633,6 +634,22 @@
 <div class="row">
     <div class="col-xl-12 col-md-12 mb-12">
         @include('vatssa.parts.message-log', ['training' => $training])
+    </div>
+</div>
+
+{{-- VATSSA: notes about this training, for the ATC training manager and admins.
+     Not the student, and not their mentor -- upstream own comment is an
+     activity-log entry visible to everybody who can see the training, which is
+     why it cannot carry anything sensitive. --}}
+<div class="row">
+    <div class="col-xl-12 col-md-12 mb-12">
+        @include('vatssa.parts.internal-notes', [
+            'scope' => \App\Models\Vatssa\InternalNote::SCOPE_TRAINING,
+            'notes' => \App\Models\Vatssa\InternalNote::where('training_id', $training->id)
+                ->where('scope', \App\Models\Vatssa\InternalNote::SCOPE_TRAINING)
+                ->with('author')->latest()->get(),
+            'action' => route('vatssa.notes.training', $training),
+        ])
     </div>
 </div>
 

@@ -52,7 +52,8 @@
                             <tr>
                                 <td>
                                     <i class="{{ $training->status->icon() }} text-{{ $training->status->color() }}"></i>
-                                    @if($training->status === \App\Helpers\TrainingStatus::PRE_TRAINING && $training->pre_training_completed)
+                                    {{-- VATSSA: pre_training_completed is retired. Kept false-y so this never shows. --}}
+                                    @if(false)
                                         <i class="fas fa-check text-success"></i>
                                     @endif
 

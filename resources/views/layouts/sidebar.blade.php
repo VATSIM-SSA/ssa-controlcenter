@@ -22,7 +22,17 @@
 
         @can('update', [\App\Models\Task::class])
             @php
-                $pendingTaskCount = \Auth::user()->tasks->where('status', \App\Helpers\TaskStatus::PENDING)->count();
+                // VATSSA: what is on YOUR DESKS, not what carries your name.
+                // A request belongs to a desk; the assignee column exists only
+                // because it is NOT NULL. Counting it would tell a coordinator
+                // their queue was empty while their desk was not.
+                $myDesks = \App\Models\Vatssa\RequestTarget::desksFor(\Auth::user());
+                $pendingTaskCount = \App\Models\Task::where(function ($q) use ($myDesks) {
+                        $q->where('assignee_user_id', \Auth::id());
+                        $q->orWhere(fn ($inner) => \App\Models\Vatssa\RequestTarget::scopeToDesks($inner, $myDesks));
+                    })
+                    ->where('status', \App\Helpers\TaskStatus::PENDING)
+                    ->count();
             @endphp
 
             <x-sidebar.item :href="route('tasks')" icon="fa-list" title="Tasks" :active="Route::is('tasks')">

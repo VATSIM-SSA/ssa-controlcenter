@@ -72,6 +72,12 @@ return [
         // does not need to know they got 62%.
         'training.results.view',
         'training.results.grades',
+        // VATSSA: internal notes, at two scopes with two audiences.
+        // Disciplinary history, why somebody was removed or refused, complaints
+        // -- things that must be recorded and must not be visible to the person
+        // they are about. A training note is for the ATC training manager; a
+        // member note outlives every training and is admin-only.
+        'training.notes.view',
 
         // Examinations
         'examinations.manage',
@@ -108,6 +114,9 @@ return [
         // Users
         'users.manage',
         'users.access.view',
+        // Admin only. Deliberately NOT inside users.** for anybody else --
+        // see the denies on the ATC training manager below.
+        'users.notes.view',
         'users.workmail.use',
 
         // Tasks
@@ -170,6 +179,7 @@ return [
             '!fir.management.access.view',      // the access report is an audit surface, not training work
             'users.**',                         // manage + workmail.use
             '!users.access.view',               // who holds what role is admin business
+            '!users.notes.view',                // member notes are admin-only, by design
             'notifications.inactivity.receive', // NOT notifications.templates.manage
             'tasks.**',                         // includes tasks.overview — see the note below
             'files.**',
@@ -188,6 +198,7 @@ return [
             'examinations.manage',
             'endorsements.solo.*',
             'endorsements.rosters.view',        // the three roster pages
+            '!training.notes.view',             // training notes are ATM and admin
             'fir.management.reports.view',      // the training-request queue and mentor index — never remove
             // fir.positions.view and users.access.view were BOTH removed here
             // when they came off the ATC training manager. A coordinator

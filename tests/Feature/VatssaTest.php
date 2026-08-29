@@ -476,7 +476,7 @@ class VatssaTest extends TestCase
 
         $task = Task::create([
             'type' => \App\Tasks\Types\LeaveOfAbsence::class,
-            'vatssa_tier' => RequestTarget::VATSSA1,     // nobody assigned
+            'vatssa_tier' => RequestTarget::LEADERSHIP,     // nobody assigned
             'subject_user_id' => $training->user_id,
             'subject_training_id' => $training->id,
             'assignee_user_id' => $requester->id,

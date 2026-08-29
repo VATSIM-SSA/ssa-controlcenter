@@ -12,7 +12,7 @@ use Illuminate\Support\Collection;
 /**
  * VATSSA: who currently sits at each request desk.
  *
- * Four desks. Only the coordinator one is per-rating -- an S2 request goes to
+ * Three desks. Only the coordinator one is per-rating -- an S2 request goes to
  * the S2 coordinator, and "the S2 coordinator" is a question about rating, not
  * about area, which is why this does not live in `role_user`.
  *
@@ -20,6 +20,14 @@ use Illuminate\Support\Collection;
  * says who receives the work. They are deliberately separate: an ATC training
  * manager holds every coordinator permission and is nobody's default
  * coordinator.
+ *
+ * ## A REQUEST BELONGS TO A DESK, NOT TO A PERSON
+ *
+ * `tasks.assignee_user_id` is NOT NULL, so a row still carries somebody -- but
+ * that is a database requirement, not a fact about the work, and nothing in the
+ * interface shows it. Everybody at a desk sees the same queue and any of them
+ * can act. A coordinator going on leave does not take their requests with them,
+ * and nobody has to think about who "owns" a request before answering it.
  */
 class RequestTarget extends Model
 {
@@ -31,16 +39,14 @@ class RequestTarget extends Model
 
     public const TRAINING_MANAGER = 'training-manager';
 
-    public const VATSSA1 = 'vatssa1';
-
-    public const VATSSA2 = 'vatssa2';
+    public const LEADERSHIP = 'leadership';
 
     /**
      * The desks, in the order they should be offered.
      *
      * Coordinator first because it is the right answer for almost everything;
-     * the two director desks last because escalating past the training staff
-     * should feel like a deliberate choice rather than the top of a list.
+     * leadership last, because escalating past the training staff should feel
+     * like a deliberate choice rather than the top of a list.
      */
     public const TIERS = [
         self::COORDINATOR => [
@@ -53,14 +59,12 @@ class RequestTarget extends Model
             'hint' => 'Training policy, examiner matters, anything a coordinator cannot decide.',
             'per_rating' => false,
         ],
-        self::VATSSA1 => [
-            'label' => 'Division Director (VATSSA1)',
-            'hint' => 'Division-level decisions. Rarely the right first stop.',
-            'per_rating' => false,
-        ],
-        self::VATSSA2 => [
-            'label' => 'Deputy Division Director (VATSSA2)',
-            'hint' => 'Division-level decisions. Rarely the right first stop.',
+        // One desk, not VATSSA1 and VATSSA2 separately. Somebody escalating a
+        // training matter does not know which director owns it, and making them
+        // guess is how a request ends up on the wrong one. Both sit here.
+        self::LEADERSHIP => [
+            'label' => 'Division leadership',
+            'hint' => 'VATSSA1 and VATSSA2. Division-level decisions, and rarely the right first stop.',
             'per_rating' => false,
         ],
     ];
@@ -116,19 +120,71 @@ class RequestTarget extends Model
     }
 
     /**
-     * Who a new request at this desk should land on.
+     * Which row a new request should be stamped with.
      *
-     * Fewest open tasks first, so one person does not absorb the queue simply
-     * by being listed first. Null when the desk has nobody -- the caller
-     * decides what to do about that, because silently picking somebody would be
-     * worse than the request visibly having nowhere to go.
+     * NOT "who is responsible" -- the desk is. This only satisfies the NOT NULL
+     * on `assignee_user_id`, and nothing in the interface reads it back. The
+     * first person at the desk is as good an answer as any; picking by workload
+     * would imply an ownership the model does not have.
+     *
+     * Null when the desk is empty. The caller decides what to do about that,
+     * because silently picking somebody would be worse than the request
+     * visibly having nowhere to go.
      */
     public static function nextAt(string $tier, ?int $ratingId = null): ?User
     {
-        return self::peopleAt($tier, $ratingId)
-            ->sortBy(fn (User $user) => Task::where('assignee_user_id', $user->id)
-                ->whereNull('closed_at')
-                ->count())
-            ->first();
+        return self::peopleAt($tier, $ratingId)->first();
+    }
+
+    /**
+     * The desks one person sits at.
+     *
+     * This is what "your tasks" means now. Admins are on the leadership desk
+     * whether or not somebody remembered to add them: they can already do
+     * everything, and a leadership request nobody sees is worse than one seen
+     * by an extra person.
+     *
+     * @return Collection<int, array{tier: string, rating_id: int|null}>
+     */
+    public static function desksFor(User $user): Collection
+    {
+        $desks = static::where('user_id', $user->id)
+            ->get(['tier', 'rating_id'])
+            ->map(fn (self $row) => ['tier' => $row->tier, 'rating_id' => $row->rating_id]);
+
+        if ($user->hasPermission('system.settings.manage')
+            && ! $desks->contains(fn ($desk) => $desk['tier'] === self::LEADERSHIP)) {
+            $desks->push(['tier' => self::LEADERSHIP, 'rating_id' => null]);
+        }
+
+        return $desks->values();
+    }
+
+    /**
+     * Constrain a task query to the desks somebody sits at.
+     *
+     * A coordinator desk row with a null rating is a catch-all and matches
+     * every rating, which is what lets a one-coordinator division work without
+     * four identical rows.
+     */
+    public static function scopeToDesks($query, Collection $desks)
+    {
+        return $query->where(function ($outer) use ($desks) {
+            // Matches nothing when the list is empty, rather than everything.
+            // The failure mode of the alternative is showing one person the
+            // whole division's requests.
+            $outer->whereRaw('1 = 0');
+
+            foreach ($desks as $desk) {
+                $outer->orWhere(function ($q) use ($desk) {
+                    $q->where('vatssa_tier', $desk['tier']);
+
+                    if ($desk['rating_id'] !== null) {
+                        $q->where(fn ($r) => $r->where('vatssa_rating_id', $desk['rating_id'])
+                            ->orWhereNull('vatssa_rating_id'));
+                    }
+                });
+            }
+        });
     }
 }

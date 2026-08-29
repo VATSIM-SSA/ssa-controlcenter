@@ -41,17 +41,22 @@
                         <label class="form-label">Send request to</label>
                         @php $tierField = Str::camel($requestType->getName()) . 'Tier'; @endphp
 
+                        {{-- Buttons rather than a radio list: three desks, and
+                             the choice should read as three options rather than
+                             a form to fill in. The hint stays underneath,
+                             because "which desk" is exactly the thing somebody
+                             raising their first request will not know. --}}
                         @foreach(\App\Models\Vatssa\RequestTarget::TIERS as $tierKey => $tier)
-                            <div class="form-check">
-                                <input class="form-check-input" type="radio" required
-                                       name="vatssa_tier" value="{{ $tierKey }}"
-                                       id="{{ $tierField }}{{ $loop->index }}"
-                                       @checked($loop->first)>
-                                <label class="form-check-label" for="{{ $tierField }}{{ $loop->index }}">
-                                    {{ $tier['label'] }}
-                                    <small class="d-block text-muted">{{ $tier['hint'] }}</small>
-                                </label>
-                            </div>
+                            <input type="radio" class="btn-check" required
+                                   name="vatssa_tier" value="{{ $tierKey }}"
+                                   id="{{ $tierField }}{{ $loop->index }}"
+                                   autocomplete="off"
+                                   @checked($loop->first)>
+                            <label class="btn btn-outline-primary btn-sm mb-1 text-start w-100"
+                                   for="{{ $tierField }}{{ $loop->index }}">
+                                {{ $tier['label'] }}
+                                <small class="d-block fw-normal">{{ $tier['hint'] }}</small>
+                            </label>
                         @endforeach
 
                         <div class="mt-3">

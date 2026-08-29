@@ -282,6 +282,21 @@
             </div>
         </div>
 
+        {{-- VATSSA: admin-only notes about the person. They outlive every
+             training, which is the point -- closing a training must not erase
+             the reason it was closed. --}}
+        <div class="row">
+            <div class="col-xl-12 col-lg-12 col-md-12">
+                @include('vatssa.parts.internal-notes', [
+                    'scope' => \App\Models\Vatssa\InternalNote::SCOPE_USER,
+                    'notes' => \App\Models\Vatssa\InternalNote::where('user_id', $user->id)
+                        ->where('scope', \App\Models\Vatssa\InternalNote::SCOPE_USER)
+                        ->with('author')->latest()->get(),
+                    'action' => route('vatssa.notes.user', $user),
+                ])
+            </div>
+        </div>
+
         <div class="col-xl-12 col-lg-12 col-md-12 p-0">
             <div class="card shadow mb-4">
                 <div class="card-header bg-primary py-3 d-flex flex-row align-items-center justify-content-between">

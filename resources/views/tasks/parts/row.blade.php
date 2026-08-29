@@ -1,11 +1,24 @@
+{{--
+    VATSSA: one request row.
+
+    THE ASSIGNEE IS NEVER SHOWN. A request belongs to a desk, and everybody at
+    that desk can act on it. `assignee_user_id` exists because the column is NOT
+    NULL, and displaying it would put one person's name on work that is not
+    theirs alone -- which is the ownership confusion the desks were built to
+    remove.
+
+    Expects: $task, $state ('pending'|'archived'), $desk
+--}}
 <tr>
     <td>
-        @php $showClosed = in_array($activeFilter, ['archived', 'all-archived']) && $task->closed_at; @endphp
+        @php $showClosed = $state === 'archived' && $task->closed_at; @endphp
         <span data-bs-toggle="tooltip" data-bs-placement="top" title="{{ $showClosed ? $task->closed_at->toEuropeanDateTime() : $task->created_at->toEuropeanDateTime() }}">
             {{ $showClosed ? $task->closed_at->diffForHumans() : $task->created_at->diffForHumans() }}
         </span>
     </td>
+
     <td><a href="{{ route('user.show', $task->subject) }}">{{ $task->subject->name }} ({{ $task->subject->id }})</a></td>
+
     <td>
         <i class="fas {{ $task->type()->getIcon() }}" data-bs-toggle="tooltip" data-bs-placement="top" title="{{ $task->type()->getName() }}"></i>
 
@@ -15,35 +28,32 @@
             {{ $task->type()->getText($task) }}
         @endif
     </td>
+
     <td>
-        @if($activeFilter == 'sent')
-            <a href="{{ route('user.show', $task->assignee) }}">{{ $task->assignee->name }} ({{ $task->assignee->id }})</a>
+        @if($task->vatssa_tier)
+            <span class="badge bg-secondary">
+                {{ \App\Models\Vatssa\RequestTarget::label($task->vatssa_tier) }}@if($task->vatssa_rating_id && $task->vatssaRating)
+                    — {{ $task->vatssaRating->name }}
+                @endif
+            </span>
         @else
-            @isset($task->creator)
-                <a href="{{ route('user.show', $task->creator) }}">{{ $task->creator->name }} ({{ $task->creator->id }})</a>
-            @else
-                System
-            @endisset
+            {{-- Upstream tasks, and anything created before the desks existed.
+                 Shown rather than hidden: a request with no desk is one nobody
+                 is collectively responsible for, which is worth noticing. --}}
+            <span class="badge bg-light text-dark">No desk</span>
         @endif
     </td>
 
-    @if(in_array($activeFilter, ['all', 'all-archived']))
-        {{-- VATSSA: which desk it went to, and who is holding it. The desk is
-             the useful half -- "the S2 coordinator" survives a person leaving,
-             where a name does not. --}}
-        <td>
-            @if($task->vatssa_tier)
-                <span class="badge bg-secondary">{{ \App\Models\Vatssa\RequestTarget::label($task->vatssa_tier) }}</span>
-            @endif
-            <a class="d-block small" href="{{ route('user.show', $task->assignee) }}">{{ $task->assignee->name }} ({{ $task->assignee->id }})</a>
-        </td>
-    @endif
+    <td>
+        @isset($task->creator)
+            <a href="{{ route('user.show', $task->creator) }}">{{ $task->creator->name }} ({{ $task->creator->id }})</a>
+        @else
+            System
+        @endisset
+    </td>
 
     <td>
-        {{-- VATSSA: the overview shows status, not buttons. Those are other
-             people's tasks; offering Complete on one you do not own is an
-             invitation to a mistake the policy would refuse anyway. --}}
-        @if(!in_array($activeFilter, ['sent', 'archived', 'all', 'all-archived']))
+        @if($state === 'pending')
             <div class="btn-toolbar" role="toolbar" aria-label="Task actions">
                 <div class="btn-group">
                     @if($task->type()->isApproval())
