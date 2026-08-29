@@ -290,8 +290,11 @@
         {{-- VATSSA: admin-only notes about the person. They outlive every
              training, which is the point -- closing a training must not erase
              the reason it was closed. --}}
+        {{-- Half width, beside nothing rather than sprawling: a member profile
+             already runs long, and a full-page note box at the bottom of it
+             reads as more important than the trainings above. --}}
         <div class="row">
-            <div class="col-xl-12 col-lg-12 col-md-12">
+            <div class="col-xl-7 col-lg-12 col-md-12">
                 @include('vatssa.parts.internal-notes', [
                     'scope' => \App\Models\Vatssa\InternalNote::SCOPE_USER,
                     'notes' => \App\Models\Vatssa\InternalNote::where('user_id', $user->id)

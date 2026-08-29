@@ -21,13 +21,17 @@
 @endphp
 
 @can($permission)
-    <div class="card shadow mb-4 border-warning">
-        <div class="card-header bg-warning py-3 d-flex flex-row align-items-center justify-content-between">
-            <h6 class="m-0 fw-bold text-dark">
+    {{-- Quiet. An amber block the width of the page shouted louder than the
+         training it was attached to, and a panel that shouts gets ignored. The
+         lock icon and the audience line carry the meaning; the colour does not
+         need to. --}}
+    <div class="card shadow mb-4">
+        <div class="card-header bg-primary py-3 d-flex flex-row align-items-center justify-content-between">
+            <h6 class="m-0 fw-bold text-white">
                 <i class="fas fa-lock"></i>&nbsp;{{ $meta['label'] }}s
             </h6>
             @if($notes->count())
-                <span class="badge bg-dark">{{ $notes->count() }}</span>
+                <span class="badge bg-light text-dark">{{ $notes->count() }}</span>
             @endif
         </div>
         <div class="card-body">
@@ -36,7 +40,7 @@
             </div>
 
             @forelse($notes as $note)
-                <div class="border-start border-3 border-warning ps-3 mb-3">
+                <div class="border-start border-3 border-secondary ps-3 mb-3">
                     <div style="white-space: pre-wrap">{{ $note->body }}</div>
                     <small class="text-muted d-block mt-1">
                         {{ $note->author?->name ?? 'Unknown' }} ·
@@ -64,7 +68,7 @@
                     <textarea class="form-control" name="body" rows="3" maxlength="5000" required
                               placeholder="What happened, and when. Write it as if it will be read back to you."></textarea>
                 </div>
-                <button type="submit" class="btn btn-sm btn-warning">Add note</button>
+                <button type="submit" class="btn btn-sm btn-outline-secondary">Add note</button>
             </form>
         </div>
     </div>

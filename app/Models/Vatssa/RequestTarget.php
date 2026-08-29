@@ -3,8 +3,8 @@
 namespace App\Models\Vatssa;
 
 use App\Models\Rating;
-use App\Models\Training;
 use App\Models\Task;
+use App\Models\Training;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;

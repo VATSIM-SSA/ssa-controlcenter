@@ -93,22 +93,10 @@
                         <span class="badge bg-danger"><i class="fas fa-xmark"></i> No account</span>
                     @endif
 
-                    {{-- Enrolment is a SEPARATE question from having an account,
-                         and conflating them hides the commonest stall in the
-                         pipeline: registered, never enrolled in a course, and
-                         waiting for something that is not coming. Two green
-                         ticks, nothing visibly wrong, nothing happening. --}}
-                    @if($platforms->on_moodle)
-                        <small class="d-block mt-1">
-                            @if($platforms->isEnrolled())
-                                <span class="badge bg-success">{{ $platforms->enrolmentLabel() }}</span>
-                            @elseif($platforms->moodle_enrolment === 'suspended')
-                                <span class="badge bg-secondary">{{ $platforms->enrolmentLabel() }}</span>
-                            @else
-                                <span class="badge bg-warning text-dark">{{ $platforms->enrolmentLabel() }}</span>
-                            @endif
-                        </small>
-                    @endif
+                    {{-- Course enrolment lives in the Theory panel, not here.
+                         This card answers "can we reach them"; enrolment is
+                         part of "how is the theory going", and putting it here
+                         made one card answer two questions. --}}
                 </dd>
             </dl>
         @endif

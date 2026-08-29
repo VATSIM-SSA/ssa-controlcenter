@@ -65,6 +65,32 @@
                 </span>
             @endforeach
         </div>
+        {{-- Enrolment first, because it is the precondition for everything
+             below it. A student registered on Moodle but never enrolled in a
+             course has no attempts and never will, and "no attempts recorded"
+             on its own reads as "has not got round to it" rather than "is
+             stuck". --}}
+        @php $platform = \App\Models\Vatssa\UserPlatform::find($user->id); @endphp
+        @if($platform && $platform->on_moodle)
+            <div class="card-body pb-0">
+                @if($platform->isEnrolled())
+                    <span class="badge bg-success">{{ $platform->enrolmentLabel() }}</span>
+                @elseif($platform->moodle_enrolment === 'suspended')
+                    <span class="badge bg-secondary">{{ $platform->enrolmentLabel() }}</span>
+                    <small class="text-muted d-block mt-1">
+                        Past attempts are kept — the pipeline suspends rather than
+                        unenrols, so a returning student keeps every result.
+                    </small>
+                @else
+                    <span class="badge bg-warning text-dark">{{ $platform->enrolmentLabel() }}</span>
+                    <small class="text-muted d-block mt-1">
+                        Registered on Moodle but in no course. Nothing will happen
+                        until somebody enrols them.
+                    </small>
+                @endif
+            </div>
+        @endif
+
         <div class="card-body {{ $attempts->isEmpty() ? '' : 'p-0' }}">
             @if($needsNoTheory ?? false)
                 {{-- Not a gap. Refresh, transfer, fast-track and familiarisation

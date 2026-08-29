@@ -55,25 +55,25 @@
                     @endforeach
                 </h6>
 
-                {{-- VATSSA: buttons, not a dropdown.
-
-                     There are six request types and they are the main thing a
-                     mentor or student comes to this page to do. Behind a
-                     dropdown labelled "Request" they are invisible -- people
-                     ask in Discord instead, which is exactly the behaviour the
-                     request system exists to replace. --}}
+                {{-- Upstream's dropdown, kept. Six request types laid out as
+                     buttons pushed the card header onto two rows and crowded
+                     everything beside it; a labelled menu holds them without
+                     costing the page its shape. --}}
                 @can('create', [\App\Models\Task::class])
-                    <div class="d-flex flex-wrap gap-1 justify-content-end">
-                        @foreach($requestTypes as $requestType)
-                            @if($requestType->allowNonVatsimRatings() == true || ($requestType->allowNonVatsimRatings() == false && $training->hasVatsimRatings() == true))
-                                <button class="btn btn-sm btn-light btn-icon" type="button"
-                                        data-bs-toggle="modal"
-                                        data-bs-target="#{{ Str::camel($requestType->getName()) }}">
-                                    <i class="fas {{ $requestType->getIcon() }}"></i>&nbsp;
-                                    {{ $requestType->getName() }}
-                                </button>
-                            @endif
-                        @endforeach
+                    <button class="btn btn-light btn-icon dropdown-toggle" type="button" id="dropdownMenuButton" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                        <i class="fas fa-hand"></i> Request
+                    </button>
+                    <div class="dropdown">
+                        <div class="dropdown-menu" aria-labelledby="dropdownMenuButton">
+                            @foreach($requestTypes as $requestType)
+                                @if($requestType->allowNonVatsimRatings() == true || ($requestType->allowNonVatsimRatings() == false && $training->hasVatsimRatings() == true))
+                                    <button class="dropdown-item" data-bs-toggle="modal" data-bs-target="#{{ Str::camel($requestType->getName()) }}">
+                                        <i class="fas {{ $requestType->getIcon() }}"></i>&nbsp;
+                                        {{ $requestType->getName() }}
+                                    </button>
+                                @endif
+                            @endforeach
+                        </div>
                     </div>
                 @endcan
 
@@ -615,6 +615,14 @@
      The theory block is filtered to the training's own ratings. Results are
      keyed to person plus rating rather than to a training, so an S2 training
      shows the S2 history and not this person's whole exam record. --}}
+{{-- Two rows of two, not four stacked full-width blocks.
+
+     Every one of these was its own full-page row, so a training ran on for
+     screens with a lot of air in it. Paired, they fill the width and the page
+     ends where the information does.
+
+     Platforms is narrow because it is two badges. Theory, the email log and the
+     notes all hold tables or a text box and need the room. --}}
 <div class="row">
     <div class="col-xl-4 col-lg-12 col-md-12">
         @include('vatssa.parts.platforms', ['user' => $training->user])
@@ -632,17 +640,15 @@
 </div>
 
 <div class="row">
-    <div class="col-xl-12 col-md-12 mb-12">
+    <div class="col-xl-7 col-lg-12 col-md-12">
         @include('vatssa.parts.message-log', ['training' => $training])
     </div>
-</div>
 
-{{-- VATSSA: notes about this training, for the ATC training manager and admins.
-     Not the student, and not their mentor -- upstream own comment is an
-     activity-log entry visible to everybody who can see the training, which is
-     why it cannot carry anything sensitive. --}}
-<div class="row">
-    <div class="col-xl-12 col-md-12 mb-12">
+    {{-- Notes about this training, for the ATC training manager and admins --
+         not the student and not their mentor. Upstream's own comment is an
+         activity-log entry visible to everybody who can see the training, which
+         is exactly why it cannot carry anything sensitive. --}}
+    <div class="col-xl-5 col-lg-12 col-md-12">
         @include('vatssa.parts.internal-notes', [
             'scope' => \App\Models\Vatssa\InternalNote::SCOPE_TRAINING,
             'notes' => \App\Models\Vatssa\InternalNote::where('training_id', $training->id)
