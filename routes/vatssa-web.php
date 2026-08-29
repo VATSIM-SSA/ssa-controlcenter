@@ -1,8 +1,8 @@
 <?php
 
 use App\Http\Controllers\Vatssa\InternalNoteController;
-use App\Http\Controllers\Vatssa\TaskEditController;
 use App\Http\Controllers\Vatssa\SettingsController;
+use App\Http\Controllers\Vatssa\TaskEditController;
 use Illuminate\Support\Facades\Route;
 
 /*

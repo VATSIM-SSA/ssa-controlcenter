@@ -18,6 +18,9 @@ use App\Models\Vatssa\RequestTarget;
 use App\Models\Vatssa\TheoryAttempt;
 use App\Models\Vatssa\UserPlatform;
 use App\Services\PermissionMatrix;
+use App\Tasks\Types\CheckoutRequest;
+use App\Tasks\Types\LeaveOfAbsence;
+use App\Tasks\Types\ReturnFromLeave;
 use Database\Seeders\VatssaPipelineSeeder;
 use Database\Seeders\VatssaSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -452,7 +455,7 @@ class VatssaTest extends TestCase
         $training = Training::where('user_id', 10000304)->firstOrFail();
 
         $task = Task::create([
-            'type' => \App\Tasks\Types\LeaveOfAbsence::class,
+            'type' => LeaveOfAbsence::class,
             'vatssa_tier' => RequestTarget::COORDINATOR,
             'vatssa_rating_id' => $rating->id,
             'subject_user_id' => $training->user_id,
@@ -477,7 +480,7 @@ class VatssaTest extends TestCase
         $training = Training::where('user_id', 10000304)->firstOrFail();
 
         $task = Task::create([
-            'type' => \App\Tasks\Types\LeaveOfAbsence::class,
+            'type' => LeaveOfAbsence::class,
             'vatssa_tier' => RequestTarget::LEADERSHIP,     // nobody assigned
             'subject_user_id' => $training->user_id,
             'subject_training_id' => $training->id,
@@ -531,9 +534,9 @@ class VatssaTest extends TestCase
         // arbitrariness the desks are meant to remove.
         $types = array_map(fn ($type) => $type::class, TaskController::getTypes());
 
-        $this->assertContains(\App\Tasks\Types\LeaveOfAbsence::class, $types);
-        $this->assertContains(\App\Tasks\Types\ReturnFromLeave::class, $types);
-        $this->assertContains(\App\Tasks\Types\CheckoutRequest::class, $types);
+        $this->assertContains(LeaveOfAbsence::class, $types);
+        $this->assertContains(ReturnFromLeave::class, $types);
+        $this->assertContains(CheckoutRequest::class, $types);
     }
 
     // ---------------------------------------------------------------------
