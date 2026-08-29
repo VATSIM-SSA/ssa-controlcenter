@@ -25,8 +25,9 @@
     * `training.results.grades` -- the actual marks
 
     Expects: $user
-    Optional: $onlyRatings (array of rating names) to filter to
-              $panelTitle  (defaults to "Theory")
+    Optional: $onlyRatings    (array of rating names) to filter to
+              $panelTitle     (defaults to "Theory")
+              $needsNoTheory  true for a track that sits none at all
 
     Both optional names are deliberately unusual. @include inherits the parent
     view's whole scope, so a partial that reads a variable called $ratings or
@@ -65,7 +66,16 @@
             @endforeach
         </div>
         <div class="card-body {{ $attempts->isEmpty() ? '' : 'p-0' }}">
-            @if($attempts->isEmpty())
+            @if($needsNoTheory ?? false)
+                {{-- Not a gap. Refresh, transfer, fast-track and familiarisation
+                     students already hold the rating, so there is no theory
+                     course for them to sit -- saying "no attempts recorded"
+                     would read as missing data and send somebody looking. --}}
+                <p class="mb-0 text-muted">
+                    This track sits no theory. The student already holds the
+                    rating.
+                </p>
+            @elseif($attempts->isEmpty())
                 <p class="mb-0 text-muted">
                     @if($ratingFilter->isNotEmpty())
                         No {{ $ratingFilter->implode(', ') }} theory attempts recorded.

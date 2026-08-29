@@ -623,6 +623,9 @@
             'user' => $training->user,
             'onlyRatings' => $training->ratings->pluck('name')->all(),
             'panelTitle' => 'Theory for this rating',
+            // Only the Standard track sits theory. Refresh, transfer,
+            // fast-track and familiarisation students already hold the rating.
+            'needsNoTheory' => $training->type != 1,
         ])
     </div>
 </div>
