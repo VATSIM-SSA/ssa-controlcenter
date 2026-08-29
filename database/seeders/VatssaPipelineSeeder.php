@@ -13,58 +13,64 @@ use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 
 /**
- * VATSSA: a cohort that walks the whole training pipeline, with no bot running.
+ * VATSSA: make the training pipeline usable on dev, with nothing else running.
  *
  *   php artisan db:seed --class=VatssaPipelineSeeder
  *
  * ## What this is for
  *
  * Everything the pipeline writes into Control Center normally arrives over the
- * bridge, from a bot that polls Moodle and Discord. That is a lot of moving
- * parts to stand up before you can answer a simple question: does the training
- * page look right for somebody waiting on a mentor?
+ * bridge, from a bot polling Moodle and Discord. Standing all that up before
+ * you can answer "does the training page look right for somebody waiting on a
+ * mentor" is absurd. This writes the same rows directly. **No bot, no bridge,
+ * no Moodle, no Discord.**
  *
- * This writes the same rows directly. **No bridge, no bot, no Moodle, no
- * Discord.** Log in as any of the fixed accounts and click through.
+ * ## It backfills what is already there
  *
- * ## The cohort
+ * `VatssaSeeder` creates 250 users and around 110 trainings. Without this they
+ * all have an empty Platforms panel, no theory results and no email log -- so
+ * every page you open looks broken, and the two or three deliberately
+ * interesting students are lost among them.
  *
- * Ten students, one per situation worth looking at, on CIDs 10000301-10000310
- * so they never collide with `VatssaSeeder`'s fixtures.
+ * So this runs in two parts:
  *
- *   301  In queue          nothing yet -- the day they registered
- *   302  Pre-training      on both platforms, no attempt yet
- *   303  Pre-training      failed once, still inside the window
- *   304  Awaiting mentor   passed -- THE stage upstream cannot express
- *   305  Awaiting mentor   passed, failed a retake, passed again
- *   306  Active training   mentored, past the gate
- *   307  Awaiting exam     ready for a CPT
- *   308  Completed         passed the CPT
- *   309  Pre-training      NOT on Discord -- the chase case
- *   310  Pre-training      not a VATSIM member -- a bot or test account
+ * 1. **The backfill.** Every user gets a platform row and every open standard
+ *    training gets theory attempts and an email history, consistent with the
+ *    stage it is in. Browsing dev then looks like browsing a real division.
+ * 2. **The named cohort**, on CIDs 10000301-10000310. Ten students built by
+ *    hand, one per situation worth looking at on purpose.
  *
- * ## Two of these exist to be looked at closely
+ * ## The factory cannot produce awaiting-mentor
  *
- * **305** is the case the whole "latest, not best" rule is for. Three attempts:
- * pass, fail, pass. Its panel must show all three, and the person must read as
- * currently passed -- and would read as failed if the middle one were last.
+ * `TrainingFactory` rolls a status between -4 and 3, and AWAITING_MENTOR is 4
+ * (appended rather than inserted -- see `App\Helpers\TrainingStatus`). So the
+ * backfill MOVES a share of pre-training rows into it. Without that, the one
+ * stage this whole fork exists to add would be the only empty page on dev.
  *
- * **310** is not a missing tick. A Discord account that resolves to no CID is a
- * bot or a test account, and the panel says so rather than showing a broken
- * cross.
+ * ## Two of the named ten are worth staring at
+ *
+ * **10000305** has three attempts: pass, fail, pass. All three show, and the
+ * person reads as currently passed -- and would read as failed if the middle
+ * one were last. That is the whole "latest, not best" rule on one page.
+ *
+ * **10000310** resolves to no CID. That is a bot or a test account: its own
+ * state, not a missing tick.
  *
  * ## Guards
  *
- * Refuses in production, like `VatssaSeeder`. Re-running is safe: every write
- * is keyed, so it updates in place rather than duplicating.
+ * Refuses in production. Every write is keyed, so re-running updates in place
+ * rather than duplicating -- which is why `deploy-cc.sh` can call it on every
+ * dev and staging deploy without a conditional.
  */
 class VatssaPipelineSeeder extends Seeder
 {
     private const FIRST_CID = 10000301;
 
+    /** Standard track. The only one that sits theory. */
+    private const TYPE_STANDARD = 1;
+
     /**
-     * name, status, and what to write. `theory` is a list of
-     * [rating, grade, passed, days ago].
+     * The named ten. `theory` is a list of [rating, grade, passed, days ago].
      */
     private const COHORT = [
         [
@@ -148,43 +154,32 @@ class VatssaPipelineSeeder extends Seeder
         if (app()->environment('production')) {
             throw new \RuntimeException(
                 'VatssaPipelineSeeder refuses to run with APP_ENV=production. '
-                . 'It invents students, attempts and emails that never happened.'
+                . 'It invents students, exam results and emails that never happened.'
             );
         }
 
         $this->assertTablesExist();
 
-        $rating = Rating::where('name', 'S2')->first()
-            ?? Rating::whereNotNull('vatsim_rating')->orderBy('vatsim_rating')->first();
-
-        foreach (self::COHORT as $index => $spec) {
-            $cid = self::FIRST_CID + $index;
-
-            $user = User::updateOrCreate(['id' => $cid], [
-                'first_name' => explode(' ', $spec['name'])[0],
-                'last_name' => explode(' ', $spec['name'])[1],
-                'email' => strtolower(str_replace(' ', '.', $spec['name'])) . '@example.com',
-                'rating' => 2,
-                'region' => 'EMEA',
-                'division' => 'SSA',
-                'subdivision' => null,
-            ]);
-
-            $this->platforms($user, $spec['platforms']);
-            $this->theory($user, $spec['theory']);
-            $training = $this->training($user, $spec, $rating);
-            $this->messages($user, $training, $spec);
-        }
+        $this->seedCohort();
+        $this->promoteSomeToAwaitingMentor();
+        $this->backfillPlatforms();
+        $this->backfillTheory();
+        $this->backfillMessageLog();
 
         $this->command?->info(sprintf(
-            'VatssaPipelineSeeder: %d students on CIDs %d-%d. No bridge, bot, Moodle or Discord needed.',
-            count(self::COHORT), self::FIRST_CID, self::FIRST_CID + count(self::COHORT) - 1
+            'VatssaPipelineSeeder: %d platform rows, %d theory attempts, %d logged emails. '
+            . 'Named cohort on CIDs %d-%d.',
+            UserPlatform::count(),
+            TheoryAttempt::count(),
+            MessageLog::count(),
+            self::FIRST_CID,
+            self::FIRST_CID + count(self::COHORT) - 1
         ));
     }
 
     /**
      * Fail loudly rather than half-seeding. Without the pipeline tables this
-     * would insert users and trainings and then throw, leaving a database that
+     * would write users and trainings and then throw, leaving a database that
      * is neither seeded nor clean.
      */
     private function assertTablesExist(): void
@@ -199,40 +194,45 @@ class VatssaPipelineSeeder extends Seeder
         }
     }
 
-    private function platforms(User $user, array $spec): void
-    {
-        UserPlatform::updateOrCreate(['user_id' => $user->id], [
-            // A plausible snowflake, so the panel renders one. Not a real
-            // account: these CIDs do not exist on VATSIM either.
-            'discord_user_id' => $spec['discord'] ? 900000000000000000 + $user->id : null,
-            'on_discord' => $spec['discord'],
-            'moodle_user_id' => $spec['moodle'] ? $user->id : null,
-            'on_moodle' => $spec['moodle'],
-            'vatsim_member' => $spec['vatsim_member'] ?? true,
-            // Recent, so nothing shows as stale. Flip this back a week to see
-            // what the staleness warning looks like.
-            'checked_at' => now()->subHours(3),
-        ]);
-    }
+    // -----------------------------------------------------------------
+    // The named ten
+    // -----------------------------------------------------------------
 
-    private function theory(User $user, array $attempts): void
+    private function seedCohort(): void
     {
-        foreach ($attempts as $index => [$rating, $grade, $passed, $daysAgo]) {
-            TheoryAttempt::updateOrCreate([
-                'user_id' => $user->id,
-                'moodle_quiz_id' => 52,
-                'moodle_attempt_id' => $index + 1,
-            ], [
-                'rating' => $rating,
-                'moodle_course_id' => 14,
-                'grade' => $grade,
-                'passed' => $passed,
-                'taken_at' => now()->subDays($daysAgo),
+        $rating = Rating::where('name', 'S2')->first()
+            ?? Rating::whereNotNull('vatsim_rating')->orderBy('vatsim_rating')->first();
+
+        foreach (self::COHORT as $index => $spec) {
+            [$first, $last] = explode(' ', $spec['name']);
+
+            $user = User::updateOrCreate(['id' => self::FIRST_CID + $index], [
+                'first_name' => $first,
+                'last_name' => $last,
+                'email' => strtolower("{$first}.{$last}") . '@example.com',
+                'rating' => 2,
+                'region' => 'EMEA',
+                'division' => 'SSA',
+                'subdivision' => null,
             ]);
+
+            $this->writePlatforms(
+                $user->id,
+                $spec['platforms']['discord'],
+                $spec['platforms']['moodle'],
+                $spec['platforms']['vatsim_member'] ?? true,
+            );
+
+            foreach ($spec['theory'] as $attemptIndex => [$forRating, $grade, $passed, $daysAgo]) {
+                $this->writeAttempt($user->id, $forRating, $attemptIndex + 1, $grade, $passed, $daysAgo);
+            }
+
+            $training = $this->cohortTraining($user, $spec, $rating);
+            $this->writeMessages($training, $spec['theory'] !== []);
         }
     }
 
-    private function training(User $user, array $spec, ?Rating $rating): Training
+    private function cohortTraining(User $user, array $spec, ?Rating $rating): Training
     {
         $status = $spec['status'];
 
@@ -240,10 +240,7 @@ class VatssaPipelineSeeder extends Seeder
             ['user_id' => $user->id, 'area_id' => 1],
             [
                 'status' => $status,
-                'type' => 1,
-                // country_id was renamed to area_id in 2021; there is no
-                // countries table any more. english_only_training is NOT NULL
-                // with no default, so it has to be given.
+                'type' => self::TYPE_STANDARD,
                 'motivation' => $spec['note'],
                 'english_only_training' => false,
                 'experience' => 1,
@@ -261,43 +258,250 @@ class VatssaPipelineSeeder extends Seeder
         if (in_array($status, [TrainingStatus::ACTIVE_TRAINING, TrainingStatus::AWAITING_EXAM], true)) {
             $mentor = User::find(10000006);
             if ($mentor && ! $training->mentors()->where('users.id', $mentor->id)->exists()) {
-                $training->mentors()->attach($mentor);
+                $training->mentors()->attach($mentor, ['expire_at' => now()->addYears(5)]);
             }
         }
 
         return $training;
     }
 
+    // -----------------------------------------------------------------
+    // The backfill
+    // -----------------------------------------------------------------
+
     /**
-     * A plausible email history, so the message log panel has something in it.
+     * Put a share of the pre-training rows into awaiting-mentor.
      *
-     * Both sources appear on purpose: the panel exists to show that Control
-     * Center and the pipeline both write to a student, which is the thing
-     * nobody could see before.
+     * `TrainingFactory` rolls a status between -4 and 3, so it can never
+     * produce AWAITING_MENTOR (4). Without this the one stage this fork exists
+     * to add is the only empty page on dev.
+     *
+     * Only rows with no mentor move, which is what awaiting-mentor means.
      */
-    private function messages(User $user, Training $training, array $spec): void
+    private function promoteSomeToAwaitingMentor(): void
+    {
+        $candidates = Training::where('status', TrainingStatus::PRE_TRAINING)
+            // Never the named cohort -- those ten say what they are by hand.
+            ->whereNotBetween('user_id', [self::FIRST_CID, self::FIRST_CID + 99])
+            ->whereDoesntHave('mentors')
+            ->orderBy('id')
+            ->get();
+
+        // Every third, so pre-training keeps a decent population of its own.
+        foreach ($candidates as $index => $training) {
+            if ($index % 3 !== 0) {
+                continue;
+            }
+            $training->status = TrainingStatus::AWAITING_MENTOR;
+            $training->save();
+        }
+    }
+
+    /**
+     * A platform row for every user.
+     *
+     * The distribution is the point. Almost everybody is on both -- they are
+     * mandatory to train here -- with a scattering of gaps so the chase cases
+     * are visible, and a couple of accounts that resolve to no CID at all.
+     *
+     * Derived from the CID rather than randomised, so a rebuilt dev database
+     * puts the same people in the same states and a bug you saw yesterday is
+     * still there today.
+     */
+    private function backfillPlatforms(): void
+    {
+        // whereNotIn rather than a relation, so User.php stays verbatim
+        // upstream. At division scale the id list is a few hundred rows.
+        User::whereNotIn('id', UserPlatform::pluck('user_id'))
+            ->orderBy('id')
+            ->chunkById(200, function ($users) {
+                foreach ($users as $user) {
+                    $bucket = $user->id % 20;
+
+                    $this->writePlatforms(
+                        $user->id,
+                        discord: $bucket !== 3,          // 1 in 20 not on Discord
+                        moodle: $bucket !== 7,           // 1 in 20 not on Moodle
+                        vatsimMember: $bucket !== 13,    // 1 in 20 is a bot
+                    );
+                }
+            });
+    }
+
+    /**
+     * Theory attempts for every open standard training.
+     *
+     * Consistent with the stage, because an inconsistent one is worse than
+     * none: a student in active training with no theory pass would look like a
+     * bug in the gate rather than a gap in the fixtures.
+     *
+     *   in queue        nothing -- they have not started
+     *   pre-training    nothing, or one fail
+     *   awaiting mentor a pass, and for some a failed first attempt before it
+     *   beyond that     a pass
+     *
+     * Only the standard track. Visiting, transfer and refresher trainings sit
+     * no theory, and giving them attempts would misrepresent the rule.
+     */
+    private function backfillTheory(): void
+    {
+        $trainings = Training::where('type', self::TYPE_STANDARD)
+            ->where('status', '>=', TrainingStatus::IN_QUEUE)
+            ->with('ratings')
+            ->get();
+
+        foreach ($trainings as $training) {
+            // Nothing has happened yet, by definition.
+            if ($training->status === TrainingStatus::IN_QUEUE) {
+                continue;
+            }
+
+            $rating = $training->ratings->first()?->name ?? 'S2';
+            $bucket = $training->id % 4;
+
+            // WHAT IS ALREADY TRUE OF THE PERSON, not of this training.
+            // Attempts are keyed to person plus rating, and VatssaSeeder gives
+            // some people more than one training -- so checking "does this
+            // training have attempts" would be the wrong question and would
+            // leave somebody past the gate with only a failed attempt from an
+            // earlier one.
+            $hasAny = TheoryAttempt::where('user_id', $training->user_id)->exists();
+            $hasPass = TheoryAttempt::where('user_id', $training->user_id)
+                ->where('passed', true)->exists();
+
+            if ($training->status === TrainingStatus::PRE_TRAINING) {
+                // Still inside the window. A quarter have failed once; the rest
+                // have not sat it yet.
+                if (! $hasAny && $bucket === 0) {
+                    $this->writeAttempt($training->user_id, $rating, 1, 52.0, false, 20);
+                }
+
+                continue;
+            }
+
+            // Past the gate, so a pass has to exist or the fixture contradicts
+            // the rule it is meant to demonstrate.
+            if (! $hasPass) {
+                $this->passedSequence($training, $rating, $hasAny ? 0 : $bucket);
+            }
+        }
+    }
+
+    /**
+     * A pass, and for a quarter of them a failed first attempt before it.
+     *
+     * The failed-then-passed shape is what makes the profile panel worth
+     * looking at: a single row proves nothing about ordering.
+     */
+    private function passedSequence(Training $training, string $rating, int $bucket): void
+    {
+        // Continue the person's numbering rather than restarting it. An
+        // attempt id is unique per user per quiz, so reusing 1 would overwrite
+        // the failed attempt an earlier training left behind instead of adding
+        // the pass after it.
+        $attempt = TheoryAttempt::where('user_id', $training->user_id)->count() + 1;
+
+        if ($bucket === 1) {
+            $this->writeAttempt($training->user_id, $rating, $attempt++, 61.0, false, 140);
+        }
+
+        $this->writeAttempt(
+            $training->user_id,
+            $rating,
+            $attempt,
+            70.0 + ($training->id % 30),      // 70-99, stable per training
+            true,
+            100
+        );
+    }
+
+    /**
+     * An email history for every open training.
+     *
+     * Both sources appear on purpose. The panel exists to show that Control
+     * Center and the pipeline both write to a student, which is the thing
+     * nobody could see before it.
+     */
+    private function backfillMessageLog(): void
+    {
+        Training::where('status', '>=', TrainingStatus::IN_QUEUE)
+            ->orderBy('id')
+            ->chunkById(200, function ($trainings) {
+                foreach ($trainings as $training) {
+                    if (MessageLog::where('training_id', $training->id)->exists()) {
+                        continue;
+                    }
+                    $this->writeMessages(
+                        $training,
+                        TheoryAttempt::where('user_id', $training->user_id)->where('passed', true)->exists()
+                    );
+                }
+            });
+    }
+
+    // -----------------------------------------------------------------
+    // Keyed writes. Every one of these is safe to repeat.
+    // -----------------------------------------------------------------
+
+    private function writePlatforms(int $userId, bool $discord, bool $moodle, bool $vatsimMember): void
+    {
+        UserPlatform::updateOrCreate(['user_id' => $userId], [
+            // A plausible snowflake so the panel renders one. Not a real
+            // account: these CIDs do not exist on VATSIM either.
+            'discord_user_id' => $discord ? 900000000000000000 + $userId : null,
+            'on_discord' => $discord,
+            'moodle_user_id' => $moodle ? $userId : null,
+            'on_moodle' => $moodle,
+            'vatsim_member' => $vatsimMember,
+            // Recent, so nothing reads as stale. Push this back two days to see
+            // what the staleness warning looks like.
+            'checked_at' => now()->subHours(3),
+        ]);
+    }
+
+    private function writeAttempt(int $userId, string $rating, int $attempt,
+        float $grade, bool $passed, int $daysAgo): void
+    {
+        TheoryAttempt::updateOrCreate([
+            'user_id' => $userId,
+            'moodle_quiz_id' => 52,
+            'moodle_attempt_id' => $attempt,
+        ], [
+            'rating' => strtoupper($rating),
+            'moodle_course_id' => 14,
+            'grade' => $grade,
+            'passed' => $passed,
+            'taken_at' => now()->subDays($daysAgo),
+        ]);
+    }
+
+    private function writeMessages(Training $training, bool $passedTheory): void
     {
         $log = [
             ['Training request received', 'other', 'control-center', 80],
             ['VATSSA ATC Training — you are enrolled', 'other', 'bot', 79],
         ];
 
-        if ($spec['theory'] !== []) {
+        if ($passedTheory) {
             $log[] = ['VATSSA ATC Training — theory passed', 'other', 'bot', 20];
         }
 
-        if ($spec['status'] === TrainingStatus::PRE_TRAINING) {
+        if ($training->status === TrainingStatus::PRE_TRAINING) {
             $log[] = ['VATSSA ATC Training — 14 days left on your course', 'other', 'bot', 4];
         }
 
-        if ($spec['status']->isClosed()) {
+        if ($training->status === TrainingStatus::AWAITING_MENTOR) {
+            $log[] = ['Confirm your continued interest in training', 'interest', 'control-center', 9];
+        }
+
+        if ($training->status->isClosed()) {
             $log[] = ['Your training has been closed', 'closed', 'control-center', 5];
         }
 
         foreach ($log as $index => [$subject, $kind, $source, $daysAgo]) {
             MessageLog::updateOrCreate([
-                'user_id' => $user->id,
-                'message_id' => "seed-{$user->id}-{$index}",
+                'user_id' => $training->user_id,
+                'message_id' => "seed-{$training->id}-{$index}",
             ], [
                 'training_id' => $training->id,
                 'subject' => $subject,

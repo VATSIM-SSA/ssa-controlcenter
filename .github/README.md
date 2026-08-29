@@ -81,10 +81,24 @@ files and must survive a container recreate.
 Everything the pipeline writes normally arrives over the bridge, from a bot that
 polls Moodle and Discord. **You do not need any of that to look at the pages.**
 
-`VatssaPipelineSeeder` writes the same rows directly: ten students on CIDs
-`10000301`–`10000310`, one per stage, with theory attempts, platform rows and an
-email history. It runs on every dev and staging deploy, so a fresh environment
-already has them. To run it by hand:
+`VatssaPipelineSeeder` writes the same rows directly, in two parts.
+
+**It backfills what `VatssaSeeder` already made.** Every one of the 250 users
+gets a platform row, and every open standard training gets theory attempts and
+an email history consistent with the stage it is in. Without that, every profile
+on dev shows an empty Platforms panel and every training an empty email log —
+which reads as broken rather than as unseeded.
+
+It also **moves a share of pre-training rows into awaiting-mentor**.
+`TrainingFactory` rolls a status between -4 and 3 and `AWAITING_MENTOR` is 4, so
+the factory can never produce it — the one stage this fork exists to add would
+otherwise be the only empty page on dev.
+
+**Then ten named students** on CIDs `10000301`–`10000310`, one per situation
+worth looking at on purpose.
+
+It runs on every dev and staging deploy, so a fresh environment already has all
+of this. To run it by hand:
 
 ```
 php artisan migrate --path=database/migrations-vatssa
@@ -93,7 +107,9 @@ php artisan db:seed --class=VatssaPipelineSeeder
 
 It refuses on production and is safe to re-run — every write is keyed.
 
-### What to look at, and why each one is there
+### The named ten, and why each one is there
+
+The backfilled population is the background. These are the ones built by hand.
 
 | CID | Stage | The point |
 |---|---|---|
@@ -116,6 +132,12 @@ the entire "latest, not best" rule, visible on one page.
 **304 and 306 together** show why the theory gate is checked at a moment rather
 than enforced continuously. 306 has a mentor, so a failed practice paper cannot
 send them back to the queue.
+
+**Nothing in the backfill contradicts the rules**, deliberately. Nobody past the
+gate is missing a theory pass, and no visiting, transfer or refresher training
+has attempts at all — they already hold the rating. Fixtures that disagree with
+the rule they demonstrate are worse than no fixtures: they look like a bug in
+the code rather than a gap in the data.
 
 ### Where to click
 

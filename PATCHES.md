@@ -353,10 +353,17 @@ theory rather than silently giving every student no attempts.
 
 ### `database/seeders/VatssaPipelineSeeder.php` and the seeding migration
 
-Ten students on CIDs 10000301-10000310, one per pipeline stage, with theory
-attempts, platform rows and an email history written straight into the tables.
-It exists so the pipeline can be clicked through with **no bot, bridge, Moodle
-or Discord running**, which is most of the time. `deploy-cc.sh` runs it on every
+Two parts. It **backfills** every user `VatssaSeeder` made with a platform row,
+and every open standard training with theory attempts and an email history
+consistent with its stage -- without which every profile on dev shows an empty
+panel and reads as broken. It also moves a share of pre-training rows into
+awaiting-mentor, because `TrainingFactory` rolls -4 to 3 and cannot produce 4,
+so the one stage this fork adds would be the only empty page.
+
+Then **ten named students** on CIDs 10000301-10000310, one per situation worth
+looking at on purpose. The whole thing exists so the pipeline can be clicked
+through with **no bot, bridge, Moodle or Discord running**, which is most of the
+time. `deploy-cc.sh` runs it on every
 dev and staging deploy; it refuses on production and is safe to re-run.
 
 The templates and the course-map rows are seeded by a **migration**, not a
@@ -377,7 +384,7 @@ fallback for when the bridge is unreachable.
 re-migrates from the default path only. `deploy-cc.sh` keeps its explicit
 `--path` call, which is now a harmless second pass.
 
-**Detectors.** Twenty-one of the thirty-five tests in `VatssaTest` cover the
+**Detectors.** Twenty-six of the forty tests in `VatssaTest` cover the
 pipeline additions, and `tools/expand.py` covers the
 permission matrix. The one thing nothing detects: whether the deployment sets
 `VATSSA_BRIDGE_TOKEN` and whether Caddy 403s `/api/vatssa/bridge/*`. Both are

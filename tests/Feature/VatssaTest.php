@@ -7,6 +7,7 @@ use App\Models\Area;
 use App\Models\Position;
 use App\Models\Training;
 use App\Models\User;
+use App\Models\Vatssa\MessageLog;
 use App\Models\Vatssa\MessageTemplate;
 use App\Models\Vatssa\MoodleCourse;
 use App\Models\Vatssa\TheoryAttempt;
@@ -482,9 +483,9 @@ class VatssaTest extends TestCase
     #[Test]
     public function the_pipeline_seeder_covers_every_stage(): void
     {
-        // The whole point of the cohort: click through the pipeline with no
-        // bot, bridge, Moodle or Discord running. If a stage has nobody in it,
-        // that page cannot be looked at.
+        // The whole point: click through the pipeline with no bot, bridge,
+        // Moodle or Discord running. If a stage has nobody in it, that page
+        // cannot be looked at.
         $this->seed(VatssaSeeder::class);
         $this->seed(VatssaPipelineSeeder::class);
 
@@ -505,6 +506,98 @@ class VatssaTest extends TestCase
                 "No seeded student is in {$stage->name}"
             );
         }
+    }
+
+    #[Test]
+    public function every_seeded_user_has_a_platform_row(): void
+    {
+        // VatssaSeeder makes 250 users. Without the backfill every one of them
+        // has an empty Platforms panel, so every profile on dev looks broken
+        // and the deliberately interesting students are lost among them.
+        $this->seed(VatssaSeeder::class);
+        $this->seed(VatssaPipelineSeeder::class);
+
+        $this->assertSame(User::count(), UserPlatform::count());
+    }
+
+    #[Test]
+    public function the_backfill_puts_real_trainings_into_awaiting_mentor(): void
+    {
+        // TrainingFactory rolls a status between -4 and 3, so it can NEVER
+        // produce AWAITING_MENTOR (4, appended rather than inserted). Without
+        // the promotion step, the one stage this fork exists to add would be
+        // the only empty page on dev.
+        $this->seed(VatssaSeeder::class);
+        $this->seed(VatssaPipelineSeeder::class);
+
+        $promoted = Training::where('status', TrainingStatus::AWAITING_MENTOR)
+            ->whereNotBetween('user_id', [10000301, 10000400])
+            ->count();
+
+        $this->assertGreaterThan(0, $promoted);
+    }
+
+    #[Test]
+    public function nobody_in_training_is_missing_a_theory_pass(): void
+    {
+        // Fixtures that contradict the rules are worse than no fixtures: a
+        // student in active training with no pass looks like a bug in the gate
+        // rather than a gap in the seed data.
+        $this->seed(VatssaSeeder::class);
+        $this->seed(VatssaPipelineSeeder::class);
+
+        $inTraining = Training::where('type', 1)
+            ->whereIn('status', [
+                TrainingStatus::AWAITING_MENTOR,
+                TrainingStatus::ACTIVE_TRAINING,
+                TrainingStatus::AWAITING_EXAM,
+            ])
+            ->get();
+
+        $this->assertGreaterThan(0, $inTraining->count(), 'nothing to check');
+
+        foreach ($inTraining as $training) {
+            $this->assertTrue(
+                TheoryAttempt::where('user_id', $training->user_id)
+                    ->where('passed', true)->exists(),
+                "Training {$training->id} is past the gate with no theory pass"
+            );
+        }
+    }
+
+    #[Test]
+    public function the_non_standard_tracks_sit_no_theory(): void
+    {
+        // Visiting, transfer and refresher controllers already hold the rating.
+        // Giving them attempts would misrepresent the rule the map encodes.
+        $this->seed(VatssaSeeder::class);
+        $this->seed(VatssaPipelineSeeder::class);
+
+        $others = Training::where('type', '!=', 1)
+            ->where('status', '>=', TrainingStatus::IN_QUEUE)
+            ->pluck('user_id')
+            ->diff(Training::where('type', 1)->pluck('user_id'));
+
+        foreach ($others as $userId) {
+            $this->assertSame(
+                0,
+                TheoryAttempt::where('user_id', $userId)->count(),
+                "User {$userId} trains a non-standard track but has theory attempts"
+            );
+        }
+    }
+
+    #[Test]
+    public function every_open_training_has_an_email_history(): void
+    {
+        $this->seed(VatssaSeeder::class);
+        $this->seed(VatssaPipelineSeeder::class);
+
+        $withoutLog = Training::where('status', '>=', TrainingStatus::IN_QUEUE)
+            ->whereNotIn('id', MessageLog::query()->whereNotNull('training_id')->pluck('training_id'))
+            ->count();
+
+        $this->assertSame(0, $withoutLog);
     }
 
     #[Test]
