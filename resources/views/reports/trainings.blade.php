@@ -38,8 +38,7 @@
         <div class="card-body">
         <div class="row g-0 align-items-center">
             <div class="col me-2">
-            {{-- VATSSA: matches TrainingStatus::IN_QUEUE->label() --}}
-            <div class="fs-sm fw-bold text-uppercase text-gray-600 mb-1">Awaiting theory</div>
+            <div class="fs-sm fw-bold text-uppercase text-gray-600 mb-1">In queue</div>
             <div class="h5 mb-0 fw-bold text-gray-800">{{ $cardStats["waiting"] }} requests</div>
             </div>
             <div class="col-auto">

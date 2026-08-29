@@ -10,21 +10,6 @@ use Illuminate\Support\Facades\Auth;
 
 class RatingUpgrade extends Types
 {
-    /**
-     * VATSSA: ALWAYS the membership desk, never a choice.
-     *
-     * Processing a rating is membership work, not training work, and it is the
-     * one request where the destination is never in doubt. Offering a picker
-     * would only create the chance of getting it wrong.
-     *
-     * `vatssaFixedTier()` rather than `vatssaTier()`: the fixed form makes the
-     * form show the desk as settled rather than as a default.
-     */
-    public function vatssaFixedTier(): string
-    {
-        return \App\Models\Vatssa\RequestTarget::MEMBERSHIP;
-    }
-
     public function getName()
     {
         return 'Rating Upgrade';

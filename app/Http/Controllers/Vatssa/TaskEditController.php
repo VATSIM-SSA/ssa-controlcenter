@@ -119,9 +119,9 @@ class TaskEditController extends Controller
             return redirect()->back()->withErrors('That is not a desk.');
         }
 
-        $type = app($data['type']);
-        if (method_exists($type, 'vatssaFixedTier')) {
-            $tier = $type->vatssaFixedTier();
+        $fixed = config('vatssa.fixed_desks.' . $data['type']);
+        if ($fixed !== null) {
+            $tier = $fixed;
             $ratingId = null;
         }
 

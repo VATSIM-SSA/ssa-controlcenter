@@ -31,9 +31,14 @@
 
     <td>
         @if($task->vatssa_tier)
+            {{-- Looked up here rather than through a relation on upstream's Task
+                 model: adding one would have made Task.php a modified file, and
+                 a conflict on every release, for a single accessor. --}}
+            @php $deskRating = $task->vatssa_rating_id
+                ? \App\Models\Rating::find($task->vatssa_rating_id) : null; @endphp
             <span class="badge bg-secondary">
-                {{ \App\Models\Vatssa\RequestTarget::label($task->vatssa_tier) }}@if($task->vatssa_rating_id && $task->vatssaRating)
-                    — {{ $task->vatssaRating->name }}
+                {{ \App\Models\Vatssa\RequestTarget::label($task->vatssa_tier) }}@if($deskRating)
+                    — {{ $deskRating->name }}
                 @endif
             </span>
         @else

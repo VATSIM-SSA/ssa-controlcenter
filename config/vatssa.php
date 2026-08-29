@@ -59,4 +59,19 @@ return [
         // rating -> permission, once decided
     ],
 
+    /*
+    | Request types whose desk is never a choice.
+    |
+    | Task type class => tier. A rating upgrade is membership work and the one
+    | request whose destination is never in doubt, so the form shows it as
+    | settled rather than offering a picker to get wrong.
+    |
+    | HERE RATHER THAN ON THE TYPE CLASS, so upstream's own task types stay
+    | verbatim. Adding a method to RatingUpgrade.php would have made it a
+    | modified upstream file for one line, and a conflict on every release.
+    */
+    'fixed_desks' => [
+        \App\Tasks\Types\RatingUpgrade::class => 'membership',
+    ],
+
 ];

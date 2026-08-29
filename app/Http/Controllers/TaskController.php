@@ -116,12 +116,12 @@ class TaskController extends Controller
         $data['creator_user_id'] = $user->id;
         $data['created_at'] = now();
 
-        // VATSSA: a type with a fixed desk decides for itself. The form posts
-        // the tier too, but a hand-crafted POST must not be able to send a
-        // rating upgrade anywhere other than membership.
-        $type = app($data['type']);
-        if (method_exists($type, 'vatssaFixedTier')) {
-            $data['vatssa_tier'] = $type->vatssaFixedTier();
+        // VATSSA: a type with a fixed desk cannot be redirected. The form
+        // posts the tier too, but a hand-crafted POST must not be able to send
+        // a rating upgrade anywhere other than membership.
+        $fixed = config('vatssa.fixed_desks.' . $data['type']);
+        if ($fixed !== null) {
+            $data['vatssa_tier'] = $fixed;
         }
 
         // Check if recipient is mentor or above

@@ -42,17 +42,6 @@ class Task extends Model
         return $this->belongsTo(User::class, 'assignee_user_id');
     }
 
-    /**
-     * VATSSA: the pipeline a desk-routed request belongs to.
-     *
-     * Only set on coordinator requests, which are per rating. Null everywhere
-     * else, including on every task upstream creates.
-     */
-    public function vatssaRating()
-    {
-        return $this->belongsTo(Rating::class, 'vatssa_rating_id');
-    }
-
     public function type()
     {
         if ($this->type) {

@@ -41,8 +41,7 @@
                          it. --}}
                     @php
                         $tierField = Str::camel($requestType->getName()) . 'Tier';
-                        $fixedTier = method_exists($requestType, 'vatssaFixedTier')
-                            ? $requestType->vatssaFixedTier() : null;
+                        $fixedTier = config('vatssa.fixed_desks.' . $requestType::class);
                         $choices = \App\Models\Vatssa\RequestTarget::choicesForTraining($training);
                     @endphp
 
