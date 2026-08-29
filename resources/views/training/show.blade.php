@@ -624,9 +624,6 @@
      Platforms is narrow because it is two badges. Theory, the email log and the
      notes all hold tables or a text box and need the room. --}}
 <div class="row">
-    <div class="col-xl-4 col-lg-12 col-md-12">
-        @include('vatssa.parts.platforms', ['user' => $training->user])
-    </div>
     <div class="col-xl-8 col-lg-12 col-md-12">
         @include('vatssa.parts.theory', [
             'user' => $training->user,
@@ -637,10 +634,13 @@
             'needsNoTheory' => $training->type != 1,
         ])
     </div>
+    <div class="col-xl-4 col-lg-12 col-md-12">
+        @include('vatssa.parts.platforms', ['user' => $training->user])
+    </div>
 </div>
 
 <div class="row">
-    <div class="col-xl-7 col-lg-12 col-md-12">
+    <div class="col-xl-8 col-lg-12 col-md-12">
         @include('vatssa.parts.message-log', ['training' => $training])
     </div>
 
@@ -648,7 +648,7 @@
          not the student and not their mentor. Upstream's own comment is an
          activity-log entry visible to everybody who can see the training, which
          is exactly why it cannot carry anything sensitive. --}}
-    <div class="col-xl-5 col-lg-12 col-md-12">
+    <div class="col-xl-4 col-lg-12 col-md-12">
         @include('vatssa.parts.internal-notes', [
             'scope' => \App\Models\Vatssa\InternalNote::SCOPE_TRAINING,
             'notes' => \App\Models\Vatssa\InternalNote::where('training_id', $training->id)

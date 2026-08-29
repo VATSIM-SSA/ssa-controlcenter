@@ -278,23 +278,31 @@
              made the right-hand column taller than Trainings and left a hole
              beside it. Platforms narrow, theory wide, matching the training
              page so the same two panels sit the same way in both places. --}}
+        {{-- EIGHT AND FOUR, like every other row on this page.
+
+             Upstream splits this column 8/4 twice -- Trainings beside Division
+             Exams, Activity beside Recent Connections. These rows were 4/8 and
+             7/5, so every gutter landed somewhere different and the right edge
+             came out ragged. Matching the rhythm is most of what "tidy" means
+             on a page like this.
+
+             Theory takes the wide half because it is a table; platforms is two
+             badges and sits in the narrow one, directly under Division Exams
+             which is also short. --}}
         <div class="row">
-            <div class="col-xl-4 col-lg-12 col-md-12">
-                @include('vatssa.parts.platforms', ['user' => $user])
-            </div>
             <div class="col-xl-8 col-lg-12 col-md-12">
                 @include('vatssa.parts.theory', ['user' => $user])
             </div>
+            <div class="col-xl-4 col-lg-12 col-md-12">
+                @include('vatssa.parts.platforms', ['user' => $user])
+            </div>
         </div>
 
-        {{-- VATSSA: admin-only notes about the person. They outlive every
-             training, which is the point -- closing a training must not erase
-             the reason it was closed. --}}
-        {{-- Half width, beside nothing rather than sprawling: a member profile
-             already runs long, and a full-page note box at the bottom of it
-             reads as more important than the trainings above. --}}
+        {{-- Full width, like Endorsements below it. Admin-only notes about the
+             person, which outlive every training -- closing a training must not
+             erase the reason it was closed. --}}
         <div class="row">
-            <div class="col-xl-7 col-lg-12 col-md-12">
+            <div class="col-xl-12 col-lg-12 col-md-12">
                 @include('vatssa.parts.internal-notes', [
                     'scope' => \App\Models\Vatssa\InternalNote::SCOPE_USER,
                     'notes' => \App\Models\Vatssa\InternalNote::where('user_id', $user->id)
