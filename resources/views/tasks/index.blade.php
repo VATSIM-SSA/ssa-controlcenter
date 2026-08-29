@@ -39,6 +39,15 @@
                href="{{ route('tasks', ['desk' => 'sent', 'state' => $state]) }}">Sent by you</a>
         </div>
 
+        @can('create', \App\Models\Task::class)
+            <div>
+                <button class="btn btn-sm btn-light" type="button"
+                        data-bs-toggle="modal" data-bs-target="#vatssaNewRequest">
+                    <i class="fas fa-plus"></i> Raise a request
+                </button>
+            </div>
+        @endcan
+
         <div>
             <i class="fas fa-filter"></i>&nbsp;
             <a class="btn btn-sm {{ $state === 'pending' ? 'btn-primary' : 'btn-outline-primary' }}"
@@ -119,5 +128,11 @@
         </div>
     </div>
 </div>
+
+{{-- Inside the section: anything a child view emits outside one is discarded,
+     so a modal placed after @endsection simply never renders. --}}
+@can('create', \App\Models\Task::class)
+    @include('vatssa.parts.new-request')
+@endcan
 
 @endsection

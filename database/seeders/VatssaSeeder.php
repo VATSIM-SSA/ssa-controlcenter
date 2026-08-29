@@ -81,8 +81,8 @@ class VatssaSeeder extends Seeder
     /**
      * CID => [[role, area_id], ...]. area_id null = global.
      *
-     * Six roles since 2026-08-26. `membership-manager` was deleted; account 5
-     * now carries a global pipeline-coordinator instead.
+     * Eight roles since 2026-08-30. `membership-manager` came back when rating
+     * upgrades got their own desk, and `events-team` was added alongside it.
      */
     private const FIXED_ACCOUNTS = [
         1 => ['last' => 'One', 'rating' => 1, 'roles' => []],

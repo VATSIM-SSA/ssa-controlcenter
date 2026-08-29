@@ -3,7 +3,7 @@
 // VATSSA config/roles.php — drafted 2026-08-26 against upstream v7.0.0.
 // This is the ONLY upstream file VATSSA modifies. Everything else is an addition.
 // Diverges from upstream in three places, all marked VATSSA:
-//   1. the roles catalogue          (six VATSSA roles replace upstream's eight)
+//   1. the roles catalogue          (eight VATSSA roles replace upstream's eight)
 //   2. the roles.*.manage entries   (renamed to match the VATSSA role keys)
 //   3. the matrix                   (VATSSA's own grants)
 // The permission catalogue is otherwise upstream's, verbatim. Keep it that way:
@@ -30,6 +30,16 @@ return [
             'name' => 'Mentor',
             'description' => 'Training mentor',
             'scope' => 'area',
+        ],
+        'membership-manager' => [
+            'name' => 'Membership Manager',
+            'description' => 'Rating upgrades, visiting endorsements and member standing',
+            'scope' => 'global',
+        ],
+        'events-team' => [
+            'name' => 'Events Team',
+            'description' => 'Event and examination bookings, and nothing else',
+            'scope' => 'global',
         ],
         'nav-editor' => [
             'name' => 'Navigational Editor',
@@ -156,6 +166,8 @@ return [
         // MUST stay spelled exactly like the keys above or nobody can grant anything.
         'roles.atc-training-manager.manage',
         'roles.pipeline-coordinator.manage',
+        'roles.membership-manager.manage',
+        'roles.events-team.manage',
         'roles.nav-editor.manage',
         'roles.mentor.manage',
         'roles.feedback-team.manage',
@@ -221,6 +233,26 @@ return [
             'files.upload',
             'bookings.bypass-restrictions',
             'bookings.sweatbox.use',
+        ],
+
+        // Rating upgrades arrive on the membership desk, so this role is who
+        // works that queue. Visiting endorsements are theirs too: whether
+        // somebody may control here at all is a membership question, not a
+        // training one.
+        'membership-manager' => [
+            'users.manage',
+            'endorsements.visiting.*',
+            'endorsements.rosters.view',
+            'tasks.**',                         // includes the overview
+            'training.view',                    // context for an upgrade, nothing more
+            'fir.management.reports.view',       // the request queue they work from
+        ],
+
+        // Deliberately narrow. Bookings and examinations, and nothing else --
+        // an events volunteer has no reason to see a training record.
+        'events-team' => [
+            'bookings.**',
+            'examinations.manage',
         ],
 
         'nav-editor' => [

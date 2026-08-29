@@ -96,6 +96,11 @@
             @livewire('user-roles', ['user' => $user])
         @endcan
 
+        {{-- VATSSA: which desks they receive requests on. Admin only -- a role
+             grants permissions, a desk decides who gets the work, and the two
+             are set in different places on purpose. --}}
+        @include('vatssa.parts.desks', ['user' => $user])
+
         <div class="card shadow mb-4">
             <div class="card-header bg-primary py-3 d-flex flex-row align-items-center justify-content-between">
                 <h6 class="m-0 fw-bold text-white">

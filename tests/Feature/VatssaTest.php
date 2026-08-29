@@ -85,12 +85,14 @@ class VatssaTest extends TestCase
         'atc-training-manager',
         'pipeline-coordinator',
         'mentor',
+        'membership-manager',
+        'events-team',
         'nav-editor',
         'feedback-team',
     ];
 
     #[Test]
-    public function the_role_list_is_exactly_the_six_vatssa_roles(): void
+    public function the_role_list_is_exactly_the_eight_vatssa_roles(): void
     {
         // Catches an upstream role reappearing after a badly resolved conflict
         // in config/roles.php, which is the most likely way this file breaks.
@@ -732,7 +734,7 @@ class VatssaTest extends TestCase
         // cannot be looked at.
         $this->seedFixtures();
 
-        $stages = Training::whereBetween('user_id', [10000301, 10000310])
+        $stages = Training::whereBetween('user_id', [10000301, 10000312])
             ->pluck('status')
             ->unique();
 
@@ -909,7 +911,7 @@ class VatssaTest extends TestCase
         // the profile panel has to be able to show it.
         $this->seedFixtures();
 
-        $this->assertFalse(UserPlatform::find(10000310)->vatsim_member);
+        $this->assertFalse(UserPlatform::find(10000312)->vatsim_member);
         $this->assertTrue(UserPlatform::find(10000304)->vatsim_member);
     }
 

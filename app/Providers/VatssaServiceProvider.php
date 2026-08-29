@@ -5,6 +5,7 @@ namespace App\Providers;
 use App\Http\Middleware\VatssaBridgeToken;
 use App\Models\Task;
 use App\Observers\VatssaTaskObserver;
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
@@ -39,6 +40,18 @@ class VatssaServiceProvider extends ServiceProvider
             ->group(base_path('routes/vatssa.php'));
 
         Route::group([], base_path('routes/vatssa-web.php'));
+
+        // The seven-day roster warning, scheduled from HERE rather than from
+        // app/Console/Kernel.php -- registering it upstream would make the
+        // kernel a modified file, and a conflict on every release, for one
+        // line. Daily is right: the window is seven days wide, so a missed run
+        // still catches everybody.
+        $this->app->booted(function () {
+            app(Schedule::class)
+                ->command('vatssa:roster-expiry-warning')
+                ->dailyAt('06:00')
+                ->withoutOverlapping();
+        });
 
         // Routes tasks to the right desk as they are created. An observer,
         // because TaskController::store() calls Task::create() -- so the

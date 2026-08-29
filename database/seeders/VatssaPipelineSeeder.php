@@ -42,8 +42,14 @@ use Illuminate\Support\Facades\DB;
  * 1. **The backfill.** Every user gets a platform row and every open standard
  *    training gets theory attempts and an email history, consistent with the
  *    stage it is in. Browsing dev then looks like browsing a real division.
- * 2. **The named cohort**, on CIDs 10000301-10000310. Ten students built by
+ * 2. **The named cohort**, on CIDs 10000301-10000312. Twelve students built by
  *    hand, one per situation worth looking at on purpose.
+ *
+ *    Two of them are the halves of the same problem and look nothing alike in
+ *    practice: 10000310 is on Moodle only and has sat the exam anyway, so they
+ *    are progressing invisibly; 10000311 is on Discord only and cannot start at
+ *    all, and nobody has noticed. The platform panel is the only place either
+ *    shows.
  *
  * ## The factory cannot produce awaiting-mentor
  *
@@ -155,6 +161,20 @@ class VatssaPipelineSeeder extends Seeder
             'platforms' => ['discord' => false, 'moodle' => true],
             'theory' => [],
             'note' => 'On Moodle, gone from Discord. The chase case.',
+        ],
+        [
+            'name' => 'Moodle Orphan',
+            'status' => TrainingStatus::PRE_TRAINING,
+            'platforms' => ['discord' => false, 'moodle' => true],
+            'theory' => [['S2', 71.0, false, 8]],
+            'note' => 'On Moodle, never joined Discord. Has sat the exam anyway.',
+        ],
+        [
+            'name' => 'Discord Orphan',
+            'status' => TrainingStatus::IN_QUEUE,
+            'platforms' => ['discord' => true, 'moodle' => false],
+            'theory' => [],
+            'note' => 'On Discord, never registered on Moodle. Cannot start theory.',
         ],
         [
             'name' => 'Not Vatsim',

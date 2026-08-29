@@ -22,7 +22,25 @@
 --}}
 @php
     $platforms = \App\Models\Vatssa\UserPlatform::find($user->id);
+    $rosterWarning = \App\Models\Vatssa\RosterWarning::find($user->id);
 @endphp
+
+{{-- VATSSA: the last-week roster warning, if one has gone out.
+
+     Upstream warns about inactivity roughly four months before a roster place
+     lapses, and repeats monthly, which nobody acts on. This is the seven-day
+     one. Showing it here is what lets staff answer "nobody told me" with a date
+     rather than a recollection. --}}
+@if($rosterWarning && $rosterWarning->expires_on->isFuture())
+    <div class="alert alert-danger" role="alert">
+        <strong><i class="fas fa-hourglass-half"></i>&nbsp;Roster place lapses
+            {{ $rosterWarning->expires_on->toEuropeanDate() }}</strong>
+        <small class="d-block">
+            Warning emailed {{ $rosterWarning->warned_at->diffForHumans() }}.
+            Controlling before that date keeps it.
+        </small>
+    </div>
+@endif
 
 <div class="card shadow mb-4">
     <div class="card-header bg-primary py-3 d-flex flex-row align-items-center justify-content-between">
