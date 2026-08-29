@@ -43,6 +43,13 @@ return new class extends Migration
      * rather than an error -- the test suite runs on SQLite, and a migration
      * that cannot run there would fail every test for a comment.
      */
+    private function say(string $message): void
+    {
+        if (isset($this->output)) {
+            $this->output->writeln("<comment>{$message}</comment>");
+        }
+    }
+
     private function comment(string $text): void
     {
         if (! Schema::hasTable('trainings')) {
@@ -53,9 +60,18 @@ return new class extends Migration
             return;
         }
 
-        DB::statement(sprintf(
-            "ALTER TABLE `trainings` MODIFY `status` TINYINT NOT NULL DEFAULT 0 COMMENT %s",
-            DB::getPdo()->quote($text)
-        ));
+        // Wrapped, because this is documentation and nothing more. The comment
+        // is for whoever reads the schema directly; no code reads it. A DDL
+        // statement that fails -- a column definition that has drifted, a user
+        // without ALTER -- must not be the thing that stops a deploy over a
+        // sentence.
+        try {
+            DB::statement(sprintf(
+                "ALTER TABLE `trainings` MODIFY `status` TINYINT NOT NULL DEFAULT 0 COMMENT %s",
+                DB::getPdo()->quote($text)
+            ));
+        } catch (\Throwable $e) {
+            $this->say("could not update the trainings.status comment: " . $e->getMessage());
+        }
     }
 };
