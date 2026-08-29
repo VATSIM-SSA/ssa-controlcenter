@@ -34,7 +34,14 @@ class TaskController extends Controller
         // "archived"), which cannot express "the archive of the S2 desk". Both
         // come off the query string so a link to any combination is shareable.
         $desks = RequestTarget::desksFor($user);
-        $canSeeAll = $user->hasPermission('tasks.overview');
+        // What they may LOOK AT, which is a ladder rather than a
+        // permission: leadership sees every desk, the training manager
+        // sees theirs and every pipeline, a coordinator sees only their
+        // own rating. tasks.overview used to mean 'see everything', which
+        // handed a coordinator the leadership queue -- requests escalated
+        // past the training staff, often about the training staff.
+        $visible = RequestTarget::visibleDesksFor($user);
+        $canSeeAll = $visible->count() > $desks->count();
 
         $desk = request('desk', 'mine');
         $state = request('state') === 'archived' ? 'archived' : 'pending';
@@ -44,18 +51,16 @@ class TaskController extends Controller
         if ($desk === 'sent') {
             $query = Task::where('creator_user_id', $user->id);
         } elseif ($desk === 'all' && $canSeeAll) {
-            $query = Task::query();
+            // Every desk they may see, NOT every desk that exists.
+            $query = RequestTarget::scopeToDesks(Task::query(), $visible);
         } elseif (str_contains((string) $desk, ':') || RequestTarget::isTier($desk)) {
             [$tier, $ratingId] = array_pad(explode(':', (string) $desk, 2), 2, null);
             $one = collect([['tier' => $tier, 'rating_id' => $ratingId ? (int) $ratingId : null]]);
 
-            // Only desks you actually sit at, unless you can see everything.
-            // Otherwise the picker is a suggestion and the query string is the
-            // real permission check.
-            $allowed = $canSeeAll || $desks->contains(
-                fn ($d) => $d['tier'] === $tier
-                    && ($d['rating_id'] === null || (string) $d['rating_id'] === (string) $ratingId)
-            );
+            // Checked against the ladder, not against the picker. Hiding a
+            // button is not a permission -- the query string is what a
+            // curious person actually edits.
+            $allowed = RequestTarget::canSee($user, $tier, $ratingId ? (int) $ratingId : null);
 
             $query = $allowed
                 ? RequestTarget::scopeToDesks(Task::query(), $one)
@@ -82,7 +87,9 @@ class TaskController extends Controller
             'canSeeAll' => $canSeeAll,
             'desk' => $desk,
             'state' => $state,
-            'myDesks' => $desks,
+            // The buttons offer every desk they may READ, not only the
+            // ones they sit at -- an ATM works from the pipeline queues.
+            'myDesks' => $visible,
             'ratings' => Rating::whereNotNull('vatsim_rating')->orderBy('vatsim_rating')->get(),
         ]);
     }

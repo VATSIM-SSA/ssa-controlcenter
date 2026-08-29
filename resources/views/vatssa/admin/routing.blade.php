@@ -18,8 +18,10 @@
             <i class="fas fa-circle-info"></i>&nbsp;
             A request goes to the desk, not to a name. Several people per desk is
             fine — it lands on whichever of them has the fewest open requests,
-            and <strong>everyone at that desk sees it</strong> under
-            <em>Everybody</em> on the Tasks page.
+            and <strong>everyone at that desk sees it</strong> on the Tasks page.
+            Who may READ a desk is a ladder: leadership sees every desk, the ATC
+            training manager sees theirs and every pipeline, a coordinator sees
+            only their own rating.
         </div>
         <div class="alert alert-warning" role="alert">
             <i class="fas fa-triangle-exclamation"></i>&nbsp;
@@ -47,8 +49,9 @@
                         @if($tier['per_rating'])
                             {{-- One row per rating: VATSSA's pipelines are per
                                  rating, so "the S2 coordinator" is a different
-                                 person from "the C1 coordinator". A row left
-                                 empty falls back to the Any rating row below. --}}
+                                 person from "the C1 coordinator". A rating left
+                                 empty has NO desk, and requests for it stay with
+                                 whoever raised them. --}}
                             @foreach($ratings as $rating)
                                 @include('vatssa.admin.parts.routing-row', [
                                     'key' => $tierKey . ':' . $rating->id,
@@ -59,14 +62,10 @@
                                 ])
                             @endforeach
 
-                            @include('vatssa.admin.parts.routing-row', [
-                                'key' => $tierKey . ':',
-                                'label' => 'Any rating',
-                                'help' => 'A catch-all. Included alongside whatever the rating row says, so a division with one coordinator only needs this.',
-                                'selected' => $targets->where('tier', $tierKey)
-                                    ->whereNull('rating_id')->pluck('user_id')->all(),
-                                'candidates' => $candidates,
-                            ])
+                            {{-- No catch-all row. A pipeline desk is always one
+                                 rating's desk -- "the pipeline coordinator" is not
+                                 a thing anybody can be, and a catch-all would put
+                                 somebody on every pipeline queue by accident. --}}
                         @else
                             @include('vatssa.admin.parts.routing-row', [
                                 'key' => $tierKey,

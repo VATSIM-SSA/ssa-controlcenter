@@ -186,8 +186,16 @@ class RequestTarget extends Model
     {
         $query = static::where('tier', $tier)->with('user');
 
-        if (self::isPerRating($tier) && $ratingId !== null) {
-            $query->where(fn ($q) => $q->where('rating_id', $ratingId)->orWhereNull('rating_id'));
+        if (self::isPerRating($tier)) {
+            // No rating means NO desk, rather than every desk. A pipeline
+            // desk is always one rating's desk: 'the pipeline coordinator'
+            // is not a thing anybody can be, because the whole point of the
+            // split is that the S2 and C1 coordinators are different people
+            // with different students.
+            if ($ratingId === null) {
+                return (new self)->newCollection();
+            }
+            $query->where('rating_id', $ratingId);
         }
 
         return $query->get()
@@ -239,6 +247,70 @@ class RequestTarget extends Model
     }
 
     /**
+     * Every desk somebody is allowed to LOOK AT.
+     *
+     * Different from the desks they sit at, and the difference is an escalation
+     * ladder rather than a permission:
+     *
+     *   leadership        sees every desk
+     *   training manager  sees their own desk and every pipeline desk
+     *   coordinator       sees their own rating's desk, and no other
+     *   membership        sees their own desk
+     *
+     * WHY A HIERARCHY AND NOT A PERMISSION. `tasks.overview` used to mean "see
+     * every desk", which handed a pipeline coordinator the leadership queue --
+     * requests escalated past the training staff, often precisely because they
+     * are ABOUT the training staff. Who may read a queue is a question about
+     * seniority, and a flat permission cannot express seniority.
+     *
+     * @return Collection<int, array{tier: string, rating_id: int|null}>
+     */
+    public static function visibleDesksFor(User $user): Collection
+    {
+        $own = self::desksFor($user);
+        $sitsAt = fn (string $tier) => $own->contains(fn ($desk) => $desk['tier'] === $tier);
+
+        if ($sitsAt(self::LEADERSHIP)) {
+            return self::everyDesk();
+        }
+
+        if ($sitsAt(self::TRAINING_MANAGER)) {
+            return $own
+                ->merge(self::everyDesk()->filter(fn ($desk) => $desk['tier'] === self::COORDINATOR))
+                ->unique(fn ($desk) => $desk['tier'] . ':' . $desk['rating_id'])
+                ->values();
+        }
+
+        return $own;
+    }
+
+    /**
+     * Every desk that exists: the global ones, and one per rating.
+     */
+    public static function everyDesk(): Collection
+    {
+        $desks = collect(self::globalTiers())
+            ->map(fn ($tier) => ['tier' => $tier, 'rating_id' => null]);
+
+        foreach (Rating::whereNotNull('vatsim_rating')->orderBy('vatsim_rating')->get() as $rating) {
+            $desks->push(['tier' => self::COORDINATOR, 'rating_id' => $rating->id]);
+        }
+
+        return $desks->values();
+    }
+
+    /**
+     * Whether somebody may look at one particular desk.
+     */
+    public static function canSee(User $user, string $tier, ?int $ratingId = null): bool
+    {
+        return self::visibleDesksFor($user)->contains(
+            fn ($desk) => $desk['tier'] === $tier
+                && (string) $desk['rating_id'] === (string) $ratingId
+        );
+    }
+
+    /**
      * Constrain a task query to the desks somebody sits at.
      *
      * A coordinator desk row with a null rating is a catch-all and matches
@@ -258,8 +330,7 @@ class RequestTarget extends Model
                     $q->where('vatssa_tier', $desk['tier']);
 
                     if ($desk['rating_id'] !== null) {
-                        $q->where(fn ($r) => $r->where('vatssa_rating_id', $desk['rating_id'])
-                            ->orWhereNull('vatssa_rating_id'));
+                        $q->where('vatssa_rating_id', $desk['rating_id']);
                     }
                 });
             }

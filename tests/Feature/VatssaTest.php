@@ -600,6 +600,90 @@ class VatssaTest extends TestCase
         $this->assertContains('pipeline-coordinator', $matrix->rolesFor('fir.management.reports.view'));
     }
 
+
+    // ---------------------------------------------------------------------
+    // Who may read which desk
+    // ---------------------------------------------------------------------
+
+    #[Test]
+    public function a_coordinator_sees_only_their_own_pipeline(): void
+    {
+        // The rule that matters most. A coordinator holding tasks.overview used
+        // to see the leadership queue -- requests escalated PAST the training
+        // staff, often about the training staff.
+        $this->seedFixtures();
+
+        $ratings = Rating::whereNotNull('vatsim_rating')->orderBy('vatsim_rating')->take(2)->get();
+        $coordinator = User::find(10000008);
+
+        RequestTarget::create(['tier' => RequestTarget::COORDINATOR,
+            'rating_id' => $ratings[0]->id, 'user_id' => $coordinator->id]);
+
+        $this->assertTrue(RequestTarget::canSee($coordinator, RequestTarget::COORDINATOR, $ratings[0]->id));
+        $this->assertFalse(RequestTarget::canSee($coordinator, RequestTarget::COORDINATOR, $ratings[1]->id));
+        $this->assertFalse(RequestTarget::canSee($coordinator, RequestTarget::TRAINING_MANAGER));
+        $this->assertFalse(RequestTarget::canSee($coordinator, RequestTarget::LEADERSHIP));
+    }
+
+    #[Test]
+    public function the_training_manager_sees_every_pipeline_but_not_leadership(): void
+    {
+        $this->seedFixtures();
+
+        $manager = User::find(10000009);
+        RequestTarget::create(['tier' => RequestTarget::TRAINING_MANAGER,
+            'rating_id' => null, 'user_id' => $manager->id]);
+
+        foreach (Rating::whereNotNull('vatsim_rating')->get() as $rating) {
+            $this->assertTrue(
+                RequestTarget::canSee($manager, RequestTarget::COORDINATOR, $rating->id),
+                "cannot see the {$rating->name} pipeline"
+            );
+        }
+
+        $this->assertTrue(RequestTarget::canSee($manager, RequestTarget::TRAINING_MANAGER));
+        $this->assertFalse(RequestTarget::canSee($manager, RequestTarget::LEADERSHIP));
+    }
+
+    #[Test]
+    public function leadership_sees_every_desk(): void
+    {
+        $this->seedFixtures();
+
+        $director = User::find(10000005);
+        RequestTarget::create(['tier' => RequestTarget::LEADERSHIP,
+            'rating_id' => null, 'user_id' => $director->id]);
+
+        $this->assertSame(
+            RequestTarget::everyDesk()->count(),
+            RequestTarget::visibleDesksFor($director)->count()
+        );
+    }
+
+    #[Test]
+    public function a_pipeline_desk_is_always_one_ratings_desk(): void
+    {
+        // No catch-all. "The pipeline coordinator" is not a thing anybody can
+        // be -- the whole point of the split is that the S2 and C1 coordinators
+        // are different people with different students, and a catch-all would
+        // quietly put somebody on every pipeline queue.
+        $this->seedFixtures();
+
+        RequestTarget::create(['tier' => RequestTarget::COORDINATOR,
+            'rating_id' => null, 'user_id' => 10000008]);
+
+        $this->assertTrue(
+            RequestTarget::peopleAt(RequestTarget::COORDINATOR, null)->isEmpty(),
+            'a rating-less coordinator row still resolved to somebody'
+        );
+
+        $rating = Rating::whereNotNull('vatsim_rating')->first();
+        $this->assertTrue(
+            RequestTarget::peopleAt(RequestTarget::COORDINATOR, $rating->id)->isEmpty(),
+            'a rating-less coordinator row leaked into a specific rating'
+        );
+    }
+
     #[Test]
     public function the_bridge_refuses_everything_without_a_token(): void
     {
