@@ -607,7 +607,26 @@
     </div>
 </div>
 
-{{-- VATSSA: every email this student has received, from either system. --}}
+{{-- VATSSA: the three things about this student that Control Center could not
+     answer before -- can we reach them, have they passed the theory for THIS
+     rating, and what have they actually been told.
+
+     The theory block is filtered to the training's own ratings. Results are
+     keyed to person plus rating rather than to a training, so an S2 training
+     shows the S2 history and not this person's whole exam record. --}}
+<div class="row">
+    <div class="col-xl-4 col-lg-12 col-md-12">
+        @include('vatssa.parts.platforms', ['user' => $training->user])
+    </div>
+    <div class="col-xl-8 col-lg-12 col-md-12">
+        @include('vatssa.parts.theory', [
+            'user' => $training->user,
+            'onlyRatings' => $training->ratings->pluck('name')->all(),
+            'panelTitle' => 'Theory for this rating',
+        ])
+    </div>
+</div>
+
 <div class="row">
     <div class="col-xl-12 col-md-12 mb-12">
         @include('vatssa.parts.message-log', ['training' => $training])

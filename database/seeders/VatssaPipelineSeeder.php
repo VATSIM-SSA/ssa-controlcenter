@@ -2,7 +2,9 @@
 
 namespace Database\Seeders;
 
+use App\Helpers\FactoryHelper;
 use App\Helpers\TrainingStatus;
+use App\Helpers\VatsimRating;
 use App\Models\Rating;
 use App\Models\Training;
 use App\Models\User;
@@ -256,11 +258,19 @@ class VatssaPipelineSeeder extends Seeder
         foreach (self::COHORT as $index => $spec) {
             [$first, $last] = explode(' ', $spec['name']);
 
+            // rating_short and rating_long are NOT NULL with no default, and
+            // they are denormalised copies of the rating rather than anything
+            // derived at read time -- so they have to be written here, the same
+            // way VatssaSeeder writes them for the fixed accounts.
+            $rating = VatsimRating::S1;
+
             $user = User::updateOrCreate(['id' => self::FIRST_CID + $index], [
                 'first_name' => $first,
                 'last_name' => $last,
                 'email' => strtolower("{$first}.{$last}") . '@example.com',
-                'rating' => 2,
+                'rating' => $rating->value,
+                'rating_short' => FactoryHelper::shortRating($rating->value),
+                'rating_long' => FactoryHelper::longRating($rating),
                 'region' => 'EMEA',
                 'division' => 'SSA',
                 'subdivision' => null,

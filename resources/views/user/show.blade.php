@@ -96,8 +96,9 @@
             @livewire('user-roles', ['user' => $user])
         @endcan
 
-        {{-- VATSSA: Discord, Moodle and theory results. Both platforms are
-             mandatory to train here and Control Center can see neither. --}}
+        {{-- VATSSA: both platforms are mandatory to train here and Control
+             Center can see neither. Compact, because this column is narrow --
+             the theory table sits in the wide column beside Division Exams. --}}
         @include('vatssa.parts.platforms', ['user' => $user])
 
         <div class="card shadow mb-4">
@@ -267,6 +268,12 @@
 
                     </div>
                 </div>
+
+                {{-- VATSSA: the division's own theory exams, unfiltered -- every
+                     rating this person has ever sat. Next to Division Exams
+                     because it is the same kind of record, and in the wide
+                     column because it is a table. --}}
+                @include('vatssa.parts.theory', ['user' => $user])
             </div>
         </div>
 
