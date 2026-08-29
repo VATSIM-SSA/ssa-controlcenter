@@ -58,9 +58,20 @@ use Illuminate\Support\Facades\DB;
  *
  * ## Guards
  *
- * Refuses in production. Every write is keyed, so re-running updates in place
- * rather than duplicating -- which is why `deploy-cc.sh` can call it on every
- * dev and staging deploy without a conditional.
+ * Two, and the second is the one that matters.
+ *
+ * It refuses when `APP_ENV=production`. That is the obvious one, and on its own
+ * it is not enough: `deploy-cc.sh` runs this on dev AND staging, and Phase B of
+ * the migration puts a copy of production data on staging to rehearse against.
+ * Staging is still `APP_ENV=staging` at that moment.
+ *
+ * So it also refuses unless the database looks like fixtures -- the VatssaSeeder
+ * dev accounts have to be present. Otherwise this would write exam results and
+ * emails that never happened against real members' names. `VATSSA_SEED_FORCE=1`
+ * overrides it, deliberately awkwardly.
+ *
+ * Every write is keyed, so re-running updates in place rather than duplicating,
+ * which is why the deploy script can call it unconditionally.
  */
 class VatssaPipelineSeeder extends Seeder
 {
@@ -160,6 +171,17 @@ class VatssaPipelineSeeder extends Seeder
 
         $this->assertTablesExist();
 
+        if (! $this->isFixtureDatabase()) {
+            $this->command?->warn(
+                'VatssaPipelineSeeder: this does not look like a fixture database '
+                . '(the VatssaSeeder dev accounts are missing), so nothing was written. '
+                . 'Set VATSSA_SEED_FORCE=1 if you really mean to invent training '
+                . 'records for these members.'
+            );
+
+            return;
+        }
+
         $this->seedCohort();
         $this->promoteSomeToAwaitingMentor();
         $this->backfillPlatforms();
@@ -175,6 +197,34 @@ class VatssaPipelineSeeder extends Seeder
             self::FIRST_CID,
             self::FIRST_CID + count(self::COHORT) - 1
         ));
+    }
+
+    /**
+     * Whether this database is fixtures rather than real people.
+     *
+     * APP_ENV IS NOT ENOUGH, AND THIS IS THE WHOLE POINT OF THE METHOD.
+     * `deploy-cc.sh` runs this seeder on dev AND staging, and Phase B of the
+     * migration puts a copy of PRODUCTION DATA on staging to rehearse against.
+     * At that moment staging is still `APP_ENV=staging`, the environment check
+     * passes, and this would invent theory attempts and emails for real
+     * members -- writing exam results that never happened against people's
+     * names.
+     *
+     * So the test is on the data, not on the branch or the environment. The
+     * VatssaSeeder dev accounts (10000001-10000011) exist only in a seeded
+     * database. If they are missing, this is somebody's real member list.
+     *
+     * `VatssaSeeder` gets away without this because it returns early whenever
+     * the database already has users. This one backfills existing rows, so
+     * that guard does not apply to it and it needs its own.
+     */
+    private function isFixtureDatabase(): bool
+    {
+        if (env('VATSSA_SEED_FORCE')) {
+            return true;
+        }
+
+        return User::whereBetween('id', [10000001, 10000011])->count() >= 10;
     }
 
     /**

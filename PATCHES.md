@@ -364,7 +364,13 @@ Then **ten named students** on CIDs 10000301-10000310, one per situation worth
 looking at on purpose. The whole thing exists so the pipeline can be clicked
 through with **no bot, bridge, Moodle or Discord running**, which is most of the
 time. `deploy-cc.sh` runs it on every
-dev and staging deploy; it refuses on production and is safe to re-run.
+dev and staging deploy and is safe to re-run.
+
+**It refuses on data that is not fixtures**, which is a stronger guard than
+`APP_ENV` and the reason it exists: Phase B puts a copy of production data on
+staging, where the environment check would still pass. It looks for the
+`VatssaSeeder` dev accounts instead, so the test is on the data rather than on
+the branch.
 
 The templates and the course-map rows are seeded by a **migration**, not a
 seeder, because they are real content rather than fixtures -- both admin pages
@@ -384,7 +390,7 @@ fallback for when the bridge is unreachable.
 re-migrates from the default path only. `deploy-cc.sh` keeps its explicit
 `--path` call, which is now a harmless second pass.
 
-**Detectors.** Twenty-six of the forty tests in `VatssaTest` cover the
+**Detectors.** Twenty-seven of the forty-one tests in `VatssaTest` cover the
 pipeline additions, and `tools/expand.py` covers the
 permission matrix. The one thing nothing detects: whether the deployment sets
 `VATSSA_BRIDGE_TOKEN` and whether Caddy 403s `/api/vatssa/bridge/*`. Both are

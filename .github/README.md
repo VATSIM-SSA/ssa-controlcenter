@@ -105,7 +105,15 @@ php artisan migrate --path=database/migrations-vatssa
 php artisan db:seed --class=VatssaPipelineSeeder
 ```
 
-It refuses on production and is safe to re-run — every write is keyed.
+It is safe to re-run — every write is keyed.
+
+**It runs on staging too, and refuses on data that is not fixtures.** The
+obvious guard is `APP_ENV`, and on its own it is not enough: Phase B of the
+migration puts a copy of production data on staging to rehearse against, and
+staging is still `APP_ENV=staging` at that moment. So the seeder checks the
+*data* — the `VatssaSeeder` dev accounts (10000001–10000011) exist only in a
+seeded database. Without them it writes nothing and says so. `VATSSA_SEED_FORCE=1`
+overrides it, deliberately awkwardly.
 
 ### The named ten, and why each one is there
 

@@ -96,13 +96,21 @@ if [ "$ENVIRONMENT" != "prod" ]; then
     echo "==> Seeding fixtures (no-op if the database already has users)"
     run php artisan db:seed --class=VatssaSeeder --force --no-interaction
 
-    # The training pipeline cohort: ten students, one per stage, with theory
-    # attempts, platform rows and an email history written directly. It exists
-    # so the pipeline can be clicked through with NO bot, bridge, Moodle or
-    # Discord running -- which is most of the time.
+    # The training pipeline data: a platform row for every user, theory
+    # attempts and an email history for every open training, and ten named
+    # students one per stage. It exists so the pipeline can be clicked through
+    # with NO bot, bridge, Moodle or Discord running -- which is most of the
+    # time.
     #
     # Every write is keyed, so unlike VatssaSeeder this is safe to re-run and
-    # does so on every deploy. It refuses outright on production.
+    # does so on every deploy.
+    #
+    # THIS RUNS ON STAGING AS WELL AS DEV, and that is deliberate -- staging is
+    # a fixture environment today. The seeder does NOT rely on that: it refuses
+    # unless the database actually looks like fixtures, checked by the presence
+    # of the VatssaSeeder dev accounts. That is what protects staging once
+    # Phase B puts a copy of production data on it, when APP_ENV alone would
+    # still say "staging" and let it through.
     echo "==> Seeding the pipeline cohort"
     run php artisan db:seed --class=VatssaPipelineSeeder --force --no-interaction
 fi

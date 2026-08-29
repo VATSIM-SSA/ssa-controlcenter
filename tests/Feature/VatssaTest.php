@@ -649,6 +649,27 @@ class VatssaTest extends TestCase
     }
 
     #[Test]
+    public function the_pipeline_seeder_refuses_a_database_of_real_members(): void
+    {
+        // THE guard that matters, and the one APP_ENV does not give you.
+        // deploy-cc.sh runs this seeder on staging as well as dev, and Phase B
+        // of the migration puts a copy of PRODUCTION DATA on staging to
+        // rehearse against. Staging is still APP_ENV=staging at that moment,
+        // so the environment check passes and this would write exam results
+        // and emails that never happened against real members' names.
+        //
+        // The test is on the data: the VatssaSeeder dev accounts exist only in
+        // a seeded database.
+        $realMember = User::factory()->create(['id' => 1234567]);
+
+        $this->seed(VatssaPipelineSeeder::class);
+
+        $this->assertSame(0, UserPlatform::count());
+        $this->assertSame(0, TheoryAttempt::count());
+        $this->assertNull(UserPlatform::find($realMember->id));
+    }
+
+    #[Test]
     public function the_pipeline_seeder_refuses_to_run_in_production(): void
     {
         // It invents students, exam results and emails that never happened.
