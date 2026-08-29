@@ -292,7 +292,13 @@ class VatssaPipelineSeeder extends Seeder
             if ($index % 3 !== 0) {
                 continue;
             }
-            $training->status = TrainingStatus::AWAITING_MENTOR;
+
+            // Through resolveStatusChanges rather than by assignment, which is
+            // what sets started_at -- awaiting-mentor counts as in progress, so
+            // a row without it would be inconsistent in a way no real
+            // transition can produce. It is also the exact path the bridge
+            // takes, so the seeder exercises it.
+            $training->fill($training->resolveStatusChanges(TrainingStatus::AWAITING_MENTOR));
             $training->save();
         }
     }
