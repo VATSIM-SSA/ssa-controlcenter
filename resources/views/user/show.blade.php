@@ -96,11 +96,6 @@
             @livewire('user-roles', ['user' => $user])
         @endcan
 
-        {{-- VATSSA: both platforms are mandatory to train here and Control
-             Center can see neither. Compact, because this column is narrow --
-             the theory table sits in the wide column beside Division Exams. --}}
-        @include('vatssa.parts.platforms', ['user' => $user])
-
         <div class="card shadow mb-4">
             <div class="card-header bg-primary py-3 d-flex flex-row align-items-center justify-content-between">
                 <h6 class="m-0 fw-bold text-white">
@@ -268,11 +263,21 @@
 
                     </div>
                 </div>
+            </div>
+        </div>
 
-                {{-- VATSSA: the division's own theory exams, unfiltered -- every
-                     rating this person has ever sat. Next to Division Exams
-                     because it is the same kind of record, and in the wide
-                     column because it is a table. --}}
+        {{-- VATSSA: the two things Control Center could not answer about a
+             member -- can we reach them, and what have they passed.
+
+             A row of their own rather than stacked under Division Exams: that
+             made the right-hand column taller than Trainings and left a hole
+             beside it. Platforms narrow, theory wide, matching the training
+             page so the same two panels sit the same way in both places. --}}
+        <div class="row">
+            <div class="col-xl-4 col-lg-12 col-md-12">
+                @include('vatssa.parts.platforms', ['user' => $user])
+            </div>
+            <div class="col-xl-8 col-lg-12 col-md-12">
                 @include('vatssa.parts.theory', ['user' => $user])
             </div>
         </div>

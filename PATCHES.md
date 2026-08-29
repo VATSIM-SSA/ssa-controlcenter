@@ -141,8 +141,8 @@ files and the task observer all register from there.
 Each carries one small VATSSA change, marked with a `{{-- VATSSA: --}}` comment:
 the roster removed from the nav and the two pipeline admin pages added; on a
 training, the platforms panel, a theory block scoped to that training's rating,
-and the message log; on a profile, platforms in the sidebar and the full theory
-record beside Division Exams; the task overview tab and its assignee column.
+and the message log; on a profile, the same two panels in a row of their own
+below Trainings; the task overview tab and its assignee column.
 
 **On conflict, take upstream's version and re-apply the marked block.** These
 are the cheapest conflicts in the fork — open the page and you can see whether

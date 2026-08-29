@@ -6,9 +6,9 @@
     reachable" is a question staff ask constantly and could never answer without
     opening two other systems.
 
-    THIS IS THE NARROW SIDEBAR CARD, so it stays compact -- two lines and a
-    badge. The theory history is a table and lives in the wide column, in
-    `vatssa.parts.theory`, next to Division Exams where it belongs.
+    KEEP IT COMPACT -- two lines and a badge. It sits in a narrow column on both
+    the profile and a training, beside `vatssa.parts.theory`, which is the wide
+    one because it is a table.
 
     Two deliberate details:
 
