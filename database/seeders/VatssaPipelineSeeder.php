@@ -252,29 +252,13 @@ class VatssaPipelineSeeder extends Seeder
 
     private function seedCohort(): void
     {
-        $rating = Rating::where('name', 'S2')->first()
+        $trainingRating = Rating::where('name', 'S2')->first()
             ?? Rating::whereNotNull('vatsim_rating')->orderBy('vatsim_rating')->first();
 
         foreach (self::COHORT as $index => $spec) {
             [$first, $last] = explode(' ', $spec['name']);
 
-            // rating_short and rating_long are NOT NULL with no default, and
-            // they are denormalised copies of the rating rather than anything
-            // derived at read time -- so they have to be written here, the same
-            // way VatssaSeeder writes them for the fixed accounts.
-            $rating = VatsimRating::S1;
-
-            $user = User::updateOrCreate(['id' => self::FIRST_CID + $index], [
-                'first_name' => $first,
-                'last_name' => $last,
-                'email' => strtolower("{$first}.{$last}") . '@example.com',
-                'rating' => $rating->value,
-                'rating_short' => FactoryHelper::shortRating($rating->value),
-                'rating_long' => FactoryHelper::longRating($rating),
-                'region' => 'EMEA',
-                'division' => 'SSA',
-                'subdivision' => null,
-            ]);
+            $user = $this->cohortUser(self::FIRST_CID + $index, $first, $last);
 
             $this->writePlatforms(
                 $user->id,
@@ -287,9 +271,48 @@ class VatssaPipelineSeeder extends Seeder
                 $this->writeAttempt($user->id, $forRating, $attemptIndex + 1, $grade, $passed, $daysAgo);
             }
 
-            $training = $this->cohortTraining($user, $spec, $rating);
+            $training = $this->cohortTraining($user, $spec, $trainingRating);
             $this->writeMessages($training, $spec['theory'] !== []);
         }
+    }
+
+    /**
+     * One of the named students.
+     *
+     * THROUGH THE FACTORY, NOT updateOrCreate, AND THAT IS THE POINT.
+     * `users` has a run of NOT NULL columns with no defaults -- rating_short,
+     * rating_long, last_login, four notification settings -- because they are
+     * written at login from VATSIM Connect rather than defaulted by the schema.
+     * Listing them here means chasing upstream every time it adds another, one
+     * failed seed at a time. The factory is the single place that knows the
+     * full set, and `VatssaSeeder` builds its fixed accounts the same way.
+     *
+     * Idempotency comes from creating only when the row is absent, then
+     * updating the handful of fields this seeder actually cares about.
+     */
+    private function cohortUser(int $cid, string $first, string $last): User
+    {
+        $attributes = [
+            'first_name' => $first,
+            'last_name' => $last,
+            'email' => strtolower("{$first}.{$last}").'@example.com',
+            'rating' => VatsimRating::S1,
+            'rating_short' => VatsimRating::S1->name,
+            'rating_long' => FactoryHelper::longRating(VatsimRating::S1),
+            'region' => 'EMEA',
+            'division' => 'SSA',
+            'subdivision' => null,
+        ];
+
+        $user = User::find($cid);
+
+        if ($user === null) {
+            return User::factory()->create($attributes + ['id' => $cid]);
+        }
+
+        $user->update($attributes);
+
+        return $user;
     }
 
     private function cohortTraining(User $user, array $spec, ?Rating $rating): Training
