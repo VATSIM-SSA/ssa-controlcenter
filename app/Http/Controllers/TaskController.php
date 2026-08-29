@@ -98,8 +98,11 @@ class TaskController extends Controller
         $data = $request->validate([
             'type' => ['required', new ValidTaskType],
             'message' => 'sometimes|min:3|max:256',
-            'subject_user_id' => 'required|exists:users,id',
-            'subject_training_id' => 'required|exists:trainings,id',
+            // VATSSA: nullable. Plenty of work is not about one training --
+            // "review the S2 syllabus", "this member wants to visit" -- and
+            // requiring a training is why that work happens in Discord instead.
+            'subject_user_id' => 'nullable|exists:users,id',
+            'subject_training_id' => 'nullable|exists:trainings,id',
             'subject_training_rating_id' => 'nullable|exists:ratings,id',
             'assignee_user_id' => 'required|exists:users,id',
             // VATSSA: the desk this was addressed to. validate() drops anything
@@ -112,6 +115,14 @@ class TaskController extends Controller
 
         $data['creator_user_id'] = $user->id;
         $data['created_at'] = now();
+
+        // VATSSA: a type with a fixed desk decides for itself. The form posts
+        // the tier too, but a hand-crafted POST must not be able to send a
+        // rating upgrade anywhere other than membership.
+        $type = app($data['type']);
+        if (method_exists($type, 'vatssaFixedTier')) {
+            $data['vatssa_tier'] = $type->vatssaFixedTier();
+        }
 
         // Check if recipient is mentor or above
         $recipient = User::findOrFail($data['assignee_user_id']);

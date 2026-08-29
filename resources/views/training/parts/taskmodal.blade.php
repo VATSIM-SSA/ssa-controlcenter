@@ -22,42 +22,56 @@
                     {{-- VATSSA: a DESK, not a name.
 
                          Upstream asks who to send this to and offers every user
-                         holding any role, plus the three most-used shortcuts.
-                         That works while everybody knows the org chart and
-                         fails quietly afterwards -- the request lands on
-                         whoever came to mind and sits unread.
+                         holding any role. That works while everybody knows the
+                         org chart and fails quietly afterwards -- the request
+                         lands on whoever came to mind and sits unread.
 
-                         Who currently sits at each desk is set in
-                         Administration -> Request routing. VatssaTaskObserver
-                         resolves it on the way in, so a cached form cannot send
-                         a request to somebody who left.
+                         ONLY THE DESKS THIS TRAINING MAY USE. The global desks
+                         (membership, training manager, leadership) always, plus
+                         the coordinator for this student's OWN rating. Offering
+                         the S1 coordinator from an S2 training is how a request
+                         reaches somebody with no business with that student.
+
+                         Some types have no choice at all: a rating upgrade is
+                         always membership work.
 
                          assignee_user_id is still posted because upstream's
                          validation requires a real user and the column is NOT
                          NULL. It is the requester, and the observer replaces
-                         it. If a desk has nobody, the request stays with the
-                         requester rather than vanishing. --}}
-                    <div class="mt-3">
-                        <label class="form-label">Send request to</label>
-                        @php $tierField = Str::camel($requestType->getName()) . 'Tier'; @endphp
+                         it. --}}
+                    @php
+                        $tierField = Str::camel($requestType->getName()) . 'Tier';
+                        $fixedTier = method_exists($requestType, 'vatssaFixedTier')
+                            ? $requestType->vatssaFixedTier() : null;
+                        $choices = \App\Models\Vatssa\RequestTarget::choicesForTraining($training);
+                    @endphp
 
-                        {{-- Buttons rather than a radio list: three desks, and
-                             the choice should read as three options rather than
-                             a form to fill in. The hint stays underneath,
-                             because "which desk" is exactly the thing somebody
-                             raising their first request will not know. --}}
-                        @foreach(\App\Models\Vatssa\RequestTarget::TIERS as $tierKey => $tier)
-                            <input type="radio" class="btn-check" required
-                                   name="vatssa_tier" value="{{ $tierKey }}"
-                                   id="{{ $tierField }}{{ $loop->index }}"
-                                   autocomplete="off"
-                                   @checked($loop->first)>
-                            <label class="btn btn-outline-primary btn-sm mb-1 text-start w-100"
-                                   for="{{ $tierField }}{{ $loop->index }}">
-                                {{ $tier['label'] }}
-                                <small class="d-block fw-normal">{{ $tier['hint'] }}</small>
-                            </label>
-                        @endforeach
+                    <div class="mt-3">
+                        @if($fixedTier)
+                            <label class="form-label">Goes to</label>
+                            <div class="alert alert-secondary py-2 mb-0">
+                                <i class="fas fa-arrow-right"></i>&nbsp;
+                                <strong>{{ \App\Models\Vatssa\RequestTarget::label($fixedTier) }}</strong>
+                                <small class="d-block">This request always goes here.</small>
+                            </div>
+                            <input type="hidden" name="vatssa_tier" value="{{ $fixedTier }}">
+                        @else
+                            <label class="form-label">Send request to</label>
+                            @foreach($choices as $choiceKey => $choice)
+                                @php [$tierOnly, $ratingOnly] = array_pad(explode(':', $choiceKey, 2), 2, null); @endphp
+                                <input type="radio" class="btn-check" required
+                                       name="vatssa_tier" value="{{ $tierOnly }}"
+                                       id="{{ $tierField }}{{ $loop->index }}"
+                                       data-rating="{{ $ratingOnly }}"
+                                       autocomplete="off"
+                                       @checked($loop->first)>
+                                <label class="btn btn-outline-primary btn-sm mb-1 text-start w-100"
+                                       for="{{ $tierField }}{{ $loop->index }}">
+                                    {{ $choice['label'] }}
+                                    <small class="d-block fw-normal">{{ $choice['hint'] }}</small>
+                                </label>
+                            @endforeach
+                        @endif
 
                         <div class="mt-3">
                             <input type="hidden" name="type" value="{{ $requestType::class }}">

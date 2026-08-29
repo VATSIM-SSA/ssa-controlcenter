@@ -39,6 +39,8 @@ class RequestTarget extends Model
 
     public const TRAINING_MANAGER = 'training-manager';
 
+    public const MEMBERSHIP = 'membership';
+
     public const LEADERSHIP = 'leadership';
 
     /**
@@ -53,6 +55,11 @@ class RequestTarget extends Model
             'label' => 'Pipeline coordinator',
             'hint' => 'The coordinator for this rating. Start here.',
             'per_rating' => true,
+        ],
+        self::MEMBERSHIP => [
+            'label' => 'Membership',
+            'hint' => 'Rating updates, transfers, visiting controllers, anything about somebody\'s standing.',
+            'per_rating' => false,
         ],
         self::TRAINING_MANAGER => [
             'label' => 'ATC training manager',
@@ -87,6 +94,76 @@ class RequestTarget extends Model
     public static function isPerRating(string $tier): bool
     {
         return (bool) (self::TIERS[$tier]['per_rating'] ?? false);
+    }
+
+    /**
+     * Desks that exist independently of any one training.
+     *
+     * Membership, the training manager and leadership are always offerable.
+     * The coordinator desk is not: it belongs to a rating, and offering the S1
+     * coordinator from an S2 training is how a request reaches somebody who has
+     * no business with that student.
+     */
+    public static function globalTiers(): array
+    {
+        return array_keys(array_filter(
+            self::TIERS,
+            fn ($tier) => ! $tier['per_rating']
+        ));
+    }
+
+    /**
+     * The desks a request raised from this training may be sent to.
+     *
+     * Every global desk, plus the coordinator desk for the training's OWN
+     * ratings. Nothing else -- see `globalTiers()`.
+     *
+     * Returns [key => label], where a coordinator key carries its rating id.
+     */
+    public static function choicesForTraining(?\App\Models\Training $training): array
+    {
+        $choices = [];
+
+        foreach (self::TIERS as $key => $tier) {
+            if ($tier['per_rating']) {
+                continue;
+            }
+            $choices[$key] = ['label' => $tier['label'], 'hint' => $tier['hint']];
+        }
+
+        foreach ($training?->ratings ?? [] as $rating) {
+            $choices[self::COORDINATOR . ':' . $rating->id] = [
+                'label' => $rating->name . ' pipeline coordinator',
+                'hint' => 'The coordinator who runs this student\'s pipeline. Start here.',
+            ];
+        }
+
+        return $choices;
+    }
+
+    /**
+     * Every desk, for the task screen, where a request need not be about a
+     * training at all.
+     */
+    public static function allChoices(): array
+    {
+        $choices = [];
+
+        foreach (self::TIERS as $key => $tier) {
+            if ($tier['per_rating']) {
+                continue;
+            }
+            $choices[$key] = ['label' => $tier['label'], 'hint' => $tier['hint']];
+        }
+
+        foreach (\App\Models\Rating::whereNotNull('vatsim_rating')->orderBy('vatsim_rating')->get() as $rating) {
+            $choices[self::COORDINATOR . ':' . $rating->id] = [
+                'label' => $rating->name . ' pipeline coordinator',
+                'hint' => 'The coordinator who runs the ' . $rating->name . ' pipeline.',
+            ];
+        }
+
+        return $choices;
     }
 
     public static function label(?string $tier): ?string

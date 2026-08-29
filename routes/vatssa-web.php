@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Vatssa\InternalNoteController;
+use App\Http\Controllers\Vatssa\TaskEditController;
 use App\Http\Controllers\Vatssa\SettingsController;
 use Illuminate\Support\Facades\Route;
 
@@ -17,6 +18,20 @@ use Illuminate\Support\Facades\Route;
 | code should not need a deploy to change.
 |
 */
+
+/*
+| Requests: edit the text, move the desk, reopen a closed one, or raise one that
+| is not about a training at all. Upstream can do none of these -- see
+| TaskEditController for why each one pushes work back into Discord.
+*/
+Route::middleware(['web', 'auth', 'activity', 'suspended'])
+    ->prefix('vatssa/requests')
+    ->name('vatssa.requests.')
+    ->group(function () {
+        Route::post('/', [TaskEditController::class, 'store'])->name('store');
+        Route::patch('/{task}', [TaskEditController::class, 'update'])->name('update');
+        Route::post('/{task}/reopen', [TaskEditController::class, 'reopen'])->name('reopen');
+    });
 
 /*
 | Internal notes. Not under admin/ -- they are written from a member profile and

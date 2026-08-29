@@ -75,6 +75,16 @@
             @elseif($task->status == \App\Helpers\TaskStatus::PENDING)
                 <span class="badge bg-warning">{{ Str::title(\App\Helpers\TaskStatus::PENDING->name) }}</span>
             @endif
+
+            {{-- VATSSA: reopen. A request closed by mistake, or one that turned
+                 out not to be finished, otherwise becomes a second request --
+                 and the history splits across the two. --}}
+            @can('update', \App\Models\Task::class)
+                <form method="POST" action="{{ route('vatssa.requests.reopen', $task) }}" class="d-inline">
+                    @csrf
+                    <button type="submit" class="btn btn-link btn-sm p-0 align-baseline">reopen</button>
+                </form>
+            @endcan
         @endif
     </td>
 </tr>
