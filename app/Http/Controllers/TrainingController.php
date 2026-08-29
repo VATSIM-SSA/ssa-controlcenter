@@ -85,7 +85,11 @@ class TrainingController extends Controller
                 return $a->created_at->timestamp - $b->created_at->timestamp;
             }
 
-            return $b->status->value - $a->status->value;
+            // VATSSA: lifecycle order, not stored value. AWAITING_MENTOR
+            // is stored as 4 so nothing had to be renumbered, which would
+            // otherwise sort it above 'awaiting exam' -- a student waiting
+            // for a mentor listed as further along than one sitting a CPT.
+            return $b->status->lifecycleOrder() - $a->status->lifecycleOrder();
         });
 
         $types = TrainingController::$types;

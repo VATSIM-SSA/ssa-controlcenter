@@ -100,6 +100,46 @@ enum TrainingStatus: int
         };
     }
 
+    /**
+     * Where this stage sits in the LIFECYCLE, which is not its stored value.
+     *
+     * AWAITING_MENTOR is stored as 4 so that adding it renumbered nothing --
+     * see the note at the top of this file. The price is that anything ordering
+     * by the backing value puts it after "awaiting exam", which is nonsense: a
+     * student waiting for a mentor has not started training, let alone finished
+     * it.
+     *
+     * So ordering asks this instead. The stored value stays as it is, history
+     * stays readable, and dropdowns and tables read in the order the stages
+     * actually happen.
+     *
+     * Anything upstream adds falls through to its own value, which is right --
+     * upstream's numbering IS its lifecycle order.
+     */
+    public function lifecycleOrder(): int
+    {
+        return match ($this) {
+            self::AWAITING_MENTOR => 2,     // after theory, before training
+            self::ACTIVE_TRAINING => 3,
+            self::AWAITING_EXAM => 4,
+            default => $this->value,
+        };
+    }
+
+    /**
+     * Every stage, in the order they happen rather than the order they are
+     * stored. Use this anywhere a human reads the list.
+     *
+     * @return array<int, self>
+     */
+    public static function inLifecycleOrder(): array
+    {
+        $cases = self::cases();
+        usort($cases, fn (self $a, self $b) => $a->lifecycleOrder() <=> $b->lifecycleOrder());
+
+        return $cases;
+    }
+
     public function isAssignableByStaff(): bool
     {
         return match ($this) {

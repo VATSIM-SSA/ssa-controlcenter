@@ -30,8 +30,16 @@
                         message that scrolls away.
                     </p>
                     <p class="text-muted">
+                        {{-- A ternary rather than a conditional directive.
+                             Blade will not compile a directive glued to a
+                             preceding word character, so writing the opening
+                             one straight after the word "default" left it as
+                             literal text while its closing half still compiled:
+                             an orphan else, and a parse error on the whole page.
+                             No directive tokens in this comment either, for the
+                             same reason. --}}
                         Blank means no opinion, and falls back to the division
-                        default@if($default !== null) of <strong>{{ $default }}</strong>@else, which is not set@endif.
+                        default{{ $default !== null ? ' of ' . $default : ', which is not set' }}.
                         That is not the same as <strong>0</strong>, which means
                         they take nobody.
                     </p>

@@ -176,7 +176,11 @@
 
                             <label class="form-label" for="trainingStateSelect">Select training state</label>
                             <select class="form-select" name="status" id="trainingStateSelect" @if(Auth::user()->cannot('update', $training)) disabled @endif>
-                                @foreach(\App\Helpers\TrainingStatus::cases() as $status)
+                                {{-- Lifecycle order, not declaration order:
+                                     AWAITING_MENTOR is stored as 4 so nothing
+                                     had to be renumbered, and cases() would
+                                     put it last in the list. --}}
+                                @foreach(\App\Helpers\TrainingStatus::inLifecycleOrder() as $status)
                                     {{-- VATSSA: context-aware. The pipeline owns in-queue,
                                          pre-training and awaiting-mentor; the one manual move
                                          is active training back to awaiting a mentor. --}}
