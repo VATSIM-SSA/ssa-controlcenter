@@ -168,7 +168,15 @@ class TaskController extends Controller
 
         self::close($task, TaskStatus::COMPLETED);
 
-        return redirect()->back()->with('success', sprintf('Completed task regarding %s from %s.', $task->subject->name, $task->creator->name));
+        // VATSSA: null-safe. subject_user_id and creator_user_id are both
+        // nullable now -- a request can be about nobody, and upstream already
+        // allowed a null creator for system-raised tasks. Dereferencing either
+        // was a 500 on the happy path.
+        return redirect()->back()->with('success', sprintf(
+            'Completed request%s%s.',
+            $task->subject ? ' regarding ' . $task->subject->name : '',
+            $task->creator ? ' from ' . $task->creator->name : ''
+        ));
     }
 
     /**
@@ -186,7 +194,11 @@ class TaskController extends Controller
 
         self::close($task, TaskStatus::DECLINED);
 
-        return redirect()->back()->with('success', sprintf('Declined task regarding %s from %s.', $task->subject->name, $task->creator->name));
+        return redirect()->back()->with('success', sprintf(
+            'Declined request%s%s.',
+            $task->subject ? ' regarding ' . $task->subject->name : '',
+            $task->creator ? ' from ' . $task->creator->name : ''
+        ));
     }
 
     /**

@@ -46,9 +46,16 @@ class VatssaServiceProvider extends ServiceProvider
         // kernel a modified file, and a conflict on every release, for one
         // line. Daily is right: the window is seven days wide, so a missed run
         // still catches everybody.
-        $this->app->booted(function () {
-            app(Schedule::class)
-                ->command('vatssa:roster-expiry-warning')
+        //
+        // callAfterResolving, NOT app(Schedule::class). Resolving the schedule
+        // eagerly runs upstream's Kernel::schedule(), which calls
+        // Setting::get('telemetryEnabled') -- a database query. During
+        // `package:discover` in the Docker build there is no database, so that
+        // took the whole image build down with "could not find driver". This
+        // form registers a callback that only fires if something else actually
+        // resolves the schedule, which is `schedule:run` and nothing else.
+        $this->callAfterResolving(Schedule::class, function (Schedule $schedule) {
+            $schedule->command('vatssa:roster-expiry-warning')
                 ->dailyAt('06:00')
                 ->withoutOverlapping();
         });

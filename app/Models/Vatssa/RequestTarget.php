@@ -3,6 +3,7 @@
 namespace App\Models\Vatssa;
 
 use App\Models\Rating;
+use App\Models\Training;
 use App\Models\Task;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
@@ -120,7 +121,7 @@ class RequestTarget extends Model
      *
      * Returns [key => label], where a coordinator key carries its rating id.
      */
-    public static function choicesForTraining(?\App\Models\Training $training): array
+    public static function choicesForTraining(?Training $training): array
     {
         $choices = [];
 
@@ -156,7 +157,7 @@ class RequestTarget extends Model
             $choices[$key] = ['label' => $tier['label'], 'hint' => $tier['hint']];
         }
 
-        foreach (\App\Models\Rating::whereNotNull('vatsim_rating')->orderBy('vatsim_rating')->get() as $rating) {
+        foreach (Rating::whereNotNull('vatsim_rating')->orderBy('vatsim_rating')->get() as $rating) {
             $choices[self::COORDINATOR . ':' . $rating->id] = [
                 'label' => $rating->name . ' pipeline coordinator',
                 'hint' => 'The coordinator who runs the ' . $rating->name . ' pipeline.',

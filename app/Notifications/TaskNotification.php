@@ -67,7 +67,12 @@ class TaskNotification extends Notification
             $textLines[] = '## Updated tasks';
 
             foreach ($this->updatedTasks as $task) {
-                $textLines[] = '- **' . $task->type()->getName() . '** for ' . $task->subject->name . ' (' . $task->subject->id . ') is ' . strtolower($task->status->name);
+                // VATSSA: subject_user_id is nullable here -- a request can be
+                // about nobody. Upstream's column is NOT NULL, so this is our
+                // consequence to own, and it runs in a scheduled digest where
+                // a fatal would fail quietly.
+                $about = $task->subject ? ' for ' . $task->subject->name . ' (' . $task->subject->id . ')' : '';
+                $textLines[] = '- **' . $task->type()->getName() . '**' . $about . ' is ' . strtolower($task->status->name);
                 $task->creator_notified = true;
                 $task->save();
             }

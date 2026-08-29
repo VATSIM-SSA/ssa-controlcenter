@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use anlutro\LaravelSettings\Facade as Setting;
 use App\Models\AtcActivity;
 use App\Models\Vatssa\RosterWarning;
+use App\Notifications\Vatssa\RosterExpiringNotification;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Notification;
 
@@ -83,7 +84,7 @@ class VatssaRosterExpiryWarning extends Command
                 $this->line("Warning {$user->name} ({$userId}) — lapses {$expiresOn->toDateString()}");
             }
 
-            Notification::send($user, new \App\Notifications\Vatssa\RosterExpiringNotification(
+            Notification::send($user, new RosterExpiringNotification(
                 $expiresOn,
                 $areas->first()->hours,
                 $requirement

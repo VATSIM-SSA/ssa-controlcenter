@@ -17,7 +17,15 @@
         </span>
     </td>
 
-    <td><a href="{{ route('user.show', $task->subject) }}">{{ $task->subject->name }} ({{ $task->subject->id }})</a></td>
+    <td>
+        @if($task->subject)
+            <a href="{{ route('user.show', $task->subject) }}">{{ $task->subject->name }} ({{ $task->subject->id }})</a>
+        @else
+            {{-- Not every request is about somebody. "Review the S2 syllabus"
+                 is about nobody, and saying so beats an empty cell. --}}
+            <span class="text-muted">Not about a member</span>
+        @endif
+    </td>
 
     <td>
         <i class="fas {{ $task->type()->getIcon() }}" data-bs-toggle="tooltip" data-bs-placement="top" title="{{ $task->type()->getName() }}"></i>
@@ -47,6 +55,27 @@
                  is collectively responsible for, which is worth noticing. --}}
             <span class="badge bg-light text-dark">No desk</span>
         @endif
+
+        {{-- VATSSA: move it. A request sent to the wrong desk is otherwise
+             declined with "ask X instead", and the asker starts again. Only
+             for people who can see every desk -- moving work onto a desk you
+             cannot see the queue of is how things get lost. --}}
+        @can('tasks.overview')
+            <form method="POST" action="{{ route('vatssa.requests.update', $task) }}"
+                  class="d-flex gap-1 mt-1">
+                @csrf
+                @method('PATCH')
+                <input type="hidden" name="message" value="{{ $task->message }}">
+                <select name="vatssa_tier" class="form-select form-select-sm" style="max-width: 11rem">
+                    @foreach(\App\Models\Vatssa\RequestTarget::TIERS as $tierKey => $tier)
+                        <option value="{{ $tierKey }}" @selected($task->vatssa_tier === $tierKey)>
+                            {{ $tier['label'] }}
+                        </option>
+                    @endforeach
+                </select>
+                <button type="submit" class="btn btn-sm btn-outline-secondary">Move</button>
+            </form>
+        @endcan
     </td>
 
     <td>

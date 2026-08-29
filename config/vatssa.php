@@ -1,5 +1,7 @@
 <?php
 
+use App\Tasks\Types\RatingUpgrade;
+
 /*
 |--------------------------------------------------------------------------
 | VATSSA configuration
@@ -71,7 +73,7 @@ return [
     | modified upstream file for one line, and a conflict on every release.
     */
     'fixed_desks' => [
-        \App\Tasks\Types\RatingUpgrade::class => 'membership',
+        RatingUpgrade::class => 'membership',
     ],
 
 ];

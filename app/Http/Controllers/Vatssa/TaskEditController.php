@@ -6,6 +6,7 @@ use App\Helpers\TaskStatus;
 use App\Http\Controllers\Controller;
 use App\Models\Task;
 use App\Models\Vatssa\RequestTarget;
+use App\Rules\ValidTaskType;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -105,7 +106,7 @@ class TaskEditController extends Controller
         $this->authorize('create', Task::class);
 
         $data = $request->validate([
-            'type' => ['required', new \App\Rules\ValidTaskType],
+            'type' => ['required', new ValidTaskType],
             'message' => 'required|string|min:3|max:256',
             'desk' => 'required|string',
             'subject_user_id' => 'nullable|exists:users,id',
