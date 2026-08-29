@@ -41,7 +41,7 @@ class MessageTemplate extends Model
      */
     public function placeholders(): array
     {
-        preg_match_all('/\{([a-z_]+)\}/', $this->subject.' '.$this->body, $found);
+        preg_match_all('/\{([a-z_]+)\}/', $this->subject . ' ' . $this->body, $found);
 
         return array_values(array_unique($found[1] ?? []));
     }

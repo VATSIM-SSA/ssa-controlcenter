@@ -3,9 +3,12 @@
 namespace Database\Seeders;
 
 use App\Helpers\FactoryHelper;
+use App\Helpers\TaskStatus;
 use App\Helpers\TrainingStatus;
 use App\Helpers\VatsimRating;
+use App\Http\Controllers\TaskController;
 use App\Models\Rating;
+use App\Models\Task;
 use App\Models\Training;
 use App\Models\User;
 use App\Models\Vatssa\MessageLog;
@@ -188,14 +191,16 @@ class VatssaPipelineSeeder extends Seeder
         $this->promoteSomeToAwaitingMentor();
         $this->backfillPlatforms();
         $this->backfillTheory();
+        $this->seedTasks();
         $this->backfillMessageLog();
 
         $this->command?->info(sprintf(
-            'VatssaPipelineSeeder: %d platform rows, %d theory attempts, %d logged emails. '
-            . 'Named cohort on CIDs %d-%d.',
+            'VatssaPipelineSeeder: %d platform rows, %d theory attempts, %d logged emails, '
+            . '%d open tasks. Named cohort on CIDs %d-%d.',
             UserPlatform::count(),
             TheoryAttempt::count(),
             MessageLog::count(),
+            Task::where('status', TaskStatus::PENDING)->count(),
             self::FIRST_CID,
             self::FIRST_CID + count(self::COHORT) - 1
         ));
@@ -295,7 +300,7 @@ class VatssaPipelineSeeder extends Seeder
         $attributes = [
             'first_name' => $first,
             'last_name' => $last,
-            'email' => strtolower("{$first}.{$last}").'@example.com',
+            'email' => strtolower("{$first}.{$last}") . '@example.com',
             'rating' => VatsimRating::S1,
             'rating_short' => VatsimRating::S1->name,
             'rating_long' => FactoryHelper::longRating(VatsimRating::S1),
@@ -526,6 +531,73 @@ class VatssaPipelineSeeder extends Seeder
                     );
                 }
             });
+    }
+
+    /**
+     * Requests, spread across the people who can act on them.
+     *
+     * Every student and mentor request in Control Center is a Task, so without
+     * these the Tasks page is empty for everybody -- and the VATSSA overview
+     * tab ("Everyone") has nothing to show at all, which is the one thing that
+     * cannot be judged from a single inbox.
+     *
+     * Deliberately spread across several assignees and left mostly PENDING:
+     * an overview of one person's completed tasks would tell you nothing about
+     * whether the overview works.
+     *
+     * Task types are directory-scanned, so this asks the application which
+     * types exist rather than hardcoding class names. A type deleted upstream
+     * -- or by us, as TheoreticalExam was -- then simply stops appearing
+     * instead of breaking the seed.
+     */
+    private function seedTasks(): void
+    {
+        $types = collect(TaskController::getTypes())
+            ->map(fn ($type) => $type::class)
+            ->values();
+
+        if ($types->isEmpty()) {
+            return;
+        }
+
+        // Anybody who can actually receive a task. Mentors hold tasks.manage,
+        // so this is a realistic spread rather than everything on one desk.
+        $assignees = User::whereHas('roleAssignments')->get()
+            ->filter(fn (User $user) => $user->hasPermission('tasks.suggested-recipient'))
+            ->values();
+
+        if ($assignees->isEmpty()) {
+            return;
+        }
+
+        $trainings = Training::where('status', '>=', TrainingStatus::PRE_TRAINING)
+            ->with('user')
+            ->take(24)
+            ->get();
+
+        foreach ($trainings as $index => $training) {
+            if ($training->user === null) {
+                continue;
+            }
+
+            $assignee = $assignees[$index % $assignees->count()];
+
+            // Every fourth is closed, so the Archived tab is not empty either.
+            $closed = $index % 4 === 3;
+
+            Task::updateOrCreate([
+                'subject_training_id' => $training->id,
+                'type' => $types[$index % $types->count()],
+            ], [
+                'status' => $closed ? TaskStatus::COMPLETED : TaskStatus::PENDING,
+                'subject_user_id' => $training->user_id,
+                'assignee_user_id' => $assignee->id,
+                'creator_user_id' => $assignees[($index + 1) % $assignees->count()]->id,
+                'message' => 'Seeded request for testing the pipeline pages.',
+                'created_at' => now()->subDays(20 - ($index % 20)),
+                'closed_at' => $closed ? now()->subDays(2) : null,
+            ]);
+        }
     }
 
     // -----------------------------------------------------------------

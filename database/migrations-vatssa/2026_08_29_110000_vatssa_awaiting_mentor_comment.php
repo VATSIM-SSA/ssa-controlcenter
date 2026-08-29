@@ -67,11 +67,11 @@ return new class extends Migration
         // sentence.
         try {
             DB::statement(sprintf(
-                "ALTER TABLE `trainings` MODIFY `status` TINYINT NOT NULL DEFAULT 0 COMMENT %s",
+                'ALTER TABLE `trainings` MODIFY `status` TINYINT NOT NULL DEFAULT 0 COMMENT %s',
                 DB::getPdo()->quote($text)
             ));
-        } catch (\Throwable $e) {
-            $this->say("could not update the trainings.status comment: " . $e->getMessage());
+        } catch (Throwable $e) {
+            $this->say('could not update the trainings.status comment: ' . $e->getMessage());
         }
     }
 };

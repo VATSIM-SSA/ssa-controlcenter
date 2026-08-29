@@ -102,7 +102,7 @@ class BridgeController extends Controller
         // nothing to deduplicate on, so the subject and timestamp stand in.
         $key = [
             'user_id' => $training->user_id,
-            'message_id' => $data['message_id'] ?: substr(sha1($data['subject'].$data['sent_at']), 0, 40),
+            'message_id' => $data['message_id'] ?: substr(sha1($data['subject'] . $data['sent_at']), 0, 40),
         ];
 
         $entry = MessageLog::updateOrCreate($key, $data + [

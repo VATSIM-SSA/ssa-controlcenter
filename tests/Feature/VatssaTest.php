@@ -2,9 +2,12 @@
 
 namespace Tests\Feature;
 
+use App\Helpers\TaskStatus;
 use App\Helpers\TrainingStatus;
+use App\Http\Controllers\TaskController;
 use App\Models\Area;
 use App\Models\Position;
+use App\Models\Task;
 use App\Models\Training;
 use App\Models\User;
 use App\Models\Vatssa\MessageLog;
@@ -17,7 +20,9 @@ use Database\Seeders\VatssaPipelineSeeder;
 use Database\Seeders\VatssaSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use PHPUnit\Framework\Attributes\Test;
+use RuntimeException;
 use Tests\TestCase;
 
 /**
@@ -42,6 +47,36 @@ use Tests\TestCase;
 class VatssaTest extends TestCase
 {
     use RefreshDatabase;
+
+    /**
+     * Seed the fixtures, overriding both seeders' safety valves.
+     *
+     * `VatssaSeeder` returns early whenever the database already has users, and
+     * `VatssaPipelineSeeder` refuses a database that does not look like
+     * fixtures. Both guards are right in production and both are in the way
+     * here -- a test that silently seeds nothing then asserts against an empty
+     * database is worse than one that fails, because it usually passes.
+     *
+     * VATSSA_SEED_FORCE is the escape hatch both of them already document. It
+     * is set through putenv AND the superglobals because Laravel's env() reads
+     * whichever the platform populated.
+     */
+    private function seedFixtures(): void
+    {
+        putenv('VATSSA_SEED_FORCE=1');
+        $_ENV['VATSSA_SEED_FORCE'] = '1';
+        $_SERVER['VATSSA_SEED_FORCE'] = '1';
+
+        $this->seedFixtures();
+    }
+
+    protected function tearDown(): void
+    {
+        putenv('VATSSA_SEED_FORCE');
+        unset($_ENV['VATSSA_SEED_FORCE'], $_SERVER['VATSSA_SEED_FORCE']);
+
+        parent::tearDown();
+    }
 
     private const ROLES = [
         'admin',
@@ -167,6 +202,15 @@ class VatssaTest extends TestCase
         // Exercises the added seeder end to end. If upstream renames a model,
         // changes a factory signature, or alters the role_user shape, this is
         // where it surfaces.
+        //
+        // Forced, because VatssaSeeder returns early whenever the database
+        // already has users -- and under RefreshDatabase it sometimes does.
+        // Without this the seeder quietly does nothing and every assertion
+        // below is made against an empty table.
+        putenv('VATSSA_SEED_FORCE=1');
+        $_ENV['VATSSA_SEED_FORCE'] = '1';
+        $_SERVER['VATSSA_SEED_FORCE'] = '1';
+
         $this->seed(VatssaSeeder::class);
 
         $expected = [
@@ -307,7 +351,7 @@ class VatssaTest extends TestCase
 
         $types = array_map(
             fn ($type) => $type::class,
-            \App\Http\Controllers\TaskController::getTypes()
+            TaskController::getTypes()
         );
         $this->assertNotContains('App\\Tasks\\Types\\TheoreticalExam', $types);
     }
@@ -446,7 +490,7 @@ class VatssaTest extends TestCase
             'grade' => 88, 'passed' => true, 'taken_at' => now()->subMonths(6),
         ]);
 
-        $columns = \Illuminate\Support\Facades\Schema::getColumnListing('vatssa_theory_attempts');
+        $columns = Schema::getColumnListing('vatssa_theory_attempts');
         $this->assertNotContains('training_id', $columns);
         $this->assertTrue(TheoryAttempt::passedRating($user->id, 'S2'));
     }
@@ -486,8 +530,7 @@ class VatssaTest extends TestCase
         // The whole point: click through the pipeline with no bot, bridge,
         // Moodle or Discord running. If a stage has nobody in it, that page
         // cannot be looked at.
-        $this->seed(VatssaSeeder::class);
-        $this->seed(VatssaPipelineSeeder::class);
+        $this->seedFixtures();
 
         $stages = Training::whereBetween('user_id', [10000301, 10000310])
             ->pluck('status')
@@ -514,8 +557,7 @@ class VatssaTest extends TestCase
         // VatssaSeeder makes 250 users. Without the backfill every one of them
         // has an empty Platforms panel, so every profile on dev looks broken
         // and the deliberately interesting students are lost among them.
-        $this->seed(VatssaSeeder::class);
-        $this->seed(VatssaPipelineSeeder::class);
+        $this->seedFixtures();
 
         $this->assertSame(User::count(), UserPlatform::count());
     }
@@ -527,8 +569,7 @@ class VatssaTest extends TestCase
         // produce AWAITING_MENTOR (4, appended rather than inserted). Without
         // the promotion step, the one stage this fork exists to add would be
         // the only empty page on dev.
-        $this->seed(VatssaSeeder::class);
-        $this->seed(VatssaPipelineSeeder::class);
+        $this->seedFixtures();
 
         $promoted = Training::where('status', TrainingStatus::AWAITING_MENTOR)
             ->whereNotBetween('user_id', [10000301, 10000400])
@@ -543,8 +584,7 @@ class VatssaTest extends TestCase
         // Fixtures that contradict the rules are worse than no fixtures: a
         // student in active training with no pass looks like a bug in the gate
         // rather than a gap in the seed data.
-        $this->seed(VatssaSeeder::class);
-        $this->seed(VatssaPipelineSeeder::class);
+        $this->seedFixtures();
 
         $inTraining = Training::where('type', 1)
             ->whereIn('status', [
@@ -570,34 +610,62 @@ class VatssaTest extends TestCase
     {
         // Visiting, transfer and refresher controllers already hold the rating.
         // Giving them attempts would misrepresent the rule the map encodes.
-        $this->seed(VatssaSeeder::class);
-        $this->seed(VatssaPipelineSeeder::class);
+        $this->seedFixtures();
 
         $others = Training::where('type', '!=', 1)
             ->where('status', '>=', TrainingStatus::IN_QUEUE)
             ->pluck('user_id')
             ->diff(Training::where('type', 1)->pluck('user_id'));
 
-        foreach ($others as $userId) {
-            $this->assertSame(
-                0,
-                TheoryAttempt::where('user_id', $userId)->count(),
-                "User {$userId} trains a non-standard track but has theory attempts"
-            );
-        }
+        // ONE assertion, always made. A foreach over a collection that happens
+        // to be empty asserts nothing at all and PHPUnit marks it risky --
+        // which is exactly what happened the first time this ran.
+        $this->assertSame(
+            0,
+            TheoryAttempt::whereIn('user_id', $others)->count(),
+            'A non-standard track has theory attempts, which it should never have'
+        );
     }
 
     #[Test]
     public function every_open_training_has_an_email_history(): void
     {
-        $this->seed(VatssaSeeder::class);
-        $this->seed(VatssaPipelineSeeder::class);
+        $this->seedFixtures();
 
-        $withoutLog = Training::where('status', '>=', TrainingStatus::IN_QUEUE)
+        $open = Training::where('status', '>=', TrainingStatus::IN_QUEUE);
+
+        // Prove there is something to check before checking it. Zero open
+        // trainings would otherwise satisfy this test by having nothing to
+        // fail on.
+        $this->assertGreaterThan(0, (clone $open)->count(), 'no open trainings were seeded');
+
+        $withoutLog = (clone $open)
             ->whereNotIn('id', MessageLog::query()->whereNotNull('training_id')->pluck('training_id'))
             ->count();
 
         $this->assertSame(0, $withoutLog);
+    }
+
+    #[Test]
+    public function the_seeder_fills_the_task_board(): void
+    {
+        // Every student and mentor request in Control Center is a Task. Without
+        // these the Tasks page is empty for everybody, and the VATSSA overview
+        // tab has nothing to show -- which is the one thing that cannot be
+        // judged from a single person's inbox.
+        $this->seedFixtures();
+
+        $this->assertGreaterThan(0, Task::where('status', TaskStatus::PENDING)->count());
+
+        // Spread across more than one desk, or the overview proves nothing.
+        $this->assertGreaterThan(
+            1,
+            Task::where('status', TaskStatus::PENDING)->distinct()->count('assignee_user_id'),
+            'every seeded task landed on the same person'
+        );
+
+        // And some closed ones, so the Archived tab is not empty either.
+        $this->assertGreaterThan(0, Task::where('status', TaskStatus::COMPLETED)->count());
     }
 
     #[Test]
@@ -606,8 +674,7 @@ class VatssaTest extends TestCase
         // deploy-cc.sh runs this on EVERY dev and staging deploy, unlike
         // VatssaSeeder which returns early once there are users. Every write is
         // keyed for exactly this reason.
-        $this->seed(VatssaSeeder::class);
-        $this->seed(VatssaPipelineSeeder::class);
+        $this->seedFixtures();
 
         $users = User::count();
         $attempts = TheoryAttempt::count();
@@ -626,8 +693,7 @@ class VatssaTest extends TestCase
         // Student 10000305 exists to make "latest, not best" visible: pass,
         // fail, pass. All three attempts show, and the person is through the
         // gate -- and would NOT be if the middle attempt were the last one.
-        $this->seed(VatssaSeeder::class);
-        $this->seed(VatssaPipelineSeeder::class);
+        $this->seedFixtures();
 
         $this->assertSame(3, TheoryAttempt::where('user_id', 10000305)->count());
         $this->assertTrue(TheoryAttempt::passedRating(10000305, 'S2'));
@@ -641,8 +707,7 @@ class VatssaTest extends TestCase
     {
         // A bot or a test account. It is its own state, not a missing tick, and
         // the profile panel has to be able to show it.
-        $this->seed(VatssaSeeder::class);
-        $this->seed(VatssaPipelineSeeder::class);
+        $this->seedFixtures();
 
         $this->assertFalse(UserPlatform::find(10000310)->vatsim_member);
         $this->assertTrue(UserPlatform::find(10000304)->vatsim_member);
@@ -673,11 +738,15 @@ class VatssaTest extends TestCase
     public function the_pipeline_seeder_refuses_to_run_in_production(): void
     {
         // It invents students, exam results and emails that never happened.
+        // Called directly rather than through $this->seed(). The artisan
+        // seed command wraps the seeder in a mocked console command, and the
+        // mock explodes on the first ->warn() or ->info() -- which is a
+        // BadMethodCall, not the RuntimeException this test is about.
         $this->app->detectEnvironment(fn () => 'production');
 
-        $this->expectException(\RuntimeException::class);
+        $this->expectException(RuntimeException::class);
 
-        $this->seed(VatssaPipelineSeeder::class);
+        (new VatssaPipelineSeeder)->run();
     }
 
     #[Test]
@@ -720,10 +789,13 @@ class VatssaTest extends TestCase
     {
         // The one guard that stands between a mistyped artisan command and
         // eleven fake controllers in the live member list.
+        // Direct, for the same reason as the pipeline seeder above: the
+        // artisan wrapper's mocked command turns any console output into a
+        // BadMethodCall before the guard can throw.
         $this->app->detectEnvironment(fn () => 'production');
 
-        $this->expectException(\RuntimeException::class);
+        $this->expectException(RuntimeException::class);
 
-        $this->seed(VatssaSeeder::class);
+        (new VatssaSeeder)->run();
     }
 }
