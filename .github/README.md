@@ -76,6 +76,72 @@ fails division-wide with no error anywhere. `deploy/deploy-cc.sh` asserts it.
 compose volume on `storage/framework/sessions` exists because sessions are
 files and must survive a container recreate.
 
+## Testing the training pipeline without the bot
+
+Everything the pipeline writes normally arrives over the bridge, from a bot that
+polls Moodle and Discord. **You do not need any of that to look at the pages.**
+
+`VatssaPipelineSeeder` writes the same rows directly: ten students on CIDs
+`10000301`–`10000310`, one per stage, with theory attempts, platform rows and an
+email history. It runs on every dev and staging deploy, so a fresh environment
+already has them. To run it by hand:
+
+```
+php artisan migrate --path=database/migrations-vatssa
+php artisan db:seed --class=VatssaPipelineSeeder
+```
+
+It refuses on production and is safe to re-run — every write is keyed.
+
+### What to look at, and why each one is there
+
+| CID | Stage | The point |
+|---|---|---|
+| 301 | In queue | The day they registered. Nothing has happened. |
+| 302 | Pre-training | On both platforms, inside the 90-day window, no attempt. |
+| 303 | Pre-training | Failed once. Still has time. |
+| 304 | **Awaiting mentor** | Passed. The stage upstream cannot express at all. |
+| 305 | **Awaiting mentor** | Pass, fail, pass. **Latest counts, not best.** |
+| 306 | Active training | Mentored, so a later attempt cannot pull them back out. |
+| 307 | Awaiting exam | Ready for a CPT. |
+| 308 | Completed | The theory row outlives the training that produced it. |
+| 309 | Pre-training | On Moodle, gone from Discord. The chase case. |
+| 310 | Pre-training | **Not a VATSIM member** — a bot or test account, not a missing tick. |
+
+**305 is the one worth staring at.** Three attempts: 91% passed, then 39%
+failed, then 80% passed. The panel shows all three; the person reads as
+currently passed — and would read as failed if the middle one were last. That is
+the entire "latest, not best" rule, visible on one page.
+
+**304 and 306 together** show why the theory gate is checked at a moment rather
+than enforced continuously. 306 has a mentor, so a failed practice paper cannot
+send them back to the queue.
+
+### Where to click
+
+- **A student's profile** — Platforms and Theory panels. Log in as Web Nine
+  (`10000009`, ATC training manager) to see marks; as Web Eight
+  (`10000008`, pipeline coordinator) to see pass/fail without them; as Web Six
+  (`10000006`, mentor) to see neither.
+- **A training page** — the Emails sent panel, and the status dropdown, which
+  should offer *Awaiting mentor* on 306 and not on 301.
+- **Tasks → Everyone** — visible to Web Eight and Web Nine, not to Web Six.
+- **Administration → Pipeline templates / Moodle courses** — admin only.
+
+### What is deliberately empty
+
+**The Moodle course map has no ids.** Every rating shows `0`, which means the
+map is empty and no rating needs theory. That is the correct starting state:
+nobody has read the ids out of Moodle yet, and inventing them would give every
+student no attempts — indistinguishable from a room full of failures.
+
+**`vatssa.task_routing` is an empty array**, so tasks route exactly as upstream
+until it has been decided which request belongs on which desk.
+
+Neither is a bug to fix in code. Both are decisions waiting to be made.
+
+---
+
 ## Deployment
 
 Built by GitHub Actions, pushed to `ghcr.io/vatsim-ssa/ssa-controlcenter`, and

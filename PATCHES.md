@@ -351,7 +351,34 @@ been *decided* where each request goes; and the Moodle course map drops any
 rating whose ids are still `0`, so an unconfigured rating visibly needs no
 theory rather than silently giving every student no attempts.
 
-**Detectors.** Fourteen tests in `VatssaTest`, and `tools/expand.py` for the
+### `database/seeders/VatssaPipelineSeeder.php` and the seeding migration
+
+Ten students on CIDs 10000301-10000310, one per pipeline stage, with theory
+attempts, platform rows and an email history written straight into the tables.
+It exists so the pipeline can be clicked through with **no bot, bridge, Moodle
+or Discord running**, which is most of the time. `deploy-cc.sh` runs it on every
+dev and staging deploy; it refuses on production and is safe to re-run.
+
+The templates and the course-map rows are seeded by a **migration**, not a
+seeder, because they are real content rather than fixtures -- both admin pages
+are empty and useless without them, in production too. It uses
+`insertOrIgnore`, so re-running never silently undoes somebody's wording change.
+
+**The templates moved house.** They came from `config/templates/*.md` in
+`ssa-training-pipeline`, where the bot read them off its own disk -- so a
+wording change was a rebuild and a restart. Control Center owns them now and the
+bot reads them back through the bridge. The files stay in the bot as the
+fallback for when the bridge is unreachable.
+
+### `app/Providers/VatssaServiceProvider.php` registers the migration path
+
+`loadMigrationsFrom(database_path('migrations-vatssa'))`. Without it,
+`RefreshDatabase` in the test suite never creates the VATSSA tables, because it
+re-migrates from the default path only. `deploy-cc.sh` keeps its explicit
+`--path` call, which is now a harmless second pass.
+
+**Detectors.** Twenty-one of the thirty-five tests in `VatssaTest` cover the
+pipeline additions, and `tools/expand.py` covers the
 permission matrix. The one thing nothing detects: whether the deployment sets
 `VATSSA_BRIDGE_TOKEN` and whether Caddy 403s `/api/vatssa/bridge/*`. Both are
 outside the repository. **Neither is optional.**

@@ -22,6 +22,16 @@ class VatssaServiceProvider extends ServiceProvider
 {
     public function boot(Router $router): void
     {
+        // database/migrations-vatssa is a separate directory so upstream never
+        // meets a VATSSA migration in a conflict. Registering it here is what
+        // makes `php artisan migrate` -- and RefreshDatabase in the test suite
+        // -- pick them up without a --path flag.
+        //
+        // Ordering is safe: they are all dated later than anything upstream
+        // ships, so they still run last. deploy-cc.sh keeps its explicit
+        // --path call, which becomes a harmless second pass.
+        $this->loadMigrationsFrom(database_path('migrations-vatssa'));
+
         $router->aliasMiddleware('vatssa-bridge', VatssaBridgeToken::class);
 
         Route::middleware('api')

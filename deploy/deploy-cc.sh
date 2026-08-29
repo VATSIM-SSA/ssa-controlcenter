@@ -95,6 +95,16 @@ run php artisan migrate --force --no-interaction --path=database/migrations-vats
 if [ "$ENVIRONMENT" != "prod" ]; then
     echo "==> Seeding fixtures (no-op if the database already has users)"
     run php artisan db:seed --class=VatssaSeeder --force --no-interaction
+
+    # The training pipeline cohort: ten students, one per stage, with theory
+    # attempts, platform rows and an email history written directly. It exists
+    # so the pipeline can be clicked through with NO bot, bridge, Moodle or
+    # Discord running -- which is most of the time.
+    #
+    # Every write is keyed, so unlike VatssaSeeder this is safe to re-run and
+    # does so on every deploy. It refuses outright on production.
+    echo "==> Seeding the pipeline cohort"
+    run php artisan db:seed --class=VatssaPipelineSeeder --force --no-interaction
 fi
 
 echo "==> Clearing caches"

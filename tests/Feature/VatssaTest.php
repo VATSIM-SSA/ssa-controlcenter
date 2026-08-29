@@ -5,11 +5,14 @@ namespace Tests\Feature;
 use App\Helpers\TrainingStatus;
 use App\Models\Area;
 use App\Models\Position;
+use App\Models\Training;
 use App\Models\User;
+use App\Models\Vatssa\MessageTemplate;
 use App\Models\Vatssa\MoodleCourse;
 use App\Models\Vatssa\TheoryAttempt;
 use App\Models\Vatssa\UserPlatform;
 use App\Services\PermissionMatrix;
+use Database\Seeders\VatssaPipelineSeeder;
 use Database\Seeders\VatssaSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -469,6 +472,119 @@ class VatssaTest extends TestCase
         // rather than agreed would send real requests to the wrong people,
         // quietly -- worse than the manual choice it replaces.
         $this->assertSame([], config('vatssa.task_routing'));
+    }
+
+
+    // ---------------------------------------------------------------------
+    // The pipeline cohort
+    // ---------------------------------------------------------------------
+
+    #[Test]
+    public function the_pipeline_seeder_covers_every_stage(): void
+    {
+        // The whole point of the cohort: click through the pipeline with no
+        // bot, bridge, Moodle or Discord running. If a stage has nobody in it,
+        // that page cannot be looked at.
+        $this->seed(VatssaSeeder::class);
+        $this->seed(VatssaPipelineSeeder::class);
+
+        $stages = Training::whereBetween('user_id', [10000301, 10000310])
+            ->pluck('status')
+            ->unique();
+
+        foreach ([
+            TrainingStatus::IN_QUEUE,
+            TrainingStatus::PRE_TRAINING,
+            TrainingStatus::AWAITING_MENTOR,
+            TrainingStatus::ACTIVE_TRAINING,
+            TrainingStatus::AWAITING_EXAM,
+            TrainingStatus::COMPLETED,
+        ] as $stage) {
+            $this->assertTrue(
+                $stages->contains($stage),
+                "No seeded student is in {$stage->name}"
+            );
+        }
+    }
+
+    #[Test]
+    public function the_pipeline_seeder_is_safe_to_run_twice(): void
+    {
+        // deploy-cc.sh runs this on EVERY dev and staging deploy, unlike
+        // VatssaSeeder which returns early once there are users. Every write is
+        // keyed for exactly this reason.
+        $this->seed(VatssaSeeder::class);
+        $this->seed(VatssaPipelineSeeder::class);
+
+        $users = User::count();
+        $attempts = TheoryAttempt::count();
+        $messages = DB::table('vatssa_message_log')->count();
+
+        $this->seed(VatssaPipelineSeeder::class);
+
+        $this->assertSame($users, User::count());
+        $this->assertSame($attempts, TheoryAttempt::count());
+        $this->assertSame($messages, DB::table('vatssa_message_log')->count());
+    }
+
+    #[Test]
+    public function the_retake_student_reads_as_currently_passed(): void
+    {
+        // Student 10000305 exists to make "latest, not best" visible: pass,
+        // fail, pass. All three attempts show, and the person is through the
+        // gate -- and would NOT be if the middle attempt were the last one.
+        $this->seed(VatssaSeeder::class);
+        $this->seed(VatssaPipelineSeeder::class);
+
+        $this->assertSame(3, TheoryAttempt::where('user_id', 10000305)->count());
+        $this->assertTrue(TheoryAttempt::passedRating(10000305, 'S2'));
+
+        // And the one who only ever failed is not.
+        $this->assertFalse(TheoryAttempt::passedRating(10000303, 'S2'));
+    }
+
+    #[Test]
+    public function the_cohort_includes_an_account_that_is_not_a_vatsim_member(): void
+    {
+        // A bot or a test account. It is its own state, not a missing tick, and
+        // the profile panel has to be able to show it.
+        $this->seed(VatssaSeeder::class);
+        $this->seed(VatssaPipelineSeeder::class);
+
+        $this->assertFalse(UserPlatform::find(10000310)->vatsim_member);
+        $this->assertTrue(UserPlatform::find(10000304)->vatsim_member);
+    }
+
+    #[Test]
+    public function the_pipeline_seeder_refuses_to_run_in_production(): void
+    {
+        // It invents students, exam results and emails that never happened.
+        $this->app->detectEnvironment(fn () => 'production');
+
+        $this->expectException(\RuntimeException::class);
+
+        $this->seed(VatssaPipelineSeeder::class);
+    }
+
+    #[Test]
+    public function the_seeded_templates_and_courses_are_present(): void
+    {
+        // Seeded by migration, not by a seeder, because they are real content
+        // rather than fixtures -- both admin pages are empty without them, in
+        // production too.
+        $this->assertSame(17, MessageTemplate::count());
+        $this->assertNotNull(MessageTemplate::find('T7'));
+
+        $this->assertSame(4, MoodleCourse::count());
+    }
+
+    #[Test]
+    public function the_seeded_moodle_courses_start_unconfigured(): void
+    {
+        // Nobody has read the ids out of Moodle yet, so the map must be EMPTY
+        // rather than wrong. Inventing ids would give every student no
+        // attempts, which is indistinguishable from a room full of failures.
+        $this->assertSame([], MoodleCourse::map());
     }
 
     #[Test]
