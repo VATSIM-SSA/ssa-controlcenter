@@ -2,8 +2,8 @@
     Said on every preview page, because somebody will find one of these by a
     shared link and think the migration has happened.
 --}}
-<div class="rounded-xl border border-dashed border-amber-300 bg-amber-50/50 px-4 py-3 text-sm
-            text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-200">
+<div class="rounded-xl border border-dashed border-warn/50 bg-warn-wash px-4 py-3 text-sm
+ text-warn">
     <p>
         <strong>This is a preview.</strong> A parallel copy showing what Control Center would look
         like migrated to Tailwind. It reads real data and changes nothing — the

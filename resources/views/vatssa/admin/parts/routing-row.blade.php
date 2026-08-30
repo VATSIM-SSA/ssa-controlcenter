@@ -27,7 +27,7 @@
 <div class="px-6 py-4">
     <div class="flex flex-wrap items-baseline justify-between gap-2">
         <p class="text-sm font-medium">{{ $label }}</p>
-        <p class="text-xs {{ $selected ? 'text-neutral-500 dark:text-neutral-400' : 'text-amber-600 dark:text-amber-400' }}">
+        <p class="text-xs {{ $selected ? 'text-ink-soft' : 'text-warn' }}">
             {{ $selected
                 ? count($selected) . ' ' . Str::plural('person', count($selected))
                 : 'Empty — requests will stay with whoever raised them' }}
@@ -38,22 +38,22 @@
         @foreach($candidates as $candidate)
             @php $on = in_array($candidate->id, $selected); @endphp
             <label class="flex cursor-pointer items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm
-                          transition-colors hover:bg-neutral-50 dark:hover:bg-neutral-800/60">
+ transition-colors hover:bg-card-header">
                 <input type="checkbox"
                        name="targets[{{ $key }}][]"
                        value="{{ $candidate->id }}"
                        @checked($on)
-                       class="h-4 w-4 shrink-0 rounded border-neutral-300 text-brand-500
-                              focus:ring-brand-500 dark:border-neutral-600 dark:bg-neutral-800">
+                       class="h-4 w-4 shrink-0 rounded border-line text-brand
+ focus:ring-brand">
                 <span class="min-w-0 truncate">
                     {{ $candidate->name }}
-                    <span class="text-xs tabular-nums text-neutral-400">{{ $candidate->id }}</span>
+                    <span class="text-xs tabular-nums text-ink-faint">{{ $candidate->id }}</span>
                 </span>
             </label>
         @endforeach
     </div>
 
     @isset($help)
-        <p class="mt-2 text-xs text-neutral-500 dark:text-neutral-400">{{ $help }}</p>
+        <p class="mt-2 text-xs text-ink-soft">{{ $help }}</p>
     @endisset
 </div>

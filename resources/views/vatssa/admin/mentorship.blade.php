@@ -24,70 +24,67 @@
 
     <div class="max-w-3xl">
         <h2 class="text-xl font-semibold tracking-tight">Mentorship</h2>
-        <p class="mt-2 text-sm text-neutral-600 dark:text-neutral-400">
-            <strong class="font-medium text-neutral-800 dark:text-neutral-200">Up to</strong> is the ceiling:
+        <p class="mt-2 text-sm text-ink-soft">
+            <strong class="font-medium text-ink">Up to</strong> is the ceiling:
             the highest rating this mentor may teach at all.
-            <strong class="font-medium text-neutral-800 dark:text-neutral-200">Total</strong> caps students
+            <strong class="font-medium text-ink">Total</strong> caps students
             across every rating.
             The per-rating numbers cap each pipeline on its own.
         </p>
-        <p class="mt-2 text-sm text-neutral-600 dark:text-neutral-400">
-            Blank is <em>no limit</em>. <strong class="font-medium text-neutral-800 dark:text-neutral-200">0</strong>
+        <p class="mt-2 text-sm text-ink-soft">
+            Blank is <em>no limit</em>. <strong class="font-medium text-ink">0</strong>
             means they take nobody for that rating. Those are different instructions, and
             the difference is why a blank box is never treated as a zero.
         </p>
     </div>
 
-    <section class="overflow-hidden rounded-xl border border-neutral-200 bg-white
-                    dark:border-neutral-800 dark:bg-neutral-900">
+    <section class="overflow-hidden rounded-xl border border-line bg-card">
         <div class="overflow-x-auto">
             <table class="w-full text-sm">
                 <thead>
-                    <tr class="border-b border-neutral-200 text-left dark:border-neutral-800">
-                        <th class="px-5 py-3 text-[11px] font-semibold uppercase tracking-wider text-neutral-400">
+                    <tr class="border-b border-line text-left">
+                        <th class="px-5 py-3 text-[11px] font-semibold uppercase tracking-wider text-ink-faint">
                             Mentor
                         </th>
-                        <th class="px-3 py-3 text-[11px] font-semibold uppercase tracking-wider text-neutral-400">
+                        <th class="px-3 py-3 text-[11px] font-semibold uppercase tracking-wider text-ink-faint">
                             Up to
                         </th>
-                        <th class="px-3 py-3 text-[11px] font-semibold uppercase tracking-wider text-neutral-400">
+                        <th class="px-3 py-3 text-[11px] font-semibold uppercase tracking-wider text-ink-faint">
                             Total
                         </th>
                         {{-- The per-rating block gets its own visual group, so
                              the eye can tell "one number about the mentor" from
                              "one number per pipeline". --}}
                         <th colspan="{{ $ratings->count() }}"
-                            class="border-l border-neutral-200 px-3 py-3 text-center text-[11px]
-                                   font-semibold uppercase tracking-wider text-neutral-400
-                                   dark:border-neutral-800">
+                            class="border-l border-line px-3 py-3 text-center text-[11px]
+ font-semibold uppercase tracking-wider text-ink-faint">
                             Per rating
                         </th>
                     </tr>
-                    <tr class="border-b border-neutral-100 text-left dark:border-neutral-800">
+                    <tr class="border-b border-line-soft text-left">
                         <th colspan="3"></th>
                         @foreach($ratings as $rating)
-                            <th class="{{ $loop->first ? 'border-l border-neutral-200 dark:border-neutral-800' : '' }}
-                                       px-3 pb-2 text-center text-xs font-medium text-neutral-500
-                                       dark:text-neutral-400">
+                            <th class="{{ $loop->first ? 'border-l border-line' : '' }}
+ px-3 pb-2 text-center text-xs font-medium text-ink-soft">
                                 {{ $rating->name }}
                             </th>
                         @endforeach
                     </tr>
                 </thead>
 
-                <tbody class="divide-y divide-neutral-100 dark:divide-neutral-800">
+                <tbody class="divide-y divide-line-soft">
                     @forelse($mentors as $mentor)
                         @php
                             $ceiling = $ceilings->get($mentor->id);
                             $load = \App\Models\Vatssa\MentorCapacity::loadFor($mentor);
-                            $field = 'w-full rounded-lg border border-neutral-300 bg-white px-2 py-1.5 '
-                                . 'text-sm tabular-nums focus:border-brand-500 '
-                                . 'dark:border-neutral-700 dark:bg-neutral-950';
+                            $field = 'w-full rounded-lg border border-line bg-card px-2 py-1.5 '
+                                . 'text-sm tabular-nums focus:border-brand '
+                                . '';
                         @endphp
                         <tr class="align-middle">
                             <td class="px-5 py-3">
                                 <p class="font-medium">{{ $mentor->name }}</p>
-                                <p class="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">
+                                <p class="mt-0.5 text-xs text-ink-soft">
                                     <span class="tabular-nums">{{ $mentor->id }}</span>
                                     · running {{ $load }}
                                 </p>
@@ -117,7 +114,7 @@
                                     $row = $capacity->where('user_id', $mentor->id)
                                         ->where('rating_id', $rating->id)->first();
                                 @endphp
-                                <td class="{{ $loop->first ? 'border-l border-neutral-100 dark:border-neutral-800' : '' }} px-3 py-3">
+                                <td class="{{ $loop->first ? 'border-l border-line-soft' : '' }} px-3 py-3">
                                     <input type="number" min="0" max="99" placeholder="—"
                                            name="capacity[{{ $mentor->id }}][{{ $rating->id }}]"
                                            value="{{ $row?->student_limit }}"
@@ -128,7 +125,7 @@
                     @empty
                         <tr>
                             <td colspan="{{ 3 + $ratings->count() }}"
-                                class="px-5 py-12 text-center text-neutral-500 dark:text-neutral-400">
+                                class="px-5 py-12 text-center text-ink-soft">
                                 Nobody holds the mentor role.
                             </td>
                         </tr>
@@ -142,10 +139,10 @@
          Six rows is the realistic ceiling, and a blank row is how you add one --
          an "add row" button for something used twice a year is a control to
          maintain rather than a feature. --}}
-    <section class="rounded-xl border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
-        <div class="border-b border-neutral-100 px-6 py-4 dark:border-neutral-800">
+    <section class="rounded-xl border border-line bg-card">
+        <div class="border-b border-line-soft px-6 py-4">
             <h3 class="text-sm font-semibold tracking-tight">Mentor resources</h3>
-            <p class="mt-0.5 text-sm text-neutral-500 dark:text-neutral-400">
+            <p class="mt-0.5 text-sm text-ink-soft">
                 Links shown on every mentor's page. Clear the label to remove one.
             </p>
         </div>
@@ -156,23 +153,23 @@
                 <div class="grid gap-3 sm:grid-cols-[1fr_2fr_8rem]">
                     <input type="text" name="resources[{{ $i }}][label]"
                            value="{{ $resource?->label }}" placeholder="Label"
-                           class="rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm
-                                  focus:border-brand-500 dark:border-neutral-700 dark:bg-neutral-950">
+                           class="rounded-lg border border-line bg-card px-3 py-2 text-sm
+ focus:border-brand">
                     <input type="url" name="resources[{{ $i }}][url]"
                            value="{{ $resource?->url }}" placeholder="https://"
-                           class="rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm
-                                  focus:border-brand-500 dark:border-neutral-700 dark:bg-neutral-950">
+                           class="rounded-lg border border-line bg-card px-3 py-2 text-sm
+ focus:border-brand">
                     <input type="text" name="resources[{{ $i }}][icon]"
                            value="{{ $resource?->icon }}" placeholder="fa-link"
-                           class="rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm
-                                  focus:border-brand-500 dark:border-neutral-700 dark:bg-neutral-950">
+                           class="rounded-lg border border-line bg-card px-3 py-2 text-sm
+ focus:border-brand">
                 </div>
             @endfor
         </div>
     </section>
 
     <button type="submit"
-            class="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600">
+            class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-strong">
         Save
     </button>
 </form>

@@ -16,9 +16,9 @@
     $user = Auth::user();
 
     $link = 'group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors';
-    $idle = 'text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900 '
-        . 'dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100';
-    $on = 'bg-brand-50 text-brand-700 dark:bg-brand-950/60 dark:text-brand-300';
+    $idle = 'text-ink-soft hover:bg-card-header hover:text-ink '
+        . '';
+    $on = 'bg-brand-wash text-brand-strong';
 
     $preview = Route::is('vatssa.preview.*');
 
@@ -84,8 +84,7 @@
 
     @if($visible)
         <div>
-            <p class="px-3 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-neutral-400
-                      dark:text-neutral-500">
+            <p class="px-3 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-ink-faint">
                 {{ $heading }}
             </p>
 
@@ -93,7 +92,7 @@
                 @foreach($visible as [$label, $href, $icon, $allowed])
                     @php $active = Request::url() === strtok($href, '?'); @endphp
                     <a href="{{ $href }}" class="{{ $link }} {{ $active ? $on : $idle }}">
-                        <span class="shrink-0 {{ $active ? '' : 'text-neutral-400 dark:text-neutral-500' }}">
+                        <span class="shrink-0 {{ $active ? '' : 'text-ink-faint' }}">
                             @include('vatssa.parts.icon', ['name' => $icon])
                         </span>
                         {{ $label }}
@@ -106,17 +105,17 @@
 
 {{-- THE TAILWIND PREVIEW -- DELETE THIS BLOCK TO REVERT. --}}
 @can('fir.management.reports.view')
-    <div class="border-t border-neutral-200 pt-4 dark:border-neutral-800">
+    <div class="border-t border-line pt-4">
         @if($preview)
             <a href="{{ route('dashboard') }}" class="{{ $link }} {{ $idle }}">
-                <span class="shrink-0 text-neutral-400 dark:text-neutral-500">
+                <span class="shrink-0 text-ink-faint">
                     @include('vatssa.parts.icon', ['name' => 'back'])
                 </span>
                 Leave the preview
             </a>
         @else
             <a href="{{ route('vatssa.preview.dashboard') }}" class="{{ $link }} {{ $idle }}">
-                <span class="shrink-0 text-neutral-400 dark:text-neutral-500">
+                <span class="shrink-0 text-ink-faint">
                     @include('vatssa.parts.icon', ['name' => 'bolt'])
                 </span>
                 Tailwind preview
@@ -128,9 +127,9 @@
 {{-- Back to the rest of Control Center. These pages are an island until the
      migration finishes, and an island with no bridge is a trap. --}}
 @unless($preview)
-    <div class="border-t border-neutral-200 pt-4 dark:border-neutral-800">
+    <div class="border-t border-line pt-4">
         <a href="{{ route('dashboard') }}" class="{{ $link }} {{ $idle }}">
-            <span class="shrink-0 text-neutral-400 dark:text-neutral-500">
+            <span class="shrink-0 text-ink-faint">
                 @include('vatssa.parts.icon', ['name' => 'back'])
             </span>
             Control Center

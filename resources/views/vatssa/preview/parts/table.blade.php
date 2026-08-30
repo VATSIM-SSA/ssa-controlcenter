@@ -27,35 +27,34 @@
       $rows     array of arrays of already-rendered HTML strings, same length.
       $empty    optional empty-state sentence.
 --}}
-<div class="overflow-hidden rounded-xl border border-neutral-200 bg-white
-            dark:border-neutral-800 dark:bg-neutral-900">
+<div class="overflow-hidden rounded-xl border border-line bg-card">
     <div class="overflow-x-auto">
         <table class="w-full text-sm">
             <thead>
-                <tr class="border-b border-neutral-200 text-left dark:border-neutral-800">
+                <tr class="border-b border-line text-left">
                     @foreach($columns as $column)
                         @php
                             $label = is_array($column) ? $column['label'] : $column;
                             $right = is_array($column) && ($column['align'] ?? '') === 'right';
                         @endphp
                         <th class="px-5 py-3 text-[11px] font-semibold uppercase tracking-wider
-                                   text-neutral-400 {{ $right ? 'text-right' : '' }}">
+ text-ink-faint {{ $right ? 'text-right' : '' }}">
                             {{ $label }}
                         </th>
                     @endforeach
                 </tr>
             </thead>
 
-            <tbody class="divide-y divide-neutral-100 dark:divide-neutral-800">
+            <tbody class="divide-y divide-line-soft">
                 @forelse($rows as $row)
-                    <tr class="transition-colors hover:bg-neutral-50 dark:hover:bg-neutral-800/50">
+                    <tr class="transition-colors hover:bg-card-header">
                         @foreach($row as $i => $cell)
                             @php
                                 $right = is_array($columns[$i] ?? null)
                                     && ($columns[$i]['align'] ?? '') === 'right';
                             @endphp
                             <td class="px-5 py-3 {{ $right ? 'text-right tabular-nums' : '' }}
-                                       {{ $i === 0 ? '' : 'text-neutral-600 dark:text-neutral-400' }}">
+ {{ $i === 0 ? '' : 'text-ink-soft' }}">
                                 {!! $cell !!}
                             </td>
                         @endforeach
@@ -63,7 +62,7 @@
                 @empty
                     <tr>
                         <td colspan="{{ count($columns) }}"
-                            class="px-5 py-16 text-center text-neutral-500 dark:text-neutral-400">
+                            class="px-5 py-16 text-center text-ink-soft">
                             {{ $empty ?? 'Nothing here.' }}
                         </td>
                     </tr>

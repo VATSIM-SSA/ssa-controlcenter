@@ -19,7 +19,7 @@
         <div class="max-w-2xl">
             <h2 class="text-xl font-semibold tracking-tight">{{ $heading }}</h2>
             @isset($blurb)
-                <p class="mt-1 text-sm text-neutral-600 dark:text-neutral-400">{{ $blurb }}</p>
+                <p class="mt-1 text-sm text-ink-soft">{{ $blurb }}</p>
             @endisset
         </div>
 
@@ -27,9 +27,8 @@
             <div class="flex flex-wrap items-center gap-2">
                 @foreach($actions as $label => $href)
                     <a href="{{ $href }}"
-                       class="rounded-lg bg-neutral-100 px-3 py-1.5 text-sm font-medium text-neutral-700
-                              transition-colors hover:bg-neutral-200
-                              dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700">
+                       class="rounded-lg bg-card-header px-3 py-1.5 text-sm font-medium text-ink
+ transition-colors hover:bg-line">
                         {{ $label }}
                     </a>
                 @endforeach
@@ -43,7 +42,7 @@
         'empty' => $empty ?? null,
     ])
 
-    <p class="text-xs text-neutral-400 dark:text-neutral-600">
+    <p class="text-xs text-ink-faint">
         {{ count($rows) }} {{ Str::plural('row', count($rows)) }} shown.
     </p>
 

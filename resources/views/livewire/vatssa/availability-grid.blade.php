@@ -15,8 +15,8 @@
     <div class="flex flex-wrap items-center justify-between gap-3">
         <div class="flex items-center gap-1">
             <button type="button" wire:click="previousWeek"
-                    class="rounded-lg p-2 text-neutral-500 hover:bg-neutral-100
-                           disabled:opacity-30 dark:hover:bg-neutral-800">
+                    class="rounded-lg p-2 text-ink-soft hover:bg-card-header
+ disabled:opacity-30">
                 <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                     <path stroke-linecap="round" d="m15 19-7-7 7-7"/>
                 </svg>
@@ -25,23 +25,23 @@
                 {{ $days->first()?->format('j M') }} – {{ $days->last()?->format('j M Y') }}
             </span>
             <button type="button" wire:click="nextWeek"
-                    class="rounded-lg p-2 text-neutral-500 hover:bg-neutral-100
-                           disabled:opacity-30 dark:hover:bg-neutral-800">
+                    class="rounded-lg p-2 text-ink-soft hover:bg-card-header
+ disabled:opacity-30">
                 <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                     <path stroke-linecap="round" d="m9 5 7 7-7 7"/>
                 </svg>
             </button>
         </div>
 
-        <div class="flex items-center gap-3 text-xs text-neutral-500 dark:text-neutral-400">
+        <div class="flex items-center gap-3 text-xs text-ink-soft">
             {{-- All times Zulu, said out loud. VATSSA spans four hours of time
                  zones and the worst bug in this workflow is a CPT confirmed for
                  the wrong hour. --}}
-            <span class="rounded-md bg-neutral-100 px-2 py-1 font-medium dark:bg-neutral-800">
+            <span class="rounded-md bg-card-header px-2 py-1 font-medium">
                 All times Zulu (UTC)
             </span>
             @unless($readOnly)
-                <button type="button" wire:click="clearWeek" class="hover:text-neutral-800 dark:hover:text-neutral-200">
+                <button type="button" wire:click="clearWeek" class="hover:text-ink">
                     Clear this week
                 </button>
             @endunless
@@ -49,14 +49,14 @@
     </div>
 
     {{-- The grid. touch-none so a drag paints instead of scrolling the page. --}}
-    <div class="overflow-x-auto rounded-xl border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
+    <div class="overflow-x-auto rounded-xl border border-line bg-card">
         <table class="w-full border-collapse select-none text-sm" style="touch-action: none">
             <thead>
                 <tr>
-                    <th class="sticky left-0 z-10 w-16 bg-white p-2 dark:bg-neutral-900"></th>
+                    <th class="sticky left-0 z-10 w-16 bg-card p-2"></th>
                     @foreach($days as $day)
-                        <th class="border-l border-neutral-100 p-2 text-center font-medium dark:border-neutral-800">
-                            <div class="text-[11px] uppercase tracking-wide text-neutral-400">
+                        <th class="border-l border-line-soft p-2 text-center font-medium">
+                            <div class="text-[11px] uppercase tracking-wide text-ink-faint">
                                 {{ $day->format('D') }}
                             </div>
                             <div class="text-[15px] tabular-nums">{{ $day->format('j') }}</div>
@@ -68,8 +68,8 @@
                 @foreach($times as $time)
                     @php $onHour = str_ends_with($time, ':00'); @endphp
                     <tr>
-                        <td class="sticky left-0 z-10 bg-white pr-2 text-right align-top text-[11px]
-                                   tabular-nums text-neutral-400 dark:bg-neutral-900">
+                        <td class="sticky left-0 z-10 bg-card pr-2 text-right align-top text-[11px]
+ tabular-nums text-ink-faint">
                             {{ $onHour ? $time : '' }}
                         </td>
 
@@ -78,18 +78,18 @@
                                 $slot = $day->setTimeFromTimeString($time)->toIso8601String();
                                 $overlap = count($others[$slot] ?? []);
                             @endphp
-                            <td class="border-l border-neutral-100 p-0 dark:border-neutral-800
-                                       {{ $onHour ? 'border-t border-t-neutral-100 dark:border-t-neutral-800' : '' }}">
+                            <td class="border-l border-line-soft p-0
+ {{ $onHour ? 'border-t border-t-line-soft' : '' }}">
                                 <div
                                     data-slot="{{ $slot }}"
                                     @unless($readOnly)
                                         @pointerdown.prevent="start('{{ $slot }}')"
                                     @endunless
                                     :class="has('{{ $slot }}')
-                                        ? 'bg-brand-500'
-                                        : '{{ $overlap ? 'bg-brand-100 dark:bg-brand-950' : '' }}'"
+ ? 'bg-brand'
+                                        : '{{ $overlap ? 'bg-brand-wash' : '' }}'"
                                     class="h-5 w-full transition-colors
-                                           {{ $readOnly ? '' : 'cursor-pointer hover:bg-brand-200 dark:hover:bg-brand-900' }}"
+ {{ $readOnly ? '' : 'cursor-pointer hover:bg-brand-wash' }}"
                                     @if($overlap)
                                         title="{{ $overlap }} other {{ Str::plural('person', $overlap) }} free"
                                     @endif
@@ -102,12 +102,12 @@
         </table>
     </div>
 
-    <div class="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-neutral-500 dark:text-neutral-400">
+    <div class="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-ink-soft">
         <span class="flex items-center gap-1.5">
-            <span class="h-3 w-3 rounded-sm bg-brand-500"></span> You are free
+            <span class="h-3 w-3 rounded-sm bg-brand"></span> You are free
         </span>
         <span class="flex items-center gap-1.5">
-            <span class="h-3 w-3 rounded-sm bg-brand-100 dark:bg-brand-950"></span> Somebody else is free
+            <span class="h-3 w-3 rounded-sm bg-brand-wash"></span> Somebody else is free
         </span>
         <span x-text="`${count()} slots marked`" class="tabular-nums"></span>
         @if($participants > 1)

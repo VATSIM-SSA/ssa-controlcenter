@@ -10,8 +10,16 @@ use App\Models\Endorsement;
 use App\Models\Position;
 use App\Models\Task;
 use App\Models\Training;
+use App\Models\TrainingExamination;
+use App\Models\TrainingInterest;
+use App\Models\TrainingReport;
 use App\Models\User;
+use App\Models\Vatssa\MessageLog;
+use App\Models\Vatssa\TheoryAttempt;
+use App\Models\Vatssa\UserPlatform;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\View\View;
 
 /**
@@ -107,11 +115,45 @@ class PreviewController extends Controller
     {
         $this->authorize('view', $training);
 
+        // Reports and examinations, merged and newest first, exactly as the
+        // real page assembles them -- they are one story about a student, and
+        // splitting them into two lists means reading the training in two
+        // passes to find out what happened when.
+        //
+        // Gate::allows('view', ...) per item, NOT once for the training. Report
+        // visibility is per report upstream (a draft is the author's until it
+        // is filed), and a mirror that showed drafts the real page hides would
+        // be a data leak wearing a preview's clothes.
+        $reports = TrainingReport::where('training_id', $training->id)
+            ->with('author')->get();
+        $exams = TrainingExamination::where('training_id', $training->id)
+            ->with('examiner', 'position')->get();
+
+        $reportsAndExams = $reports->merge($exams)
+            ->filter(fn ($item) => Gate::allows('view', $item))
+            ->sortByDesc(fn ($item) => $item instanceof TrainingReport
+                ? Carbon::parse($item->report_date)
+                : Carbon::parse($item->examination_date))
+            ->values();
+
         return view('vatssa.preview.training', [
             'training' => $training->load('user', 'ratings', 'mentors', 'area'),
             'activities' => $training->activities()->latest()->limit(40)->get(),
             'tasks' => Task::where('subject_training_id', $training->id)
                 ->with('assignee', 'creator')->latest()->get(),
+            'reportsAndExams' => $reportsAndExams,
+            'interests' => TrainingInterest::where('training_id', $training->id)
+                ->latest()->get(),
+            'types' => \App\Http\Controllers\TrainingController::$types,
+            // The VATSSA panels. Read straight from the models rather than
+            // through the Bootstrap partials, which cannot be reused here --
+            // they render inside a page that loads app.scss and this one does
+            // not.
+            'platforms' => UserPlatform::find($training->user_id),
+            'attempts' => TheoryAttempt::where('user_id', $training->user_id)
+                ->orderByDesc('taken_at')->get(),
+            'messages' => MessageLog::where('training_id', $training->id)
+                ->orderByDesc('sent_at')->limit(20)->get(),
         ]);
     }
 
@@ -291,13 +333,13 @@ class PreviewController extends Controller
     {
         $tone = match ($status) {
             TrainingStatus::AWAITING_MENTOR, TrainingStatus::IN_QUEUE
-                => 'bg-amber-50 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300',
+                => 'bg-warn-wash text-warn',
             TrainingStatus::ACTIVE_TRAINING, TrainingStatus::PRE_TRAINING
-                => 'bg-brand-50 text-brand-700 dark:bg-brand-950/60 dark:text-brand-300',
+                => 'bg-brand-wash text-brand-strong',
             TrainingStatus::COMPLETED
-                => 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300',
+                => 'bg-good-wash text-good',
             default
-                => 'bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300',
+                => 'bg-card-header text-ink-soft',
         };
 
         return '<span class="rounded-md px-2 py-1 text-xs font-medium ' . $tone . '">'
@@ -307,9 +349,9 @@ class PreviewController extends Controller
     private function taskState(TaskStatus $status): string
     {
         [$tone, $label] = match ($status) {
-            TaskStatus::COMPLETED => ['bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300', 'Done'],
-            TaskStatus::DECLINED => ['bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300', 'Declined'],
-            default => ['bg-amber-50 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300', 'Open'],
+            TaskStatus::COMPLETED => ['bg-good-wash text-good', 'Done'],
+            TaskStatus::DECLINED => ['bg-card-header text-ink-soft', 'Declined'],
+            default => ['bg-warn-wash text-warn', 'Open'],
         };
 
         return '<span class="rounded-md px-2 py-1 text-xs font-medium ' . $tone . '">' . $label . '</span>';
@@ -325,32 +367,32 @@ class PreviewController extends Controller
     {
         $soon = \Carbon\Carbon::parse($date)->lessThan(now()->addDays(30));
 
-        return '<span class="' . ($soon ? 'font-medium text-amber-700 dark:text-amber-400' : '') . '">'
+        return '<span class="' . ($soon ? 'font-medium text-warn' : '') . '">'
             . e(\Carbon\Carbon::parse($date)->format('j M Y')) . '</span>';
     }
 
     private function link(string $href, string $text): string
     {
-        return '<a href="' . e($href) . '" class="font-medium hover:text-brand-600 '
-            . 'dark:hover:text-brand-400">' . e($text) . '</a>';
+        return '<a href="' . e($href) . '" class="font-medium hover:text-brand-strong '
+ . '">' . e($text) . '</a>';
     }
 
     private function sub(int|string|null $text): string
     {
         return $text === null ? ''
-            : '<div class="text-xs tabular-nums text-neutral-400">' . e($text) . '</div>';
+            : '<div class="text-xs tabular-nums text-ink-faint">' . e($text) . '</div>';
     }
 
     private function muted(string $text): string
     {
-        return '<span class="text-neutral-400 dark:text-neutral-600">' . e($text) . '</span>';
+        return '<span class="text-ink-faint">' . e($text) . '</span>';
     }
 
     /** @param array<int, string> $items */
     private function pills(array $items): string
     {
         return collect($items)->map(fn ($item) => '<span class="mr-1 inline-block rounded '
-            . 'bg-neutral-100 px-1.5 py-0.5 text-[11px] font-medium text-neutral-600 '
-            . 'dark:bg-neutral-800 dark:text-neutral-300">' . e($item) . '</span>')->join('');
+ . 'bg-card-header px-1.5 py-0.5 text-[11px] font-medium text-ink-soft '
+            . '">' . e($item) . '</span>')->join('');
     }
 }

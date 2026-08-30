@@ -14,6 +14,10 @@
     Tailwind example, component and snippet in the world is written unprefixed,
     and a prefix turns each one into a translation exercise.
 
+    Flux's stylesheet is NOT imported. It begins with
+    `@import "tailwindcss/utilities" prefix(tw-)`, so pulling it in would emit
+    every utility a second time under a prefix these pages never use.
+
     ## Reverting
 
     Delete this file, its line in `vite.config.js`, and
@@ -23,56 +27,68 @@
 
 @import "tailwindcss";
 
-/*
-    Flux's stylesheet is NOT imported here, and that is deliberate.
-
-    `flux.css` begins with `@import "tailwindcss/utilities" prefix(tw-)`. Pulling
-    it in would inject every utility a second time under a prefix these pages
-    never use -- a stylesheet twice the size, for components none of these pages
-    render. If a page here ever needs a real `flux:` component, import it then
-    and drop the unprefixed utilities instead of stacking both.
-*/
-
 @source "../views/vatssa/**/*.blade.php";
 @source "../views/layouts/vatssa.blade.php";
 @source "../views/livewire/vatssa/**/*.blade.php";
 @source "../../app/Livewire/Vatssa/**/*.php";
 
 /*
-    The brand, as tokens.
+    ---------------------------------------------------------------------------
+    THE PALETTE IS CONTROL CENTER'S OWN.
 
-    Teal is VATSSA's and it is the only strong colour on the page. Everything
-    else is a neutral ramp: the AI-design tell is a palette where four things
-    compete to be the most important, and restraint is what stops a dashboard
-    looking like a demo.
+    Every value below is copied from `resources/sass/themes/_custom.scss`, the
+    VATSSA theme the rest of the application already wears: warm paper in light,
+    deep teal in dark. Not a second palette that merely coordinates -- a preview
+    in its own colours answers "do you like these colours" when the question
+    being asked is "do you like this layout".
+
+    IF YOU CHANGE ONE, CHANGE BOTH. They cannot import each other: _custom.scss
+    is Sass, compiled into app.scss, which these pages deliberately do not load.
+    That duplication is the price of the isolation. It is worth paying, but only
+    if it is written down, which is what this comment is for.
+
+    ## How the flip works
+
+    Raw values live on `:root` and are redefined under the dark selectors. The
+    `@theme` block points Tailwind's colour tokens at those variables, so
+    `bg-card` resolves through `var()` and changes with the theme rather than
+    needing a `dark:` twin on every element.
+
+    `data-user-theme` rather than `data-theme`: upstream's `theme.js` sets
+    `data-theme` on the html element and these pages do not load it. The
+    attribute Blade writes server-side is `data-user-theme`, and "system" means
+    ask the operating system.
+    ---------------------------------------------------------------------------
 */
-@theme {
-    --color-brand-50: #ecfeff;
-    --color-brand-100: #cff9fe;
-    --color-brand-200: #a5f1fc;
-    --color-brand-300: #67e4f9;
-    --color-brand-400: #22cdee;
-    --color-brand-500: #0197b0;
-    --color-brand-600: #0a8ba6;
-    --color-brand-700: #106f86;
-    --color-brand-800: #175a6d;
-    --color-brand-900: #164b5c;
-    --color-brand-950: #083140;
 
-    --font-sans: "Hanken Grotesk", ui-sans-serif, system-ui, -apple-system,
-        "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+:root {
+    /* Light: warm paper. */
+    --vatssa-page: #f1e7e1;
+    --vatssa-card: #ffffff;
+    --vatssa-card-header: #f8f3f0;
+    --vatssa-line: #e6ded9;
+    --vatssa-line-soft: #f0e8e3;
+    --vatssa-ink: #07262c;
+    --vatssa-ink-soft: #5b6b6f;
+    --vatssa-ink-faint: #8d9a9d;
+    --vatssa-sidebar: #07262c;
+
+    --vatssa-brand: #00788c;
+    --vatssa-brand-strong: #00697b;
+    --vatssa-brand-wash: #e4f2f4;
+
+    --vatssa-warning: #c67700;
+    --vatssa-warning-wash: #fff6e9;
+    --vatssa-success: #41826e;
+    --vatssa-success-wash: #e8f2ef;
+    --vatssa-danger: #b63f3f;
+    --vatssa-danger-wash: #fbeaea;
 }
 
-/*
-    Dark by default is wrong for a tool people use at work in daylight, and
-    light by default is wrong for a tool people use at 2am before a CPT. So it
-    follows the same `data-user-theme` attribute upstream already sets from the
-    member's own setting, and falls back to the operating system.
-*/
 @custom-variant dark {
     /* The element ITSELF as well as its descendants. `[attr] *` matches only
-       descendants, so `<body class="dark:bg-neutral-950">` -- the one element
-       whose background is the whole page -- would have stayed light. */
+       descendants, so <body> -- the one element whose background is the whole
+       page -- would have stayed light. */
     &:where([data-user-theme="dark"], [data-user-theme="dark"] *) { @slot; }
 
     @media (prefers-color-scheme: dark) {
@@ -80,15 +96,104 @@
     }
 }
 
+/* Dark: deep teal. Written out twice rather than shared, because a custom
+   variant styles what it matches -- it cannot redefine a variable. */
+[data-user-theme="dark"] {
+    --vatssa-page: #07262c;
+    --vatssa-card: #123c45;
+    --vatssa-card-header: #16454f;
+    --vatssa-line: #1c4e59;
+    --vatssa-line-soft: #17454f;
+    --vatssa-ink: #f8f3f0;
+    --vatssa-ink-soft: #9fb3b8;
+    --vatssa-ink-faint: #6d8489;
+    --vatssa-sidebar: #051d22;
+
+    /* Teal lifts in dark: #00788c on #07262c is not readable. */
+    --vatssa-brand: #0197b0;
+    --vatssa-brand-strong: #4db6c7;
+    --vatssa-brand-wash: #17454f;
+
+    /* Status colours re-brightened. Upstream's dark ramp was tuned against a
+       near-black card; the teal-tinted card sits lighter, and danger and
+       success both dropped under AA on it until these were lifted. */
+    --vatssa-warning: #ffc266;
+    --vatssa-warning-wash: #2e2415;
+    --vatssa-success: #6ec3a3;
+    --vatssa-success-wash: #14322a;
+    --vatssa-danger: #ef9a9a;
+    --vatssa-danger-wash: #3a1f1f;
+}
+
+@media (prefers-color-scheme: dark) {
+    [data-user-theme="system"] {
+        --vatssa-page: #07262c;
+        --vatssa-card: #123c45;
+        --vatssa-card-header: #16454f;
+        --vatssa-line: #1c4e59;
+        --vatssa-line-soft: #17454f;
+        --vatssa-ink: #f8f3f0;
+        --vatssa-ink-soft: #9fb3b8;
+        --vatssa-ink-faint: #6d8489;
+        --vatssa-sidebar: #051d22;
+
+        --vatssa-brand: #0197b0;
+        --vatssa-brand-strong: #4db6c7;
+        --vatssa-brand-wash: #17454f;
+
+        --vatssa-warning: #ffc266;
+        --vatssa-warning-wash: #2e2415;
+        --vatssa-success: #6ec3a3;
+        --vatssa-success-wash: #14322a;
+        --vatssa-danger: #ef9a9a;
+        --vatssa-danger-wash: #3a1f1f;
+    }
+}
+
+@theme {
+    /*
+        Semantic, not a numbered ramp.
+
+        `bg-neutral-50` cannot be both the page in light and the ink in dark,
+        which is exactly the knot a numbered scale ties you into when the two
+        themes invert. Naming the ROLE -- page, card, line, ink -- lets one
+        class be right in both, and takes the `dark:` twin off almost every
+        element on these pages.
+    */
+    --color-page: var(--vatssa-page);
+    --color-card: var(--vatssa-card);
+    --color-card-header: var(--vatssa-card-header);
+    --color-line: var(--vatssa-line);
+    --color-line-soft: var(--vatssa-line-soft);
+    --color-ink: var(--vatssa-ink);
+    --color-ink-soft: var(--vatssa-ink-soft);
+    --color-ink-faint: var(--vatssa-ink-faint);
+    --color-sidebar: var(--vatssa-sidebar);
+
+    --color-brand: var(--vatssa-brand);
+    --color-brand-strong: var(--vatssa-brand-strong);
+    --color-brand-wash: var(--vatssa-brand-wash);
+
+    --color-warn: var(--vatssa-warning);
+    --color-warn-wash: var(--vatssa-warning-wash);
+    --color-good: var(--vatssa-success);
+    --color-good-wash: var(--vatssa-success-wash);
+    --color-bad: var(--vatssa-danger);
+    --color-bad-wash: var(--vatssa-danger-wash);
+
+    --font-sans: "Hanken Grotesk", ui-sans-serif, system-ui, -apple-system,
+        "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
 /*
     The brand gradient, teal into green, lifted from the logo itself.
 
-    One utility, used deliberately and rarely. A gradient applied to headings,
-    buttons and cards at once is the single clearest sign that a page was
-    decorated rather than designed -- see references/ai-design-tells.md.
+    One utility, used deliberately and rarely. A gradient on headings, buttons
+    and cards at once is the single clearest sign that a page was decorated
+    rather than designed -- see references/ai-design-tells.md.
 */
 @utility brand-gradient {
-    background-image: linear-gradient(to top right, var(--color-brand-500), #7bd758);
+    background-image: linear-gradient(to top right, #0197b0, #7bd758);
 }
 
 @layer base {
@@ -101,7 +206,7 @@
         audience and the availability grid is unusable without one.
     */
     :focus-visible {
-        outline: 2px solid var(--color-brand-500);
+        outline: 2px solid var(--color-brand);
         outline-offset: 2px;
     }
 }

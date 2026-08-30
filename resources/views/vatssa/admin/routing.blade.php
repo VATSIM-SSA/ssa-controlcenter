@@ -24,27 +24,26 @@
 
     <div class="max-w-3xl">
         <h2 class="text-xl font-semibold tracking-tight">Request desks</h2>
-        <p class="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
+        <p class="mt-1 text-sm text-ink-soft">
             A request goes to a desk, not to a person. Everybody at a desk sees the
             same queue and any of them can act, so a coordinator going on leave does
             not take their requests with them.
         </p>
-        <p class="mt-2 text-sm text-neutral-600 dark:text-neutral-400">
-            <span class="text-neutral-800 dark:text-neutral-200">An empty desk is not a safe default.</span>
+        <p class="mt-2 text-sm text-ink-soft">
+            <span class="text-ink">An empty desk is not a safe default.</span>
             Requests sent to one stay with whoever raised them and a warning goes to the
             automation log. Fill in at least the coordinator row for every rating you train.
         </p>
     </div>
 
     @foreach($tiers as $tierKey => $tier)
-        <section class="rounded-xl border border-neutral-200 bg-white
-                        dark:border-neutral-800 dark:bg-neutral-900">
-            <div class="border-b border-neutral-100 px-6 py-4 dark:border-neutral-800">
+        <section class="rounded-xl border border-line bg-card">
+            <div class="border-b border-line-soft px-6 py-4">
                 <h3 class="text-sm font-semibold tracking-tight">{{ $tier['label'] }}</h3>
-                <p class="mt-0.5 text-sm text-neutral-500 dark:text-neutral-400">{{ $tier['hint'] }}</p>
+                <p class="mt-0.5 text-sm text-ink-soft">{{ $tier['hint'] }}</p>
             </div>
 
-            <div class="divide-y divide-neutral-100 dark:divide-neutral-800">
+            <div class="divide-y divide-line-soft">
                 @if($tier['per_rating'])
                     {{-- One row per rating. VATSSA's pipelines are per rating, so
                          "the S2 coordinator" is a different person from "the C1
@@ -75,7 +74,7 @@
     @endforeach
 
     <button type="submit"
-            class="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600">
+            class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-strong">
         Save routing
     </button>
 </form>

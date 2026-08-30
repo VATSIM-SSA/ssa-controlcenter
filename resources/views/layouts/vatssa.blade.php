@@ -38,7 +38,7 @@
     @yield('head')
 </head>
 
-<body class="h-full bg-neutral-50 text-neutral-900 antialiased dark:bg-neutral-950 dark:text-neutral-100">
+<body class="h-full bg-page text-ink antialiased">
 
 <div class="flex min-h-full" x-data="{ nav: false }" @keydown.escape.window="nav = false">
 
@@ -46,12 +46,11 @@
          click-anywhere-to-close target is the difference between a drawer and
          a trap on a phone. --}}
     <div x-show="nav" x-cloak @click="nav = false"
-         class="fixed inset-0 z-30 bg-neutral-900/40 lg:hidden"></div>
+         class="fixed inset-0 z-30 bg-sidebar/40 lg:hidden"></div>
 
     {{-- Sidebar. Fixed on desktop, a drawer below lg. --}}
-    <aside class="fixed inset-y-0 left-0 z-40 w-64 shrink-0 overflow-y-auto border-r border-neutral-200
-                  bg-white transition-transform lg:static lg:translate-x-0
-                  dark:border-neutral-800 dark:bg-neutral-900"
+    <aside class="fixed inset-y-0 left-0 z-40 w-64 shrink-0 overflow-y-auto border-r border-line
+ bg-card transition-transform lg:static lg:translate-x-0"
            :class="nav ? 'translate-x-0' : '-translate-x-full'">
 
 {{-- The real wordmark, on a dark block.
@@ -63,14 +62,13 @@
              brand gradient appears, which is what keeps it a brand mark rather
              than decoration. --}}
         <a href="{{ route('dashboard') }}"
-           class="m-3 flex h-14 items-center justify-center rounded-xl bg-neutral-900 px-5
-                  transition-opacity hover:opacity-90 dark:bg-neutral-950">
+           class="m-3 flex h-14 items-center justify-center rounded-xl bg-sidebar px-5
+ transition-opacity hover:opacity-90">
             <img src="{{ asset('images/logos/vatssa.svg') }}" alt="VATSSA"
                  class="h-7 w-auto">
         </a>
 
-        <p class="px-5 pb-4 text-[11px] font-medium uppercase tracking-widest text-neutral-400
-                  dark:text-neutral-500">
+        <p class="px-5 pb-4 text-[11px] font-medium uppercase tracking-widest text-ink-faint">
             Control Center
         </p>
 
@@ -85,13 +83,11 @@
         {{-- Topbar. Deliberately thin: it holds identity and nothing else,
              because a second row of navigation is how a dashboard starts
              feeling like an intranet. --}}
-        <header class="sticky top-0 z-30 flex h-16 items-center gap-4 border-b border-neutral-200
-                       bg-neutral-50/80 px-5 backdrop-blur
-                       dark:border-neutral-800 dark:bg-neutral-950/80">
+        <header class="sticky top-0 z-30 flex h-16 items-center gap-4 border-b border-line
+ bg-page/80 px-5 backdrop-blur">
 
             <button type="button" @click="nav = ! nav"
-                    class="-ml-1 rounded-lg p-2 text-neutral-500 hover:bg-neutral-100 lg:hidden
-                           dark:hover:bg-neutral-800"
+                    class="-ml-1 rounded-lg p-2 text-ink-soft hover:bg-card-header lg:hidden"
                     aria-label="Open navigation">
                 <svg class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
                     <path stroke-linecap="round" d="M4 6h16M4 12h16M4 18h16"/>
@@ -107,13 +103,12 @@
             @auth
                 <a href="{{ route('user.show', Auth::id()) }}"
                    class="flex items-center gap-2.5 rounded-lg py-1.5 pl-2 pr-3 text-sm
-                          hover:bg-neutral-100 dark:hover:bg-neutral-800">
-                    <span class="grid h-7 w-7 place-items-center rounded-full bg-neutral-200 text-[11px]
-                                 font-semibold text-neutral-600
-                                 dark:bg-neutral-700 dark:text-neutral-200">
+ hover:bg-card-header">
+                    <span class="grid h-7 w-7 place-items-center rounded-full bg-line text-[11px]
+ font-semibold text-ink-soft">
                         {{ Str::of(Auth::user()->name)->explode(' ')->take(2)->map(fn ($p) => Str::substr($p, 0, 1))->join('') }}
                     </span>
-                    <span class="hidden text-neutral-600 sm:block dark:text-neutral-300">
+                    <span class="hidden text-ink-soft sm:block">
                         {{ Auth::user()->name }}
                     </span>
                 </a>
@@ -126,15 +121,15 @@
                  upstream controller into one of these pages still says what
                  happened. --}}
             @if(session('success'))
-                <div class="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm
-                            text-emerald-900 dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-200">
+                <div class="mb-6 rounded-xl border border-good/40 bg-good-wash px-4 py-3 text-sm
+ text-good">
                     {{ session('success') }}
                 </div>
             @endif
 
             @if($errors->any())
-                <div class="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm
-                            text-red-900 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-200">
+                <div class="mb-6 rounded-xl border border-bad/40 bg-bad-wash px-4 py-3 text-sm
+ text-bad">
                     @foreach($errors->all() as $error)
                         <p>{{ $error }}</p>
                     @endforeach
@@ -147,7 +142,7 @@
         {{-- The credit line every VATSSA build carries. No privacy link:
              Control Center is behind VATSIM SSO and has no public page, and a
              link to a route that does not exist is worse than none. --}}
-        <footer class="px-5 pb-8 pt-4 text-xs text-neutral-400 dark:text-neutral-600">
+        <footer class="px-5 pb-8 pt-4 text-xs text-ink-faint">
             Control Center © {{ date('Y') }} Daniël Schoonraad
         </footer>
     </div>

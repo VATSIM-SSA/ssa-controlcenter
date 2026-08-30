@@ -21,7 +21,7 @@
 <div class="space-y-8">
 
     <div>
-        <p class="text-sm text-neutral-500 dark:text-neutral-400">
+        <p class="text-sm text-ink-soft">
             {{ now()->format('l j F') }}
         </p>
         <h2 class="mt-1 text-2xl font-semibold tracking-tight">
@@ -43,15 +43,15 @@
             ['In training', $inTraining, 'Currently being mentored', false],
         ] as [$label, $value, $hint, $mine])
             <div class="rounded-xl border p-5
-                        {{ $mine && $value
-                            ? 'border-amber-200 bg-amber-50/60 dark:border-amber-900/50 dark:bg-amber-950/20'
-                            : 'border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900' }}">
-                <p class="text-sm font-medium text-neutral-500 dark:text-neutral-400">{{ $label }}</p>
+ {{ $mine && $value
+                            ? 'border-warn/40 bg-warn-wash'
+                            : 'border-line bg-card' }}">
+                <p class="text-sm font-medium text-ink-soft">{{ $label }}</p>
                 <p class="mt-2 text-3xl font-semibold tabular-nums tracking-tight
-                          {{ $mine && $value ? 'text-amber-700 dark:text-amber-400' : '' }}">
+ {{ $mine && $value ? 'text-warn' : '' }}">
                     {{ $value }}
                 </p>
-                <p class="mt-1 text-xs text-neutral-400 dark:text-neutral-500">{{ $hint }}</p>
+                <p class="mt-1 text-xs text-ink-faint">{{ $hint }}</p>
             </div>
         @endforeach
     </div>
@@ -60,17 +60,15 @@
 
         {{-- Your own training, if you have one. --}}
         <div class="lg:col-span-2">
-            <div class="rounded-xl border border-neutral-200 bg-white p-6
-                        dark:border-neutral-800 dark:bg-neutral-900">
+            <div class="rounded-xl border border-line bg-card p-6">
                 <h3 class="text-sm font-semibold tracking-tight">Your training</h3>
 
                 @if($training)
                     <div class="mt-4 flex flex-wrap items-center gap-3">
-                        <span class="rounded-md bg-brand-50 px-2.5 py-1 text-sm font-medium text-brand-700
-                                     dark:bg-brand-950/60 dark:text-brand-300">
+                        <span class="rounded-md bg-brand-wash px-2.5 py-1 text-sm font-medium text-brand-strong">
                             {{ $training->status->label() }}
                         </span>
-                        <span class="text-sm text-neutral-500 dark:text-neutral-400">
+                        <span class="text-sm text-ink-soft">
                             opened {{ $training->created_at?->diffForHumans() }}
                         </span>
                     </div>
@@ -83,15 +81,15 @@
                             @continue($stage->isClosed())
                             @php $done = $training->status->lifecycleOrder() >= $stage->lifecycleOrder(); @endphp
                             <li class="flex-1">
-                                <div class="h-1.5 rounded-full {{ $done ? 'bg-brand-500' : 'bg-neutral-200 dark:bg-neutral-800' }}"></div>
-                                <p class="mt-2 text-[11px] {{ $done ? 'text-neutral-700 dark:text-neutral-300' : 'text-neutral-400 dark:text-neutral-600' }}">
+                                <div class="h-1.5 rounded-full {{ $done ? 'bg-brand' : 'bg-line' }}"></div>
+                                <p class="mt-2 text-[11px] {{ $done ? 'text-ink' : 'text-ink-faint' }}">
                                     {{ $stage->label() }}
                                 </p>
                             </li>
                         @endforeach
                     </ol>
                 @else
-                    <p class="mt-3 text-sm text-neutral-500 dark:text-neutral-400">
+                    <p class="mt-3 text-sm text-ink-soft">
                         You have no open training.
                     </p>
                 @endif
@@ -99,20 +97,19 @@
         </div>
 
         {{-- Identity, demoted. Still here, no longer the headline. --}}
-        <div class="rounded-xl border border-neutral-200 bg-white p-6
-                    dark:border-neutral-800 dark:bg-neutral-900">
+        <div class="rounded-xl border border-line bg-card p-6">
             <h3 class="text-sm font-semibold tracking-tight">You</h3>
             <dl class="mt-4 space-y-3 text-sm">
                 <div class="flex justify-between gap-4">
-                    <dt class="text-neutral-500 dark:text-neutral-400">CID</dt>
+                    <dt class="text-ink-soft">CID</dt>
                     <dd class="tabular-nums">{{ $user->id }}</dd>
                 </div>
                 <div class="flex justify-between gap-4">
-                    <dt class="text-neutral-500 dark:text-neutral-400">Rating</dt>
+                    <dt class="text-ink-soft">Rating</dt>
                     <dd>{{ $user->rating?->name ?? '—' }}</dd>
                 </div>
                 <div class="flex justify-between gap-4">
-                    <dt class="text-neutral-500 dark:text-neutral-400">Joined</dt>
+                    <dt class="text-ink-soft">Joined</dt>
                     <dd>{{ $user->created_at?->format('M Y') }}</dd>
                 </div>
             </dl>
