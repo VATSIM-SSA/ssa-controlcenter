@@ -30,6 +30,11 @@
 @vite(['resources/js/theme.js', 'resources/sass/app.scss'])
 
 {{-- Custom fonts --}}
+{{-- VATSSA: Hanken Grotesk, the division's own face, already used on the
+     homepage and in the wordmark. Roboto stays loaded as the fallback
+     rather than being removed, so a font that fails to fetch degrades to
+     exactly what this page had before. --}}
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link href="https://fonts.googleapis.com/css?family=Roboto:200,200i,300,300i,400,400i,600,600i,700,700i,800,800i,900,900i" rel="stylesheet">
 
 {{-- Favicon --}}
