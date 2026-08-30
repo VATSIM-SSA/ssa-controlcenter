@@ -58,6 +58,14 @@ class VatssaServiceProvider extends ServiceProvider
             $schedule->command('vatssa:roster-expiry-warning')
                 ->dailyAt('06:00')
                 ->withoutOverlapping();
+
+            // A mentor can be detached by three different upstream paths,
+            // none of which touches the training's status -- so a student
+            // can sit in 'active training' with nobody teaching them and
+            // no signal at all. This is the thing that looks.
+            $schedule->command('vatssa:orphaned-trainings')
+                ->dailyAt('06:15')
+                ->withoutOverlapping();
         });
 
         // Routes tasks to the right desk as they are created. An observer,

@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use anlutro\LaravelSettings\Facade as Setting;
 use App\Models\AtcActivity;
+use App\Models\Vatssa\ActionLog;
 use App\Models\Vatssa\RosterWarning;
 use App\Notifications\Vatssa\RosterExpiringNotification;
 use Illuminate\Console\Command;
@@ -89,6 +90,15 @@ class VatssaRosterExpiryWarning extends Command
                 $areas->first()->hours,
                 $requirement
             ));
+
+            ActionLog::did(
+                'roster.expiry_warned',
+                "{$user->name} was warned that their roster place lapses on "
+                    . $expiresOn->toDateString() . '.',
+                null,
+                (int) $userId,
+                ['expires_on' => $expiresOn->toDateString(), 'hours' => $areas->first()->hours]
+            );
 
             RosterWarning::record($userId, $expiresOn);
             $sent++;

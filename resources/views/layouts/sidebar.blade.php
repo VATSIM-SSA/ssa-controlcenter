@@ -157,7 +157,7 @@
             <div class="sidebar-divider"></div>
 
             {{-- Nav Item - Pages Collapse Menu --}}
-            <x-sidebar.section icon="fa-clipboard-list" title="Reports" :active="Route::is('reports.trainings') || Route::is('reports.training.area') || Route::is('reports.activities') || Route::is('reports.activities.area') || Route::is('reports.mentors') || Route::is('reports.access') || Route::is('reports.feedback')" id="collapseTwo">
+            <x-sidebar.section icon="fa-clipboard-list" title="Reports" :active="Route::is('reports.trainings') || Route::is('reports.training.area') || Route::is('reports.activities') || Route::is('reports.activities.area') || Route::is('reports.mentors') || Route::is('reports.access') || Route::is('reports.feedback') || Route::is('vatssa.action-log')" id="collapseTwo">
 
                 @can('training.statistics.view')
                     <x-sidebar.item :href="route('reports.trainings')" title="Training Statistics" collapse />
@@ -173,6 +173,11 @@
                 @endcan
 
                 <x-sidebar.item :href="route('reports.feedback')" title="Feedback" collapse />
+
+                {{-- VATSSA: what the automation did, and what it noticed and
+                     left alone. A report rather than an admin page: the
+                     people who need it are the ones working the queue. --}}
+                <x-sidebar.item :href="route('vatssa.action-log')" title="Automation log" collapse />
 
             </x-sidebar.section>
         @endif

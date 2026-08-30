@@ -11,6 +11,7 @@ use App\Models\Rating;
 use App\Models\Task;
 use App\Models\Training;
 use App\Models\User;
+use App\Models\Vatssa\ActionLog;
 use App\Models\Vatssa\MessageLog;
 use App\Models\Vatssa\MessageTemplate;
 use App\Models\Vatssa\MoodleCourse;
@@ -20,6 +21,7 @@ use App\Models\Vatssa\UserPlatform;
 use App\Services\PermissionMatrix;
 use App\Tasks\Types\CheckoutRequest;
 use App\Tasks\Types\LeaveOfAbsence;
+use App\Tasks\Types\MentorNeeded;
 use App\Tasks\Types\ReturnFromLeave;
 use Database\Seeders\VatssaPipelineSeeder;
 use Database\Seeders\VatssaSeeder;
@@ -72,7 +74,11 @@ class VatssaTest extends TestCase
         $_ENV['VATSSA_SEED_FORCE'] = '1';
         $_SERVER['VATSSA_SEED_FORCE'] = '1';
 
-        $this->seedFixtures();
+        // VatssaSeeder first: it builds the fixed 10000001-10000011 accounts
+        // that every test below looks up by CID, and that the pipeline seeder
+        // checks for before it will write anything.
+        $this->seed(VatssaSeeder::class);
+        $this->seed(VatssaPipelineSeeder::class);
     }
 
     protected function tearDown(): void
@@ -1086,5 +1092,159 @@ class VatssaTest extends TestCase
         $this->expectException(RuntimeException::class);
 
         (new VatssaSeeder)->run();
+    }
+
+    // ---------------------------------------------------------------------
+    // The lost mentor: detection, state, and the action item
+    // ---------------------------------------------------------------------
+
+    /**
+     * A mentorless training with a coordinator on the desk for its rating.
+     */
+    private function mentorless(TrainingStatus $status): Training
+    {
+        $rating = Rating::whereNotNull('vatsim_rating')->orderBy('vatsim_rating')->first();
+
+        $training = Training::factory()->create([
+            'user_id' => User::find(10000001)->id,
+            'status' => $status,
+            'paused_at' => null,
+        ]);
+        $training->ratings()->attach($rating->id);
+
+        RequestTarget::firstOrCreate([
+            'tier' => RequestTarget::COORDINATOR,
+            'rating_id' => $rating->id,
+            'user_id' => User::find(10000008)->id,
+        ]);
+
+        return $training->fresh();
+    }
+
+    #[Test]
+    public function a_mentorless_training_goes_back_to_the_queue_and_raises_a_request(): void
+    {
+        // The whole point. Upstream detaches a mentor in three places and
+        // touches the status in none of them, so the student sat in active
+        // training with nobody teaching them and no signal at all.
+        $this->seedFixtures();
+        $training = $this->mentorless(TrainingStatus::ACTIVE_TRAINING);
+
+        $this->artisan('vatssa:orphaned-trainings')->assertSuccessful();
+
+        $this->assertSame(TrainingStatus::AWAITING_MENTOR, $training->fresh()->status);
+
+        $this->assertDatabaseHas('tasks', [
+            'type' => MentorNeeded::class,
+            'subject_training_id' => $training->id,
+            'vatssa_tier' => RequestTarget::COORDINATOR,
+            'status' => TaskStatus::PENDING->value,
+            // Nobody asked for this. Null is the honest creator.
+            'creator_user_id' => null,
+        ]);
+
+        $this->assertDatabaseHas('vatssa_action_log', [
+            'action' => 'training.returned_to_queue',
+            'training_id' => $training->id,
+        ]);
+    }
+
+    #[Test]
+    public function the_daily_run_does_not_raise_a_second_request(): void
+    {
+        // It runs every morning. A queue that grows one identical row a day is
+        // one nobody reads, which is the failure this feature exists to end.
+        $this->seedFixtures();
+        $training = $this->mentorless(TrainingStatus::ACTIVE_TRAINING);
+
+        $this->artisan('vatssa:orphaned-trainings')->assertSuccessful();
+        $this->artisan('vatssa:orphaned-trainings')->assertSuccessful();
+
+        $this->assertSame(1, Task::where('type', MentorNeeded::class)
+            ->where('subject_training_id', $training->id)->count());
+    }
+
+    #[Test]
+    public function a_paused_training_is_left_alone(): void
+    {
+        // Paused is a decision somebody made on purpose, and moving it would
+        // undo that decision to fix a bookkeeping problem.
+        $this->seedFixtures();
+        $training = $this->mentorless(TrainingStatus::ACTIVE_TRAINING);
+        $training->update(['paused_at' => now()]);
+
+        $this->artisan('vatssa:orphaned-trainings')->assertSuccessful();
+
+        $this->assertSame(TrainingStatus::ACTIVE_TRAINING, $training->fresh()->status);
+        $this->assertDatabaseMissing('tasks', [
+            'type' => MentorNeeded::class,
+            'subject_training_id' => $training->id,
+        ]);
+    }
+
+    #[Test]
+    public function awaiting_exam_keeps_its_status_and_still_gets_a_request(): void
+    {
+        // Somebody waiting on a CPT has finished the mentored part. Dropping
+        // them back into the queue would undo real progress; not telling
+        // anybody would leave them stuck.
+        $this->seedFixtures();
+        $training = $this->mentorless(TrainingStatus::AWAITING_EXAM);
+
+        $this->artisan('vatssa:orphaned-trainings')->assertSuccessful();
+
+        $this->assertSame(TrainingStatus::AWAITING_EXAM, $training->fresh()->status);
+        $this->assertDatabaseHas('tasks', [
+            'type' => MentorNeeded::class,
+            'subject_training_id' => $training->id,
+        ]);
+    }
+
+    #[Test]
+    public function an_empty_coordinator_desk_is_recorded_rather_than_guessed_at(): void
+    {
+        // assignee_user_id is NOT NULL, so there is no row to write. Inventing
+        // a recipient would make the request look handled when it is not.
+        $this->seedFixtures();
+        $rating = Rating::whereNotNull('vatsim_rating')->orderBy('vatsim_rating')->first();
+        RequestTarget::query()->delete();
+
+        $training = Training::factory()->create([
+            'user_id' => User::find(10000001)->id,
+            'status' => TrainingStatus::ACTIVE_TRAINING,
+            'paused_at' => null,
+        ]);
+        $training->ratings()->attach($rating->id);
+
+        $this->artisan('vatssa:orphaned-trainings')->assertSuccessful();
+
+        $this->assertDatabaseHas('vatssa_action_log', [
+            'action' => 'training.mentor_lost_no_desk',
+            'training_id' => $training->id,
+            'level' => ActionLog::WARNING,
+        ]);
+    }
+
+    #[Test]
+    public function the_action_log_page_needs_the_reports_permission(): void
+    {
+        $this->seedFixtures();
+
+        $this->actingAs(User::find(10000001))->get(route('vatssa.action-log'))->assertForbidden();
+        $this->actingAs(User::find(10000009))->get(route('vatssa.action-log'))->assertOk();
+    }
+
+    #[Test]
+    public function an_unknown_log_level_falls_back_to_warnings(): void
+    {
+        // A level that matches nothing would render an empty page, and an empty
+        // action log reads as "all clear" -- the one wrong answer it can give.
+        $this->seedFixtures();
+        ActionLog::noticed('test.observation', 'Something worth a look.');
+
+        $this->actingAs(User::find(10000009))
+            ->get(route('vatssa.action-log', ['level' => 'nonsense']))
+            ->assertOk()
+            ->assertSee('Something worth a look.');
     }
 }

@@ -146,11 +146,20 @@ enum TrainingStatus: int
             self::CLOSED_BY_SYSTEM,
             self::CLOSED_BY_STUDENT => false,
 
-            // VATSSA: the pipeline owns these three, and a human setting one
-            // by hand puts the bot and Control Center into disagreement about
+            // VATSSA: the pipeline owns these four, and a human setting one by
+            // hand puts the bot and Control Center into disagreement about
             // where somebody is. The system moves people in and out of them.
+            //
+            // ACTIVE_TRAINING is here because it means "a mentor is assigned",
+            // which is a fact about the mentor table rather than an opinion --
+            // assigning the mentor is what moves somebody here.
+            //
+            // AWAITING_MENTOR is the one exception, and isAssignableFrom()
+            // grants it: a student whose mentor has gone must be returnable to
+            // the queue by hand, because that is a decision rather than a fact.
             self::IN_QUEUE,
             self::PRE_TRAINING,
+            self::ACTIVE_TRAINING,
             self::AWAITING_MENTOR => false,
 
             default => true,

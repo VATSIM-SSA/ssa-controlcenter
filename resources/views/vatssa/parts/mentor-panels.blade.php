@@ -31,7 +31,8 @@
                     <i class="fas fa-users"></i>&nbsp;Your capacity
                 </h6>
                 <span class="badge bg-light text-dark">
-                    {{ $totalLoad }}{{ $ceiling?->total_limit !== null ? ' of ' . $ceiling->total_limit : '' }} students
+                    {{ $totalLoad }}{{ $ceiling?->total_limit !== null ? ' of ' . $ceiling->total_limit : '' }}
+                    {{ Str::plural('student', $totalLoad) }}
                 </span>
             </div>
 
@@ -81,6 +82,22 @@
             </div>
 
             <div class="card-body">
+                {{-- All three numbers stated, not two. The per-rating limits are
+                     in the table above; the total and the ceiling are not, and
+                     a mentor reading only the table would take the per-rating
+                     limits for the whole story. Saying "no total limit" out
+                     loud matters as much as saying what it is -- a blank is
+                     read as nought as often as it is read as unlimited. --}}
+                <p class="mb-2">
+                    Across every rating you are running
+                    <strong>{{ $totalLoad }}</strong>
+                    {{ Str::plural('student', $totalLoad) }}@if($ceiling?->total_limit !== null),
+                        against a total limit of <strong>{{ $ceiling->total_limit }}</strong>.
+                    @else
+                        , with no total limit set.
+                    @endif
+                </p>
+
                 {{-- The ceiling, stated plainly. It is the thing a mentor most
                      often does not know about themselves, and the reason a
                      rating they expected to see is missing from the table. --}}

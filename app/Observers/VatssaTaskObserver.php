@@ -3,6 +3,7 @@
 namespace App\Observers;
 
 use App\Models\Task;
+use App\Models\Vatssa\ActionLog;
 use App\Models\Vatssa\RequestTarget;
 use Illuminate\Support\Facades\Log;
 
@@ -63,6 +64,19 @@ class VatssaTaskObserver
                 'rating_id' => $ratingId,
                 'training_id' => $task->subject_training_id,
             ]);
+
+            // And somewhere a person will actually see it. This was already
+            // known at the moment it mattered and buried in a container log,
+            // which is the exact failure the action log exists to end.
+            ActionLog::noticed(
+                'request.desk_empty',
+                'A request was sent to the '
+                    . RequestTarget::label($task->vatssa_tier)
+                    . ' desk, but nobody is assigned to it. It stayed with whoever raised it.',
+                $task->subject_training_id,
+                $task->subject_user_id,
+                ['tier' => $task->vatssa_tier, 'rating_id' => $ratingId]
+            );
 
             return;
         }

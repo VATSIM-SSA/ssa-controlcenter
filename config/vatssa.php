@@ -1,6 +1,7 @@
 <?php
 
 use App\Tasks\Types\MentorCapacityRequest;
+use App\Tasks\Types\MentorNeeded;
 use App\Tasks\Types\RatingUpgrade;
 
 /*
@@ -77,6 +78,10 @@ return [
         RatingUpgrade::class => 'membership',
         // Capacity is the ATC training manager's call, always.
         MentorCapacityRequest::class => 'training-manager',
+        // Finding a mentor IS the pipeline coordinator's job. Per-rating, so
+        // the observer resolves it to the coordinator for this student's
+        // rating rather than to 'the pipeline', which is nobody.
+        MentorNeeded::class => 'coordinator',
     ],
 
     /*

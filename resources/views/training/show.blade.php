@@ -616,7 +616,10 @@
                                         {{ $task->type()->getText($task) }}
                                     </td>
                                     <td>
-                                        {{ $task->creator->name }}
+                                        {{-- VATSSA: nullable, and now actually
+                                             null -- the automation raises
+                                             requests with no creator. --}}
+                                        {{ $task->creator?->name ?? 'System' }}
                                     </td>
                                     <td>
                                         {{ $task->assignee->name }}

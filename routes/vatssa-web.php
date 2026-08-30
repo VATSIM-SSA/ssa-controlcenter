@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Vatssa\ActionLogController;
 use App\Http\Controllers\Vatssa\InternalNoteController;
 use App\Http\Controllers\Vatssa\RequestActionController;
 use App\Http\Controllers\Vatssa\SettingsController;
@@ -37,6 +38,14 @@ Route::middleware(['web', 'auth', 'activity', 'suspended'])
         Route::post('/{task}/pause/{mode}', [RequestActionController::class, 'pause'])
             ->whereIn('mode', ['pause', 'resume'])->name('pause');
     });
+
+/*
+| The automation log. A division report rather than an admin page, so it sits
+| beside the other reports and uses the permission coordinators already hold.
+*/
+Route::middleware(['web', 'auth', 'activity', 'suspended'])
+    ->get('/vatssa/automation', [ActionLogController::class, 'index'])
+    ->name('vatssa.action-log');
 
 /*
 | Internal notes. Not under admin/ -- they are written from a member profile and
