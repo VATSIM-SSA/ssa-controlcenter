@@ -62,8 +62,9 @@ class ActionLog extends Model
         ?int $userId = null,
         array $context = [],
         string $actor = self::ACTOR_SYSTEM,
+        bool $mirror = true,
     ): void {
-        self::record($action, $summary, self::INFO, $trainingId, $userId, $context, $actor);
+        self::record($action, $summary, self::INFO, $trainingId, $userId, $context, $actor, $mirror);
     }
 
     /**
@@ -80,8 +81,9 @@ class ActionLog extends Model
         ?int $userId = null,
         array $context = [],
         string $actor = self::ACTOR_SYSTEM,
+        bool $mirror = true,
     ): void {
-        self::record($action, $summary, self::WARNING, $trainingId, $userId, $context, $actor);
+        self::record($action, $summary, self::WARNING, $trainingId, $userId, $context, $actor, $mirror);
     }
 
     private static function record(
@@ -92,6 +94,7 @@ class ActionLog extends Model
         ?int $userId,
         array $context,
         string $actor,
+        bool $mirror = true,
     ): void {
         try {
             static::create([
@@ -108,7 +111,10 @@ class ActionLog extends Model
             // it will actually see it. The division-wide view is this table;
             // the per-training view is upstream's activity log, and a change
             // that appears in neither may as well not have happened.
-            if ($trainingId !== null) {
+            // $mirror is off where the caller has ALREADY written a richer
+            // activity row of its own. A COMMENT beside the STATUS row it
+            // duplicates makes the timeline harder to read, not easier.
+            if ($trainingId !== null && $mirror) {
                 TrainingActivityController::create(
                     $trainingId, 'COMMENT', null, null, null, $summary
                 );

@@ -41,6 +41,7 @@ Route::middleware(['vatssa-bridge', 'throttle:120,1'])
         Route::post('/users/{user}/theory-attempts', [BridgeController::class, 'theoryAttempt'])->name('theory');
         Route::post('/trainings/{training}/messages', [BridgeController::class, 'logMessage'])->name('messages');
         Route::patch('/trainings/{training}/status', [BridgeController::class, 'setStatus'])->name('status');
+        Route::post('/action-log', [BridgeController::class, 'actionLog'])->name('action-log');
         Route::get('/templates', [BridgeController::class, 'templates'])->name('templates');
         Route::get('/moodle-courses', [BridgeController::class, 'courses'])->name('courses');
     });

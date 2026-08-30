@@ -368,6 +368,53 @@ been *decided* where each request goes; and the Moodle course map drops any
 rating whose ids are still `0`, so an unconfigured rating visibly needs no
 theory rather than silently giving every student no attempts.
 
+### The automation log, and the lost mentor
+
+`app/Models/Vatssa/ActionLog.php` · `app/Http/Controllers/Vatssa/ActionLogController.php` ·
+`app/Console/Commands/VatssaOrphanedTrainings.php` · `app/Tasks/Types/MentorNeeded.php` ·
+`resources/views/vatssa/action-log.blade.php` ·
+`database/migrations-vatssa/2026_08_30_150000_vatssa_action_log.php`
+
+**Nothing detected a lost mentor.** `UpdateMemberDetails` (when somebody leaves
+the division), `UserDelete` and the training form all detach a mentor and leave
+the training's status alone. The student stayed in *Active training* with
+nobody teaching them, out of the queue, with no signal anywhere. The student
+usually noticed first, weeks later.
+
+`vatssa:orphaned-trainings` runs daily and does **both halves**:
+
+* **state** — back to *Awaiting mentor*, which is the truthful description and
+  is what puts them in a queue a coordinator reads;
+* **action item** — a `MentorNeeded` request on that rating's coordinator desk.
+
+The state change alone would still be silent, and a queue nobody is asked to
+work is a queue nobody works. One open request per training, so the daily run
+does not nag somebody already on it. *Awaiting exam* keeps its status and gets
+only the request: finishing the mentored part is real progress and dropping
+them back would undo it to fix a bookkeeping problem. Paused trainings are left
+alone, because paused is a decision somebody made on purpose.
+
+**`vatssa_action_log` holds two kinds of row, and the second is the point.**
+Actions are things the system did. Observations are things it noticed and
+deliberately did **not** act on: a desk with nobody on it, a mentorless CPT
+candidate, a rating whose Moodle course id is still a placeholder. Software
+that stays quiet about what it cannot handle is worse than software that does
+nothing, because silence reads as *fine*.
+
+Anything about one training is mirrored onto that training's own timeline, so
+it appears where the people working it will see it; the table is the
+division-wide view, which no per-training page can be. Writes never raise — a
+log write that breaks the operation it describes turns observability into an
+outage.
+
+`POST /api/vatssa/bridge/action-log` is the bot's way in, so what the bot did
+and what the bot could not do land on the same page. It defaults to *not*
+mirroring: most of what the bot does is not about one training, and a timeline
+is a student's record rather than an operations feed.
+
+Gated on `fir.management.reports.view` and listed under Reports, because the
+people who need it are the ones already working the queue.
+
 ### `database/seeders/VatssaPipelineSeeder.php` and the seeding migration
 
 Two parts. It **backfills** every user `VatssaSeeder` made with a platform row,

@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Controllers\TrainingActivityController;
 use App\Models\Training;
 use App\Models\User;
+use App\Models\Vatssa\ActionLog;
 use App\Models\Vatssa\MessageLog;
 use App\Models\Vatssa\MessageTemplate;
 use App\Models\Vatssa\MoodleCourse;
@@ -152,7 +153,67 @@ class BridgeController extends Controller
             $training->id, 'STATUS', $wanted->value, $old->value, null, $data['reason'] ?? null
         );
 
+        // And on the division-wide log, so "what has the bot been doing" has an
+        // answer that is not a container log. mirror: false -- the STATUS row
+        // above already says this on the training's own timeline, and a COMMENT
+        // repeating it makes the timeline worse.
+        ActionLog::did(
+            'training.status_set_by_bot',
+            ($training->user?->name ?? ('CID ' . $training->user_id))
+                . " moved from {$old->label()} to {$wanted->label()}."
+                . (($data['reason'] ?? null) ? ' ' . $data['reason'] : ''),
+            $training->id,
+            $training->user_id,
+            ['from' => $old->value, 'to' => $wanted->value],
+            ActionLog::ACTOR_BOT,
+            mirror: false,
+        );
+
         return response()->json(['status' => 'ok', 'from' => $old->value, 'to' => $wanted->value]);
+    }
+
+    /**
+     * Something the bot did, or noticed and could not do.
+     *
+     * The bot enrols people in Moodle, kicks suspended members from Discord and
+     * chases theory attempts. Until now all of that lived in the bot's own
+     * container log, which means nobody in the division could answer "what has
+     * it been doing" without an SSH session.
+     *
+     * `level: warning` is the important half: a rating whose Moodle course id
+     * is still a placeholder, a Discord member whose CID cannot be resolved.
+     * The bot cannot fix those and a person must.
+     *
+     * Not mirrored onto the training timeline by default. The bot posts a lot,
+     * most of it is not about one training, and a timeline is a student's
+     * record rather than an operations feed -- pass mirror to override.
+     */
+    public function actionLog(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'action' => 'required|string|max:60',
+            'summary' => 'required|string|max:255',
+            'level' => ['sometimes', 'in:' . ActionLog::INFO . ',' . ActionLog::WARNING],
+            'training_id' => 'nullable|exists:trainings,id',
+            'user_id' => 'nullable|exists:users,id',
+            'context' => 'nullable|array',
+            'mirror' => 'sometimes|boolean',
+        ]);
+
+        $level = $data['level'] ?? ActionLog::INFO;
+        $mirror = (bool) ($data['mirror'] ?? false);
+
+        $level === ActionLog::WARNING
+            ? ActionLog::noticed(
+                $data['action'], $data['summary'], $data['training_id'] ?? null,
+                $data['user_id'] ?? null, $data['context'] ?? [], ActionLog::ACTOR_BOT, $mirror
+            )
+            : ActionLog::did(
+                $data['action'], $data['summary'], $data['training_id'] ?? null,
+                $data['user_id'] ?? null, $data['context'] ?? [], ActionLog::ACTOR_BOT, $mirror
+            );
+
+        return response()->json(['status' => 'ok']);
     }
 
     /**

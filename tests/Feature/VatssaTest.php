@@ -1226,6 +1226,55 @@ class VatssaTest extends TestCase
     }
 
     #[Test]
+    public function the_bridge_records_what_the_bot_noticed(): void
+    {
+        // The half that matters. The bot cannot fix a rating whose Moodle
+        // course id is a placeholder, and until this endpoint existed the only
+        // record of it was a line in the bot container log.
+        config(['vatssa.bridge_token' => 'test-token']);
+
+        $this->withHeader('Authorization', 'Bearer test-token')
+            ->postJson('/api/vatssa/bridge/action-log', [
+                'action' => 'theory.no_course',
+                'summary' => 'S3 has no Moodle course, so its students skip theory.',
+                'level' => 'warning',
+                'context' => ['rating' => 'S3'],
+            ])->assertOk();
+
+        $entry = ActionLog::latest('id')->first();
+
+        $this->assertSame(ActionLog::WARNING, $entry->level);
+        $this->assertSame(ActionLog::ACTOR_BOT, $entry->actor);
+        $this->assertSame(['rating' => 'S3'], $entry->context);
+    }
+
+    #[Test]
+    public function the_bridge_action_log_needs_the_token(): void
+    {
+        config(['vatssa.bridge_token' => 'the-real-one']);
+
+        $this->withHeader('Authorization', 'Bearer wrong')
+            ->postJson('/api/vatssa/bridge/action-log', [
+                'action' => 'bot.action', 'summary' => 'x',
+            ])->assertUnauthorized();
+
+        $this->assertDatabaseCount('vatssa_action_log', 0);
+    }
+
+    #[Test]
+    public function the_bot_cannot_invent_a_log_level(): void
+    {
+        // The page filters on this, and a level nothing matches would render an
+        // empty log -- which reads as all clear.
+        config(['vatssa.bridge_token' => 'test-token']);
+
+        $this->withHeader('Authorization', 'Bearer test-token')
+            ->postJson('/api/vatssa/bridge/action-log', [
+                'action' => 'bot.action', 'summary' => 'x', 'level' => 'critical',
+            ])->assertStatus(422);
+    }
+
+    #[Test]
     public function the_action_log_page_needs_the_reports_permission(): void
     {
         $this->seedFixtures();
