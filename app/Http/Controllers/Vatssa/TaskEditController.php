@@ -32,11 +32,39 @@ use Illuminate\Validation\Rule;
 class TaskEditController extends Controller
 {
     /**
+     * Whether this person may act on THIS request, not just on requests.
+     *
+     * `TaskPolicy::update()` takes no Task -- it asks "may you manage tasks at
+     * all", which every mentor can. Class-level alone, any mentor who knew a
+     * task id could edit, move or reopen ANY request in the division, including
+     * one on the leadership desk. The buttons were gated; the routes were not,
+     * and a hidden button is not a permission.
+     *
+     * The desk ladder is the object-level check: you may act on a request whose
+     * desk you can read. A request with no desk -- upstream's own, and anything
+     * raised before the desks existed -- falls back to being yours or your
+     * having the overview.
+     */
+    private function mayActOn(Task $task): bool
+    {
+        $user = Auth::user();
+
+        if ($task->vatssa_tier !== null) {
+            return RequestTarget::canSee($user, $task->vatssa_tier, $task->vatssa_rating_id);
+        }
+
+        return $task->assignee_user_id === $user->id
+            || $task->creator_user_id === $user->id
+            || $user->hasPermission('tasks.overview');
+    }
+
+    /**
      * Edit the free text and, if it needs to move, the desk.
      */
     public function update(Request $request, Task $task): RedirectResponse
     {
         $this->authorize('update', Task::class);
+        abort_unless($this->mayActOn($task), 403);
 
         $data = $request->validate([
             'message' => 'nullable|string|max:256',
@@ -52,6 +80,14 @@ class TaskEditController extends Controller
             $ratingId = RequestTarget::isPerRating($data['vatssa_tier'])
                 ? ($data['vatssa_rating_id'] ?? $task->vatssa_rating_id)
                 : null;
+
+            // The DESTINATION has to be readable too. Otherwise a coordinator
+            // could push a request onto the leadership desk -- a queue they
+            // cannot see, so they could neither follow it up nor take it back.
+            abort_unless(
+                RequestTarget::canSee(Auth::user(), $data['vatssa_tier'], $ratingId),
+                403
+            );
 
             $task->vatssa_tier = $data['vatssa_tier'];
             $task->vatssa_rating_id = $ratingId;
@@ -78,6 +114,7 @@ class TaskEditController extends Controller
     public function reopen(Task $task): RedirectResponse
     {
         $this->authorize('update', Task::class);
+        abort_unless($this->mayActOn($task), 403);
 
         if ($task->status === TaskStatus::PENDING) {
             return redirect()->back()->with('success', 'That request is already open.');

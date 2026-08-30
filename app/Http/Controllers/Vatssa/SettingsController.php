@@ -84,10 +84,24 @@ class SettingsController extends Controller
             'targets.*.*' => 'integer|exists:users,id',
         ]);
 
+        // A BROWSER OMITS AN EMPTY MULTI-SELECT ENTIRELY. So a form submitted
+        // with nothing chosen -- a mis-click on Save, a stale page, a partial
+        // POST -- arrives with no `targets` key at all, and a bare
+        // delete-then-recreate would silently empty every desk. Empty desks are
+        // not loud: requests just stay with whoever raised them.
+        //
+        // Refusing the wipe is the safe failure. Clearing a desk deliberately
+        // is still possible -- deselect everyone in ONE desk and the others
+        // survive.
+        if (empty($data['targets'])) {
+            return redirect()->back()->withErrors(
+                'That would have removed every desk assignment, so nothing was saved. '
+                . 'To clear one desk, deselect its people and leave the others alone.'
+            );
+        }
+
         // Replace wholesale inside a transaction. Diffing rows would be more
-        // code for no benefit -- the table is a handful of rows and a partial
-        // write here means requests routing to the wrong desk until somebody
-        // notices.
+        // code for no benefit at this size.
         DB::transaction(function () use ($data) {
             RequestTarget::query()->delete();
 
@@ -192,9 +206,14 @@ class SettingsController extends Controller
                 ]);
             }
 
-            // Resources are replaced wholesale: it is a short list, and a row
-            // left half-written is worse than one rewritten.
-            Resource::where('audience', Resource::AUDIENCE_MENTOR)->delete();
+            // Resources are replaced wholesale: a short list, and a row left
+            // half-written is worse than one rewritten. Unlike the desks this
+            // is safe to empty -- the fields are text inputs, which a browser
+            // always submits, so an absent key means the form was not the
+            // resources form rather than "the user cleared everything".
+            if (array_key_exists('resources', $data)) {
+                Resource::where('audience', Resource::AUDIENCE_MENTOR)->delete();
+            }
 
             foreach ($data['resources'] ?? [] as $index => $row) {
                 if (empty($row['label']) || empty($row['url'])) {

@@ -6,6 +6,7 @@ use App\Helpers\TaskStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\TrainingActivityController;
 use App\Models\Task;
+use App\Models\Vatssa\RequestTarget;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
@@ -42,6 +43,14 @@ class RequestActionController extends Controller
     public function pause(Task $task, string $mode): RedirectResponse
     {
         $this->authorize('update', Task::class);
+
+        // Object level, not class level: TaskPolicy::update() only asks whether
+        // you may manage tasks at all, which every mentor may.
+        abort_unless(
+            $task->vatssa_tier === null
+                || RequestTarget::canSee(Auth::user(), $task->vatssa_tier, $task->vatssa_rating_id),
+            403
+        );
 
         $training = $task->subjectTraining;
 
