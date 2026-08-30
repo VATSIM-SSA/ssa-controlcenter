@@ -53,6 +53,12 @@ class AvailabilityGrid extends Component
 
     public function mount(AvailabilityPoll $poll, ?string $role = null): void
     {
+        // Checked here as well as in the controller. A Livewire component is a
+        // separate HTTP endpoint: it is mounted from a request the browser
+        // makes on its own, so a check on the page that renders it is not a
+        // check on the component.
+        abort_unless($poll->isVisibleTo(Auth::user()), 403);
+
         $this->poll = $poll;
         $this->role = $role ?? $this->guessRole();
 
@@ -118,6 +124,11 @@ class AvailabilityGrid extends Component
         if ($this->readOnly) {
             return;
         }
+
+        // And again on write. `$poll` is rehydrated from the request on every
+        // Livewire call, so mount() ran once, in the past, on a different
+        // request -- it does not stand as a guard for this one.
+        abort_unless($this->poll->isVisibleTo(Auth::user()), 403);
 
         // Only slots that are genuinely in this poll. The list comes from the
         // browser, so it is an assertion rather than a fact: without this, a
@@ -190,10 +201,17 @@ class AvailabilityGrid extends Component
         return view('livewire.vatssa.availability-grid', [
             'days' => $this->days(),
             'times' => $this->times(),
-            // Everybody else's answers, so the grid shows overlap while you
+            // Everybody ELSE's answers, so the grid shows overlap while you
             // fill it in. Seeing that nobody else can do Tuesday is the whole
             // value of a shared grid over a chain of emails.
-            'others' => $this->poll->heatmap(),
+            //
+            // Your own response is stripped out. Leaving it in made the tooltip
+            // say "1 other person free" about a slot only you had marked, which
+            // is the one number on this page nobody can afford to distrust.
+            'others' => collect($this->poll->heatmap())
+                ->map(fn (array $ids) => array_values(array_diff($ids, [Auth::id()])))
+                ->filter()
+                ->all(),
             'participants' => $this->poll->responses->count(),
         ]);
     }

@@ -22,7 +22,16 @@
 */
 
 @import "tailwindcss";
-@import "../../vendor/livewire/flux/dist/flux.css";
+
+/*
+    Flux's stylesheet is NOT imported here, and that is deliberate.
+
+    `flux.css` begins with `@import "tailwindcss/utilities" prefix(tw-)`. Pulling
+    it in would inject every utility a second time under a prefix these pages
+    never use -- a stylesheet twice the size, for components none of these pages
+    render. If a page here ever needs a real `flux:` component, import it then
+    and drop the unprefixed utilities instead of stacking both.
+*/
 
 @source "../views/vatssa/**/*.blade.php";
 @source "../views/layouts/vatssa.blade.php";
@@ -61,9 +70,13 @@
     member's own setting, and falls back to the operating system.
 */
 @custom-variant dark {
-    &:where([data-user-theme="dark"] *) { @slot; }
+    /* The element ITSELF as well as its descendants. `[attr] *` matches only
+       descendants, so `<body class="dark:bg-neutral-950">` -- the one element
+       whose background is the whole page -- would have stayed light. */
+    &:where([data-user-theme="dark"], [data-user-theme="dark"] *) { @slot; }
+
     @media (prefers-color-scheme: dark) {
-        &:where([data-user-theme="system"] *) { @slot; }
+        &:where([data-user-theme="system"], [data-user-theme="system"] *) { @slot; }
     }
 }
 

@@ -55,7 +55,13 @@ class AvailabilityController extends Controller
 
     public function show(AvailabilityPoll $poll): View
     {
-        return view('vatssa.availability.show', ['poll' => $poll->load('responses.user', 'training.user')]);
+        $poll->load('responses.user', 'training.user');
+
+        // A poll is a list of when named members are at home. Not secret, not
+        // nothing either -- see AvailabilityPoll::isVisibleTo.
+        abort_unless($poll->isVisibleTo(Auth::user()), 403);
+
+        return view('vatssa.availability.show', ['poll' => $poll]);
     }
 
     /**

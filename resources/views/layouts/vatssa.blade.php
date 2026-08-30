@@ -140,8 +140,10 @@
     </div>
 </div>
 
+{{-- Livewire only. It bundles Alpine, which is what the availability grid
+     needs. @fluxScripts is deliberately absent: these pages render no `flux:`
+     components, so it would be a second bundle downloaded for nothing. --}}
 @livewireScripts
-@fluxScripts
 @yield('js')
 </body>
 </html>

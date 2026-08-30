@@ -178,6 +178,47 @@ class AvailabilityPoll extends Model
         return array_values(array_intersect(...$sets));
     }
 
+    /**
+     * May this person see, and answer, this poll?
+     *
+     * ## Why this is not "anyone signed in"
+     *
+     * A poll carries names and the hours those people are free. That is not
+     * secret, and it is not nothing either: it is a list of when named members
+     * are at home, and a scheduling tool that publishes it to the whole
+     * division by default is one nobody should have to think twice about.
+     *
+     * ## Who qualifies
+     *
+     * The person who asked, the student it is about, anybody already invited
+     * (they have a response row, even an empty one), and staff who work the
+     * queue. A CPT poll is also visible to examiners, because being offered
+     * the times is the entire point of the step.
+     */
+    public function isVisibleTo(User $user): bool
+    {
+        if ($this->created_by === $user->id) {
+            return true;
+        }
+
+        if ($this->training?->user_id === $user->id) {
+            return true;
+        }
+
+        // A response row is the invitation. Created when somebody is added to
+        // a poll, so it exists before they have marked anything.
+        if ($this->responses->contains('user_id', $user->id)) {
+            return true;
+        }
+
+        if ($user->hasPermission('fir.management.reports.view')) {
+            return true;
+        }
+
+        return $this->purpose === self::CPT
+            && $user->hasPermission('examinations.manage');
+    }
+
     public function isOpen(): bool
     {
         return $this->confirmed_at === null;
