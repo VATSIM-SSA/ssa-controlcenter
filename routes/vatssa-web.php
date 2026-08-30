@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Vatssa\InternalNoteController;
+use App\Http\Controllers\Vatssa\RequestActionController;
 use App\Http\Controllers\Vatssa\SettingsController;
 use App\Http\Controllers\Vatssa\TaskEditController;
 use Illuminate\Support\Facades\Route;
@@ -31,6 +32,10 @@ Route::middleware(['web', 'auth', 'activity', 'suspended'])
         Route::post('/', [TaskEditController::class, 'store'])->name('store');
         Route::patch('/{task}', [TaskEditController::class, 'update'])->name('update');
         Route::post('/{task}/reopen', [TaskEditController::class, 'reopen'])->name('reopen');
+        // Do the thing and close the request together, so a paused
+        // training and an open request cannot disagree.
+        Route::post('/{task}/pause/{mode}', [RequestActionController::class, 'pause'])
+            ->whereIn('mode', ['pause', 'resume'])->name('pause');
     });
 
 /*

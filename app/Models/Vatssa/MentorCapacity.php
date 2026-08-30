@@ -80,4 +80,50 @@ class MentorCapacity extends Model
 
         return $open->count();
     }
+
+    /**
+     * How many more students this mentor could take, for one rating.
+     *
+     * TWO LIMITS APPLY AND THE SMALLER ONE WINS. A mentor with a total of five
+     * and an S2 limit of four can run four S2s and one of something else -- not
+     * four and four. Every caller needs that arithmetic and none of them should
+     * be writing it themselves, so it lives here and only here.
+     *
+     * Null means unlimited, which is different from zero and must never be
+     * rendered as it.
+     */
+    public static function roomFor(User $user, ?int $ratingId = null): ?int
+    {
+        $ceiling = MentorCeiling::find($user->id);
+
+        $totalRoom = $ceiling?->total_limit !== null
+            ? max(0, $ceiling->total_limit - self::loadFor($user))
+            : null;
+
+        $ratingLimit = $ratingId !== null
+            ? static::where('user_id', $user->id)->where('rating_id', $ratingId)->value('student_limit')
+            : null;
+
+        $ratingRoom = $ratingLimit !== null
+            ? max(0, $ratingLimit - self::loadFor($user, $ratingId))
+            : null;
+
+        return match (true) {
+            $totalRoom === null && $ratingRoom === null => null,
+            $totalRoom === null => $ratingRoom,
+            $ratingRoom === null => $totalRoom,
+            default => min($totalRoom, $ratingRoom),
+        };
+    }
+
+    /**
+     * Whether this mentor is at a limit somewhere.
+     *
+     * Used only to colour a badge. It answers "should a coordinator look
+     * closer", not "is this assignment allowed" -- nothing is disallowed.
+     */
+    public static function isFull(User $user, ?int $ratingId = null): bool
+    {
+        return self::roomFor($user, $ratingId) === 0;
+    }
 }

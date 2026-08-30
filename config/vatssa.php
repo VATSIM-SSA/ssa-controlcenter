@@ -80,6 +80,24 @@ return [
     ],
 
     /*
+    | Request types that only make sense for some ratings.
+    |
+    | Task type class => the ratings it applies to. A type absent from this list
+    | is offered everywhere, which is the common case.
+    |
+    | S1 controllers do not hold solo endorsements, so offering a solo request
+    | on an S1 training is an option that can only ever be declined -- and an
+    | option nobody should pick is worse than no option, which is the same
+    | reason the theoretical-exam task type was deleted outright.
+    |
+    | Ratings are named, not id'd, because ids differ between environments and a
+    | routing table that breaks on a database restore is worse than useless.
+    */
+    'request_ratings' => [
+        \App\Tasks\Types\SoloEndorsement::class => ['S2', 'S3', 'C1'],
+    ],
+
+    /*
     | How many students a mentor is assumed to be willing to run.
     |
     | A starting point, not a rule -- nothing enforces it. Overridden per mentor,

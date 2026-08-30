@@ -175,17 +175,25 @@ enum TrainingStatus: int
             return true;    // saving the form without touching the status
         }
 
-        // NOTHING MOVES FORWARD OUT OF PRE-TRAINING BY HAND.
+        // THE PIPELINE OWNS THESE THREE STAGES OUTRIGHT.
         //
-        // Pre-training means the theory is not passed. Advancing somebody past
-        // it manually is asserting they passed an exam they did not sit, and
-        // the pipeline would move them straight back on its next cycle -- which
-        // looks like a bug rather than a rule.
+        // Awaiting theory, theory phase and awaiting mentor are decided by
+        // facts the pipeline holds and Control Center does not: a Moodle
+        // enrolment, a theory pass, a mentor being assigned. Moving somebody by
+        // hand asserts one of those happened, and the next cycle moves them
+        // straight back -- which reads as a bug rather than a rule.
         //
-        // Closing IS allowed. A student who drops out during theory has to be
-        // closable, and upstream closes them automatically when the interest
-        // confirmation goes unanswered. Closing is not progress.
-        if ($current === self::PRE_TRAINING) {
+        // The pause checkbox is untouched and is the one thing staff SHOULD do
+        // here: a student stepping away mid-theory is exactly the case it
+        // exists for.
+        //
+        // Closing stays available, and that is a deliberate exception rather
+        // than an oversight. A student who drops out during theory has to be
+        // closable by somebody, upstream already closes them automatically when
+        // the interest confirmation goes unanswered, and blocking it would
+        // strand every abandoned training in the system forever. Closing is not
+        // progress.
+        if (in_array($current, [self::IN_QUEUE, self::PRE_TRAINING, self::AWAITING_MENTOR], true)) {
             return $this->isClosed() && $this->isAssignableByStaff();
         }
 

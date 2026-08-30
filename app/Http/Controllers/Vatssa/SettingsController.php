@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Rating;
 use App\Models\User;
 use App\Models\Vatssa\MentorCapacity;
+use App\Models\Vatssa\MentorCeiling;
 use App\Models\Vatssa\MessageTemplate;
 use App\Models\Vatssa\MoodleCourse;
 use App\Models\Vatssa\RequestTarget;
@@ -125,9 +126,9 @@ class SettingsController extends Controller
             'mentors' => User::whereHas('roleAssignments', fn ($q) => $q->where('role', 'mentor'))
                 ->orderBy('first_name')->get(),
             'capacity' => MentorCapacity::all(),
+            'ceilings' => MentorCeiling::all()->keyBy('user_id'),
             'ratings' => Rating::whereNotNull('vatsim_rating')->orderBy('vatsim_rating')->get(),
             'resources' => Resource::forAudience(),
-            'default' => config('vatssa.default_mentor_capacity'),
         ]);
     }
 
@@ -136,8 +137,15 @@ class SettingsController extends Controller
         $this->authorize('system.settings.manage');
 
         $data = $request->validate([
+            // capacity[userId][ratingId] -- per rating, because clearance to
+            // mentor S2 is not clearance to mentor C1.
             'capacity' => 'sometimes|array',
-            'capacity.*' => 'nullable|integer|min:0|max:99',
+            'capacity.*' => 'array',
+            'capacity.*.*' => 'nullable|integer|min:0|max:99',
+            'total' => 'sometimes|array',
+            'total.*' => 'nullable|integer|min:0|max:99',
+            'max_rating' => 'sometimes|array',
+            'max_rating.*' => 'nullable|exists:ratings,id',
             'resources' => 'sometimes|array',
             'resources.*.label' => 'nullable|string|max:120',
             'resources.*.url' => 'nullable|url|max:500',
@@ -146,20 +154,42 @@ class SettingsController extends Controller
         ]);
 
         DB::transaction(function () use ($data) {
-            foreach ($data['capacity'] ?? [] as $userId => $limit) {
-                if ($limit === null || $limit === '') {
-                    // Removing the row means "no opinion", which falls back to
-                    // the division default. Storing 0 would mean "takes nobody",
-                    // and those are very different instructions.
-                    MentorCapacity::where('user_id', $userId)->whereNull('rating_id')->delete();
+            foreach ($data['capacity'] ?? [] as $userId => $perRating) {
+                foreach ($perRating as $ratingId => $limit) {
+                    if ($limit === null || $limit === '') {
+                        // Removing the row means "no opinion", which is NOT the
+                        // same as a limit of zero -- zero means they take
+                        // nobody for that rating. Storing one as the other is
+                        // the kind of mistake nobody finds for a term.
+                        MentorCapacity::where('user_id', $userId)
+                            ->where('rating_id', $ratingId)->delete();
+
+                        continue;
+                    }
+
+                    MentorCapacity::updateOrCreate(
+                        ['user_id' => (int) $userId, 'rating_id' => (int) $ratingId],
+                        ['student_limit' => (int) $limit]
+                    );
+                }
+            }
+
+            // The ceiling: a total across everything, and how far up the ladder
+            // they may teach at all. Both the training manager's to set, which
+            // is why there is no mentor-facing field for either.
+            foreach ($data['total'] ?? [] as $userId => $total) {
+                $maxRating = $data['max_rating'][$userId] ?? null;
+
+                if (($total === null || $total === '') && empty($maxRating)) {
+                    MentorCeiling::where('user_id', $userId)->delete();
 
                     continue;
                 }
 
-                MentorCapacity::updateOrCreate(
-                    ['user_id' => (int) $userId, 'rating_id' => null],
-                    ['student_limit' => (int) $limit]
-                );
+                MentorCeiling::updateOrCreate(['user_id' => (int) $userId], [
+                    'total_limit' => ($total === null || $total === '') ? null : (int) $total,
+                    'max_rating_id' => $maxRating ?: null,
+                ]);
             }
 
             // Resources are replaced wholesale: it is a short list, and a row

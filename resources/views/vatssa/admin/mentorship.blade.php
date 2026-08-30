@@ -16,66 +16,109 @@
     @csrf
 
     <div class="row">
-        <div class="col-xl-6 col-lg-12 mb-12">
+        <div class="col-xl-12 col-lg-12 mb-12">
             <div class="card shadow mb-4">
                 <div class="card-header bg-primary py-3">
-                    <h6 class="m-0 fw-bold text-white">Mentor capacity</h6>
+                    <h6 class="m-0 fw-bold text-white">
+                        <i class="fas fa-users"></i>&nbsp;Mentor capacity
+                    </h6>
                 </div>
                 <div class="card-body">
                     <p class="text-muted">
-                        How many students each mentor is willing to run.
-                        <strong>Nothing enforces this.</strong> It is so a
-                        coordinator can see who is full before asking, and so a
-                        mentor can say they have room without it being a Discord
-                        message that scrolls away.
+                        Everything on this page is yours to set. A mentor asks
+                        through the request desk and you decide -- there is no
+                        self-service field anywhere, because one beside the
+                        request would make the request pointless.
                     </p>
-                    <p class="text-muted">
-                        {{-- A ternary rather than a conditional directive.
-                             Blade will not compile a directive glued to a
-                             preceding word character, so writing the opening
-                             one straight after the word "default" left it as
-                             literal text while its closing half still compiled:
-                             an orphan else, and a parse error on the whole page.
-                             No directive tokens in this comment either, for the
-                             same reason. --}}
-                        Blank means no opinion, and falls back to the division
-                        default{{ $default !== null ? ' of ' . $default : ', which is not set' }}.
-                        That is not the same as <strong>0</strong>, which means
-                        they take nobody.
+                    <p class="text-muted mb-3">
+                        <strong>Up to</strong> is the ceiling: the highest rating
+                        they may mentor at all. A rating above it does not appear
+                        to them. <strong>Total</strong> caps students across
+                        every rating; the per-rating numbers cap each one. Both
+                        apply, and the smaller wins -- a total of 5 with an S2
+                        limit of 4 means four S2s and one of something else.
+                    </p>
+                    <p class="text-muted mb-3">
+                        Blank is no limit. <strong>0</strong> means they take
+                        nobody for that rating. Those are different instructions.
                     </p>
 
-                    @forelse($mentors as $mentor)
-                        @php
-                            $row = $capacity->where('user_id', $mentor->id)->whereNull('rating_id')->first();
-                            $load = \App\Models\Vatssa\MentorCapacity::loadFor($mentor);
-                        @endphp
-                        <div class="row align-items-center mb-2">
-                            <label class="col-sm-7 col-form-label" for="cap-{{ $mentor->id }}">
-                                {{ $mentor->name }}
-                                <small class="text-muted d-block">
-                                    {{ $mentor->id }} — running {{ $load }}
-                                </small>
-                            </label>
-                            <div class="col-sm-5">
-                                <input type="number" min="0" max="99"
-                                       class="form-control form-control-sm"
-                                       id="cap-{{ $mentor->id }}"
-                                       name="capacity[{{ $mentor->id }}]"
-                                       value="{{ $row?->student_limit }}"
-                                       placeholder="default">
-                            </div>
-                        </div>
-                    @empty
-                        <p class="mb-0 text-muted">Nobody holds the mentor role.</p>
-                    @endforelse
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Mentor</th>
+                                    <th style="min-width: 9rem">Up to</th>
+                                    <th style="min-width: 5rem">Total</th>
+                                    @foreach($ratings as $rating)
+                                        <th style="min-width: 4.5rem">{{ $rating->name }}</th>
+                                    @endforeach
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @forelse($mentors as $mentor)
+                                    @php $ceiling = $ceilings->get($mentor->id); @endphp
+                                    <tr>
+                                        <td>
+                                            {{ $mentor->name }}
+                                            <small class="text-muted d-block">
+                                                {{ $mentor->id }} — running
+                                                {{ \App\Models\Vatssa\MentorCapacity::loadFor($mentor) }}
+                                            </small>
+                                        </td>
+                                        <td>
+                                            <select class="form-select form-select-sm"
+                                                    name="max_rating[{{ $mentor->id }}]">
+                                                <option value="">No ceiling</option>
+                                                @foreach($ratings as $rating)
+                                                    <option value="{{ $rating->id }}"
+                                                        @selected($ceiling?->max_rating_id === $rating->id)>
+                                                        {{ $rating->name }}
+                                                    </option>
+                                                @endforeach
+                                            </select>
+                                        </td>
+                                        <td>
+                                            <input type="number" min="0" max="99"
+                                                   class="form-control form-control-sm"
+                                                   name="total[{{ $mentor->id }}]"
+                                                   value="{{ $ceiling?->total_limit }}"
+                                                   placeholder="—">
+                                        </td>
+                                        @foreach($ratings as $rating)
+                                            @php
+                                                $row = $capacity->where('user_id', $mentor->id)
+                                                    ->where('rating_id', $rating->id)->first();
+                                            @endphp
+                                            <td>
+                                                <input type="number" min="0" max="99"
+                                                       class="form-control form-control-sm"
+                                                       name="capacity[{{ $mentor->id }}][{{ $rating->id }}]"
+                                                       value="{{ $row?->student_limit }}"
+                                                       placeholder="—">
+                                            </td>
+                                        @endforeach
+                                    </tr>
+                                @empty
+                                    <tr>
+                                        <td colspan="{{ 3 + $ratings->count() }}" class="text-muted">
+                                            Nobody holds the mentor role.
+                                        </td>
+                                    </tr>
+                                @endforelse
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <div class="col-xl-6 col-lg-12 mb-12">
+        <div class="col-xl-12 col-lg-12 mb-12">
             <div class="card shadow mb-4">
                 <div class="card-header bg-primary py-3">
-                    <h6 class="m-0 fw-bold text-white">Mentor resources</h6>
+                    <h6 class="m-0 fw-bold text-white">
+                        <i class="fas fa-folder-open"></i>&nbsp;Mentor resources
+                    </h6>
                 </div>
                 <div class="card-body">
                     <p class="text-muted">

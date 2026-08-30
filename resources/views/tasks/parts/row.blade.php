@@ -88,6 +88,31 @@
 
     <td>
         @if($state === 'pending')
+            {{-- VATSSA: a shortcut for the requests whose whole action is one
+                 field. Upstream links you to a page to tick a checkbox and come
+                 back, then you close the request by hand -- three actions for
+                 one decision, and two chances to do half of it. This does both
+                 halves at once, and both are written to the training timeline. --}}
+            @php
+                $shortcut = match ($task->type) {
+                    \App\Tasks\Types\LeaveOfAbsence::class => 'pause',
+                    \App\Tasks\Types\ReturnFromLeave::class => 'resume',
+                    default => null,
+                };
+            @endphp
+
+            @if($shortcut && $task->subjectTraining)
+                <form method="POST" action="{{ route('vatssa.requests.pause', [$task, $shortcut]) }}"
+                      class="d-inline me-1">
+                    @csrf
+                    <button type="submit" class="btn btn-sm btn-outline-primary"
+                            title="{{ $shortcut === 'pause' ? 'Pause the training and close this request' : 'Resume the training and close this request' }}">
+                        <i class="fas {{ $shortcut === 'pause' ? 'fa-pause' : 'fa-play' }}"></i>
+                        {!! $shortcut === 'pause' ? 'Pause &amp; close' : 'Resume &amp; close' !!}
+                    </button>
+                </form>
+            @endif
+
             <div class="btn-toolbar" role="toolbar" aria-label="Task actions">
                 <div class="btn-group">
                     @if($task->type()->isApproval())

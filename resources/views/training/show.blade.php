@@ -66,7 +66,17 @@
                     <div class="dropdown">
                         <div class="dropdown-menu" aria-labelledby="dropdownMenuButton">
                             @foreach($requestTypes as $requestType)
-                                @if($requestType->allowNonVatsimRatings() == true || ($requestType->allowNonVatsimRatings() == false && $training->hasVatsimRatings() == true))
+                                {{-- VATSSA: and only the types that apply to
+                                     THIS rating. An S1 controller holds no solo
+                                     endorsement, so a solo request on an S1
+                                     training can only ever be declined. See
+                                     config/vatssa.php request_ratings. --}}
+                                @php
+                                    $onlyFor = config('vatssa.request_ratings.' . $requestType::class);
+                                    $appliesHere = $onlyFor === null
+                                        || $training->ratings->pluck('name')->intersect($onlyFor)->isNotEmpty();
+                                @endphp
+                                @if($appliesHere && ($requestType->allowNonVatsimRatings() == true || ($requestType->allowNonVatsimRatings() == false && $training->hasVatsimRatings() == true)))
                                     <button class="dropdown-item" data-bs-toggle="modal" data-bs-target="#{{ Str::camel($requestType->getName()) }}">
                                         <i class="fas {{ $requestType->getIcon() }}"></i>&nbsp;
                                         {{ $requestType->getName() }}
@@ -171,6 +181,34 @@
                             @if($activeTrainingInterest)
                                 <div class="alert alert-warning" role="alert">
                                     <i class="fas fa-exclamation-triangle"></i>&nbsp;This training has an active interest request pending.
+                                </div>
+                            @endif
+
+                            @php
+                                $pipelineOwned = in_array($training->status, [
+                                    \App\Helpers\TrainingStatus::IN_QUEUE,
+                                    \App\Helpers\TrainingStatus::PRE_TRAINING,
+                                    \App\Helpers\TrainingStatus::AWAITING_MENTOR,
+                                ], true);
+                            @endphp
+
+                            {{-- VATSSA: say WHY the list is short, rather than
+                                 leaving somebody to wonder where the options
+                                 went. A control that silently offers less than
+                                 it did yesterday reads as broken. --}}
+                            @if($pipelineOwned)
+                                <div class="alert alert-secondary py-2 mb-2">
+                                    <small>
+                                        <i class="fas fa-robot"></i>&nbsp;
+                                        <strong>{{ $training->status->label() }}</strong> is set by the
+                                        training pipeline, from the student\'s Moodle enrolment, their
+                                        theory result and whether a mentor is assigned. It cannot be
+                                        changed by hand — the next cycle would move them straight back.
+                                        <span class="d-block mt-1">
+                                            Pausing still works, and closing is still available if the
+                                            student has dropped out.
+                                        </span>
+                                    </small>
                                 </div>
                             @endif
 
