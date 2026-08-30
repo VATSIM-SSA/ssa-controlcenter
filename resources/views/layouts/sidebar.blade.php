@@ -81,8 +81,12 @@
             @can('fir.management.reports.view')
 
                 {{-- Nav Item - Pages Collapse Menu --}}
-                <x-sidebar.section icon="fa-flag" title="Requests" :active="Route::is('requests') || Route::is('requests.history')" id="collapseReq">
+                <x-sidebar.section icon="fa-flag" title="Requests" :active="Route::is('requests') || Route::is('requests.system') || Route::is('requests.history')" id="collapseReq">
                     <x-sidebar.item :href="route('requests')" title="Open Requests" collapse />
+                    {{-- VATSSA: the queue and theory, split off the open list.
+                         A coordinator opening the queue used to scroll past
+                         forty rows the bot was already handling. --}}
+                    <x-sidebar.item :href="route('requests.system')" title="System Requests" collapse />
                     <x-sidebar.item :href="route('requests.history')" title="Closed Requests" collapse />
                 </x-sidebar.section>
             @endcan

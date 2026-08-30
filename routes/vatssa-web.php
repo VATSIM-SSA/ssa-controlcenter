@@ -73,6 +73,8 @@ Route::middleware(['web', 'auth', 'activity', 'suspended', 'can:fir.management.r
         // Everything that is. See PreviewController for why they share one
         // template rather than getting twenty near-identical blades.
         Route::get('/trainings', [PreviewController::class, 'trainings'])->name('trainings');
+        Route::get('/trainings/system', [PreviewController::class, 'systemRequests'])
+            ->name('trainings.system');
         Route::get('/trainings/closed', [PreviewController::class, 'closedTrainings'])
             ->name('trainings.closed');
         Route::get('/users', [PreviewController::class, 'users'])->name('users');
@@ -86,6 +88,18 @@ Route::middleware(['web', 'auth', 'activity', 'suspended', 'can:fir.management.r
         Route::get('/endorsements/{type}', [PreviewController::class, 'endorsements'])
             ->whereIn('type', ['solo', 'examiner', 'visiting'])
             ->name('endorsements');
+
+        // Administration. Read only, like the rest -- each of these changes how
+        // the whole application behaves, and a second form writing them without
+        // the validation the real pages have is a way to break production from
+        // a mockup.
+        Route::get('/settings', [PreviewController::class, 'settings'])->name('settings');
+        Route::get('/logs', [PreviewController::class, 'logs'])->name('logs');
+
+        // The one write the mirror allows. It posts to vatssa.requests.store --
+        // upstream's own controller, validation, policy and observer -- so a
+        // request raised here is byte-for-byte one raised from the real page.
+        Route::get('/request', [PreviewController::class, 'newRequest'])->name('request');
     });
 
 /*

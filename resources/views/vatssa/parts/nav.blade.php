@@ -44,6 +44,10 @@
             // as they read, not as they are routed.
             ['Open requests', $to('vatssa.preview.trainings', 'requests'), 'academic',
                 $user->can('training.view')],
+            // The queue and theory, split off the open list: the bot is
+            // handling them and there is nothing to decide.
+            ['System requests', $to('vatssa.preview.trainings.system', 'requests.system'), 'bolt',
+                $user->can('training.view')],
             ['Closed requests', $to('vatssa.preview.trainings.closed', 'requests.history'), 'clock',
                 $user->can('training.view')],
             ['Tasks', $to('vatssa.preview.tasks', 'tasks'), 'inbox', $user->can('tasks.manage')],
@@ -75,6 +79,10 @@
                 $user->can('system.settings.manage')],
             ['Positions', $to('vatssa.preview.positions', 'positions.index'), 'bolt',
                 $user->can('fir.positions.view')],
+            ['Settings', $to('vatssa.preview.settings', 'admin.settings'), 'check',
+                $user->can('system.settings.manage')],
+            ['Activity log', $to('vatssa.preview.logs', 'admin.logs'), 'clock',
+                $user->can('system.settings.manage')],
         ],
     ];
 @endphp

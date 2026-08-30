@@ -1,6 +1,14 @@
 @extends('layouts.app')
 
-@section('title', 'Training Requests')
+@php
+    // VATSSA: this view serves both the open list and the system list. Set by
+    // TrainingController::requestList(); defaulted so any other caller still
+    // renders the list it always did.
+    $listMode = $listMode ?? \App\Http\Controllers\TrainingController::LIST_OPEN;
+    $onSystem = $listMode === \App\Http\Controllers\TrainingController::LIST_SYSTEM;
+@endphp
+
+@section('title', $onSystem ? 'System Requests' : 'Training Requests')
 @section('title-flex')
     <div>
         @can('create', \App\Models\Training::class)
@@ -20,7 +28,30 @@
     <div class="col-xl-12 col-md-12 mb-12">
         <div class="card shadow mb-4">
             <div class="card-header bg-primary py-3 d-flex flex-row align-items-center justify-content-between">
-                <h6 class="m-0 fw-bold text-white">Open training requests</h6>
+                <h6 class="m-0 fw-bold text-white">
+                    {{ $onSystem ? 'With the system' : 'Open training requests' }}
+                </h6>
+            </div>
+
+            {{-- VATSSA: say which half you are looking at, and where the other
+                 half went. A list that quietly got shorter is a list people
+                 assume has lost rows. --}}
+            <div class="card-body pb-0">
+                @if($onSystem)
+                    <p class="text-muted mb-0">
+                        In the queue or working through theory. The pipeline enrols them,
+                        chases them and moves them on by itself &mdash; there is nothing here
+                        to decide. They appear under
+                        <a href="{{ route('requests') }}">open requests</a> the moment they
+                        pass theory and need a mentor.
+                    </p>
+                @else
+                    <p class="text-muted mb-0">
+                        Trainings that need a person: awaiting a mentor, being mentored, or
+                        waiting on a CPT. Students still in the queue or in theory are
+                        <a href="{{ route('requests.system') }}">with the system</a>.
+                    </p>
+                @endif
             </div>
             <div class="card-body p-0">
                 <div class="table-responsive">

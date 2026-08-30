@@ -78,9 +78,59 @@ class TrainingController extends Controller
      */
     public function index(): Factory|View
     {
+        return $this->requestList(self::LIST_OPEN);
+    }
+
+    /**
+     * VATSSA: the trainings nobody has to do anything about yet.
+     *
+     * ## Why the list was split
+     *
+     * One list held everything from "applied this morning" to "sitting a CPT
+     * next week", and the two halves need opposite things. A student in the
+     * queue or working through theory is the BOT's -- it enrols them, chases
+     * them, and moves them on when they pass. Nothing a coordinator does
+     * changes that, and there is nothing for them to decide.
+     *
+     * Mixed together, those students were most of the list. A coordinator
+     * opening the queue to find the people who actually need them scrolled
+     * past forty rows that did not, every time, which is how a queue stops
+     * being read.
+     *
+     * ## The boundary is theory
+     *
+     * In-queue and theory are the system's. The moment somebody passes theory
+     * they become "awaiting a mentor" and appear on the OPEN list, where a
+     * human has to find them somebody. That transition is the exact point the
+     * work stops being automatic, which is why it is the exact point the
+     * student changes list.
+     */
+    public function systemRequests(): Factory|View
+    {
+        return $this->requestList(self::LIST_SYSTEM);
+    }
+
+    /** Trainings a person has to work: awaiting a mentor, mentored, or at a CPT. */
+    public const LIST_OPEN = 'open';
+
+    /** Trainings the pipeline is handling on its own: in queue, or in theory. */
+    public const LIST_SYSTEM = 'system';
+
+    private function requestList(string $listMode): Factory|View
+    {
         $this->authorize('viewActiveRequests', Training::class);
 
-        $openTrainings = Auth::user()->viewableModels(Training::class, [['status', '>=', TrainingStatus::IN_QUEUE]], ['area', 'ratings', 'activities', 'mentors', 'user', 'user.atcActivity'])->sort(function ($a, $b) {
+        // Two disjoint sets, and every open training is in exactly one. A
+        // status that fell through both would be a student invisible to
+        // everybody, which is the failure this whole split has to avoid.
+        $statuses = $listMode === self::LIST_SYSTEM
+            ? [TrainingStatus::IN_QUEUE, TrainingStatus::PRE_TRAINING]
+            : [TrainingStatus::AWAITING_MENTOR, TrainingStatus::ACTIVE_TRAINING,
+                TrainingStatus::AWAITING_EXAM];
+
+        $openTrainings = Auth::user()->viewableModels(Training::class, [['status', '>=', TrainingStatus::IN_QUEUE]], ['area', 'ratings', 'activities', 'mentors', 'user', 'user.atcActivity'])
+            ->filter(fn ($training) => in_array($training->status, $statuses, true))
+            ->sort(function ($a, $b) {
             if ($a->status === $b->status) {
                 return $a->created_at->timestamp - $b->created_at->timestamp;
             }
@@ -94,7 +144,7 @@ class TrainingController extends Controller
 
         $types = TrainingController::$types;
 
-        return view('training.index', compact('openTrainings', 'types'));
+        return view('training.index', compact('openTrainings', 'types', 'listMode'));
     }
 
     /**

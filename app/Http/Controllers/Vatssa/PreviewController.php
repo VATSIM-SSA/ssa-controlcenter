@@ -4,10 +4,14 @@ namespace App\Http\Controllers\Vatssa;
 
 use App\Helpers\TaskStatus;
 use App\Helpers\TrainingStatus;
+use anlutro\LaravelSettings\Facade as Setting;
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\TaskController;
+use App\Models\ActivityLog;
 use App\Models\Booking;
 use App\Models\Endorsement;
 use App\Models\Position;
+use App\Models\Rating;
 use App\Models\Task;
 use App\Models\Training;
 use App\Models\TrainingExamination;
@@ -15,6 +19,7 @@ use App\Models\TrainingInterest;
 use App\Models\TrainingReport;
 use App\Models\User;
 use App\Models\Vatssa\MessageLog;
+use App\Models\Vatssa\RequestTarget;
 use App\Models\Vatssa\TheoryAttempt;
 use App\Models\Vatssa\UserPlatform;
 use Carbon\Carbon;
@@ -161,16 +166,58 @@ class PreviewController extends Controller
     // Everything that is a table
     // -----------------------------------------------------------------
 
+    /**
+     * Trainings a person has to work.
+     *
+     * The queue and theory are NOT here -- they are the system's, and mixed in
+     * they were most of the list. See TrainingController::systemRequests().
+     */
     public function trainings(): View
     {
-        return $this->list('Open requests', [
-            'Student', 'Rating', 'Stage', 'Mentor', ['label' => 'Waiting', 'align' => 'right'],
-        ], Training::with('user', 'ratings', 'mentors')
-            ->whereNotIn('status', [TrainingStatus::COMPLETED])
-            ->where('status', '>=', TrainingStatus::IN_QUEUE)
+        return $this->trainingList(
+            'Open requests',
+            [TrainingStatus::AWAITING_MENTOR, TrainingStatus::ACTIVE_TRAINING,
+                TrainingStatus::AWAITING_EXAM],
+            'Trainings that need a person: awaiting a mentor, being mentored, or waiting '
+                . 'on a CPT. Students still in the queue or in theory are with the system.',
+            'Nothing needs you.',
+        );
+    }
+
+    /**
+     * Trainings the pipeline is handling on its own.
+     *
+     * In-queue and theory. The bot enrols them, chases them and moves them on;
+     * a coordinator changes nothing by looking. They cross to the open list the
+     * moment they pass theory and need a mentor, which is the exact point the
+     * work stops being automatic.
+     */
+    public function systemRequests(): View
+    {
+        return $this->trainingList(
+            'System requests',
+            [TrainingStatus::IN_QUEUE, TrainingStatus::PRE_TRAINING],
+            'In the queue or working through theory. The pipeline handles these by '
+                . 'itself — there is nothing here to decide.',
+            'Nobody is in the queue.',
+        );
+    }
+
+    /**
+     * @param  array<int, TrainingStatus>  $statuses
+     */
+    private function trainingList(string $heading, array $statuses,
+        string $blurb, string $empty): View
+    {
+        $trainings = Training::with('user', 'ratings', 'mentors')
+            ->whereIn('status', $statuses)
             ->limit(self::CAP)->get()
-            ->sortBy(fn (Training $t) => $t->status->lifecycleOrder())
-            ->map(fn (Training $t) => [
+            ->sortBy(fn (Training $t) => $t->status->lifecycleOrder());
+
+        return $this->list($heading, [
+            'Student', 'Rating', 'Stage', 'Mentor', ['label' => 'Waiting', 'align' => 'right'],
+        ], $trainings->map(fn (Training $t) => [
+            'cells' => [
                 $this->link(route('vatssa.preview.training', $t), $t->user?->name ?? 'Unknown')
                     . $this->sub($t->user_id),
                 e($t->ratings->pluck('name')->join(' + ')) ?: '—',
@@ -179,9 +226,32 @@ class PreviewController extends Controller
                     ? e($t->mentors->pluck('name')->join(', '))
                     : $this->muted('nobody'),
                 e($t->created_at?->diffForHumans(null, true)),
-            ])->values()->all(),
-            'Nothing open.',
-            'Every training that has not been closed or completed, in the order the stages happen.');
+            ],
+            // The two questions actually asked of this list: which rating, and
+            // which stage. "S2 students awaiting a mentor" is one query, not a
+            // scroll.
+            'meta' => [
+                'rating' => $t->ratings->pluck('name')->join(' + '),
+                'stage' => $t->status->label(),
+                'mentored' => $t->mentors->isNotEmpty() ? 'Has a mentor' : 'No mentor',
+            ],
+        ])->values()->all(),
+            $empty,
+            $blurb,
+            // Options come from what is ON the list, not from every rating that
+            // exists. A dropdown offering a filter that can only return nothing
+            // is a dropdown that teaches people not to trust it.
+            [
+                ['key' => 'rating', 'label' => 'Rating',
+                    'options' => $trainings->pluck('ratings')->flatten()->pluck('name')
+                        ->unique()->sort()->values()->all()],
+                ['key' => 'stage', 'label' => 'Stage',
+                    'options' => $trainings->map(fn (Training $t) => $t->status)
+                        ->unique()->sortBy(fn ($s) => $s->lifecycleOrder())
+                        ->map(fn ($s) => $s->label())->values()->all()],
+                ['key' => 'mentored', 'label' => 'Mentor',
+                    'options' => ['Has a mentor', 'No mentor']],
+            ]);
     }
 
     public function closedTrainings(): View
@@ -192,13 +262,29 @@ class PreviewController extends Controller
             ->where('status', '<', TrainingStatus::IN_QUEUE)
             ->latest('closed_at')->limit(self::CAP)->get()
             ->map(fn (Training $t) => [
-                $this->link(route('vatssa.preview.training', $t), $t->user?->name ?? 'Unknown')
-                    . $this->sub($t->user_id),
-                e($t->ratings->pluck('name')->join(' + ')) ?: '—',
-                $this->stage($t->status),
-                e($t->closed_at?->format('j M Y') ?? '—'),
+                'cells' => [
+                    $this->link(route('vatssa.preview.training', $t), $t->user?->name ?? 'Unknown')
+                        . $this->sub($t->user_id),
+                    e($t->ratings->pluck('name')->join(' + ')) ?: '—',
+                    $this->stage($t->status),
+                    e($t->closed_at?->format('j M Y') ?? '—'),
+                ],
+                'meta' => [
+                    'rating' => $t->ratings->pluck('name')->join(' + '),
+                    'outcome' => $t->status->label(),
+                ],
             ])->values()->all(),
-            'Nothing closed yet.');
+            'Nothing closed yet.',
+            null,
+            [
+                ['key' => 'rating', 'label' => 'Rating',
+                    'options' => Rating::whereNotNull('vatsim_rating')
+                        ->orderBy('vatsim_rating')->pluck('name')->all()],
+                ['key' => 'outcome', 'label' => 'Outcome',
+                    'options' => collect(TrainingStatus::cases())
+                        ->filter(fn ($s) => $s->isClosed())
+                        ->map(fn ($s) => $s->label())->values()->all()],
+            ]);
     }
 
     public function users(): View
@@ -208,13 +294,24 @@ class PreviewController extends Controller
         ], User::with('roleAssignments')
             ->orderBy('first_name')->limit(self::CAP)->get()
             ->map(fn (User $u) => [
-                $this->link(route('vatssa.preview.profile', $u), $u->name) . $this->sub($u->id),
-                e($u->rating?->name ?? '—'),
-                $u->roleAssignments->isNotEmpty()
-                    ? $this->pills($u->roleAssignments->pluck('role')->unique()->all())
-                    : $this->muted('member'),
-                e($u->last_login?->diffForHumans() ?? 'never'),
-            ])->values()->all());
+                'cells' => [
+                    $this->link(route('vatssa.preview.profile', $u), $u->name) . $this->sub($u->id),
+                    e($u->rating?->name ?? '—'),
+                    $u->roleAssignments->isNotEmpty()
+                        ? $this->pills($u->roleAssignments->pluck('role')->unique()->all())
+                        : $this->muted('member'),
+                    e($u->last_login?->diffForHumans() ?? 'never'),
+                ],
+                'meta' => [
+                    'rating' => $u->rating?->name ?? '—',
+                    'role' => $u->roleAssignments->pluck('role')->first() ?? 'member',
+                ],
+            ])->values()->all(),
+            null, null,
+            [
+                ['key' => 'role', 'label' => 'Role',
+                    'options' => collect(config('roles.roles'))->keys()->push('member')->all()],
+            ]);
     }
 
     public function tasks(): View
@@ -224,16 +321,40 @@ class PreviewController extends Controller
         ], Task::with('subject', 'assignee', 'subjectTraining')
             ->latest()->limit(self::CAP)->get()
             ->map(fn (Task $t) => [
-                e($t->type()->getName()),
-                $t->subject ? e($t->subject->name) : $this->muted('nobody in particular'),
-                $t->vatssa_tier
-                    ? e(\App\Models\Vatssa\RequestTarget::label($t->vatssa_tier))
-                    : $this->muted('unrouted'),
-                $this->taskState($t->status),
-                e($t->created_at?->diffForHumans(null, true)),
+                'cells' => [
+                    e($t->type()->getName()),
+                    $t->subject ? e($t->subject->name) : $this->muted('nobody in particular'),
+                    $t->vatssa_tier
+                        ? e(\App\Models\Vatssa\RequestTarget::label($t->vatssa_tier))
+                        : $this->muted('unrouted'),
+                    $this->taskState($t->status),
+                    e($t->created_at?->diffForHumans(null, true)),
+                ],
+                'meta' => [
+                    'desk' => $t->vatssa_tier
+                        ? \App\Models\Vatssa\RequestTarget::label($t->vatssa_tier)
+                        : 'Unrouted',
+                    'state' => match ($t->status) {
+                        TaskStatus::COMPLETED => 'Done',
+                        TaskStatus::DECLINED => 'Declined',
+                        default => 'Open',
+                    },
+                    'kind' => $t->type()->getName(),
+                ],
             ])->values()->all(),
             'No tasks.',
-            'A request belongs to a desk, not to a person. Everybody at a desk sees the same queue.');
+            'A request belongs to a desk, not to a person. Everybody at a desk sees the same queue.',
+            [
+                ['key' => 'state', 'label' => 'State', 'options' => ['Open', 'Done', 'Declined']],
+                ['key' => 'desk', 'label' => 'Desk',
+                    'options' => collect(\App\Models\Vatssa\RequestTarget::TIERS)
+                        ->pluck('label')->push('Unrouted')->all()],
+                ['key' => 'kind', 'label' => 'Kind',
+                    'options' => collect(\App\Http\Controllers\TaskController::getTypes())
+                        ->map(fn ($type) => $type->getName())->sort()->values()->all()],
+            ],
+            // The one write the mirror allows. See newRequest().
+            ['Raise a request' => route('vatssa.preview.request')]);
     }
 
     public function endorsements(string $type): View
@@ -247,16 +368,35 @@ class PreviewController extends Controller
             ->where('revoked', false)
             ->orderBy('valid_to')->limit(self::CAP)->get()
             ->map(fn (Endorsement $e) => [
-                $e->user
-                    ? $this->link(route('vatssa.preview.profile', $e->user), $e->user->name)
-                    : $this->muted('Unknown'),
-                e($e->ratings->pluck('name')->join(', ')) ?: '—',
-                e($e->valid_from?->format('j M Y') ?? '—'),
-                $e->valid_to
-                    ? $this->expiry($e->valid_to)
-                    : $this->muted('no expiry'),
+                'cells' => [
+                    $e->user
+                        ? $this->link(route('vatssa.preview.profile', $e->user), $e->user->name)
+                        : $this->muted('Unknown'),
+                    e($e->ratings->pluck('name')->join(', ')) ?: '—',
+                    e($e->valid_from?->format('j M Y') ?? '—'),
+                    $e->valid_to
+                        ? $this->expiry($e->valid_to)
+                        : $this->muted('no expiry'),
+                ],
+                'meta' => [
+                    'rating' => $e->ratings->pluck('name')->join(', '),
+                    // Expiring is the reason anybody opens this page, so it is
+                    // a filter rather than something to spot by eye.
+                    'window' => $e->valid_to === null
+                        ? 'No expiry'
+                        : (Carbon::parse($e->valid_to)->lessThan(now()->addDays(30))
+                            ? 'Within 30 days' : 'Later'),
+                ],
             ])->values()->all(),
-            'None granted.');
+            'None granted.',
+            null,
+            [
+                ['key' => 'rating', 'label' => 'Rating',
+                    'options' => Rating::whereNotNull('vatsim_rating')
+                        ->orderBy('vatsim_rating')->pluck('name')->all()],
+                ['key' => 'window', 'label' => 'Expiry',
+                    'options' => ['Within 30 days', 'Later', 'No expiry']],
+            ]);
     }
 
     public function bookings(): View
@@ -312,13 +452,126 @@ class PreviewController extends Controller
     }
 
     // -----------------------------------------------------------------
+    // Administration
+    // -----------------------------------------------------------------
+
+    /**
+     * Division settings, read only.
+     *
+     * Rendered rather than editable on purpose. Every one of these changes how
+     * the whole application behaves -- the ATC activity requirement, the theory
+     * window, the grace period -- and a second form writing them, with none of
+     * the validation the real settings page has grown, is not a preview. It is
+     * a way to break production from a mockup.
+     */
+    public function settings(): View
+    {
+        return $this->list('Settings', ['Setting', ['label' => 'Value', 'align' => 'right']],
+            collect(Setting::all())
+                ->sortKeys()
+                ->map(fn ($value, $key) => [
+                    'cells' => [
+                        '<span class="font-mono text-xs">' . e($key) . '</span>',
+                        e(is_bool($value) ? ($value ? 'true' : 'false')
+                            : (is_scalar($value) ? (string) $value : json_encode($value))),
+                    ],
+                ])->values()->all(),
+            'Nothing configured.',
+            'Read only here. Changing any of these belongs on the real settings page, '
+                . 'which has the validation this does not.',
+            [],
+            ['Open the real settings' => route('admin.settings')]);
+    }
+
+    /**
+     * The activity log.
+     *
+     * Different from the automation log, and both are needed. This one records
+     * what PEOPLE did; `vatssa_action_log` records what the pipeline did and
+     * what it noticed and could not do.
+     */
+    public function logs(): View
+    {
+        // The real page authorises on the model, and so does this. A mirror
+        // that is easier to reach than the page it mirrors is a hole.
+        $this->authorize('index', ActivityLog::class);
+
+        $logs = ActivityLog::with('causer')->latest()->limit(self::CAP)->get();
+
+        return $this->list('Activity log',
+            ['What', 'Who', 'Area', 'Level', ['label' => 'When', 'align' => 'right']],
+            $logs->map(fn ($entry) => [
+                'cells' => [
+                    e($entry->description),
+                    $entry->causer
+                        ? $this->link(route('vatssa.preview.profile', $entry->causer), $entry->causer->name)
+                        : $this->muted('system'),
+                    e($entry->log_name ?? '—'),
+                    e($entry->level?->value ?? '—'),
+                    e($entry->created_at?->diffForHumans()),
+                ],
+                'meta' => [
+                    'area' => $entry->log_name ?? '—',
+                    'level' => $entry->level?->value ?? '—',
+                ],
+            ])->values()->all(),
+            'Nothing logged.',
+            'What PEOPLE did. What the pipeline did, and what it noticed and could not do, '
+                . 'is on the automation log.',
+            [
+                ['key' => 'area', 'label' => 'Area',
+                    'options' => $logs->pluck('log_name')->filter()->unique()->sort()->values()->all()],
+                ['key' => 'level', 'label' => 'Level',
+                    'options' => collect(\App\Helpers\ActivityLevel::cases())
+                        ->map(fn ($case) => $case->value)->all()],
+            ]);
+    }
+
+    // -----------------------------------------------------------------
+    // The one write the mirror allows
+    // -----------------------------------------------------------------
+
+    /**
+     * Raise a request from the mirror.
+     *
+     * ## Why this one and nothing else
+     *
+     * The rest of the preview is read only, deliberately: a mirror that writes
+     * is a second code path to the same tables with none of the guards the real
+     * controllers have grown. This is the exception because a request queue you
+     * cannot add to is not a queue you can judge -- half of what makes the desk
+     * model work or not is what it feels like to send something to one.
+     *
+     * ## It does not write anything itself
+     *
+     * The form posts to `tasks.store`, upstream's own controller, through
+     * upstream's own validation, policy and observer. Nothing here touches the
+     * database. That is what keeps it honest: a request raised from the mirror
+     * is byte-for-byte a request raised from the real page.
+     */
+    public function newRequest(): View
+    {
+        $this->authorize('create', Task::class);
+
+        return view('vatssa.preview.request', [
+            'desks' => RequestTarget::allChoices(),
+            'types' => TaskController::getTypes(),
+            'trainings' => Training::with('user')
+                ->where('status', '>=', TrainingStatus::IN_QUEUE)
+                ->limit(self::CAP)->get(),
+        ]);
+    }
+
+    // -----------------------------------------------------------------
     // Shared rendering
     // -----------------------------------------------------------------
 
     private function list(string $heading, array $columns, array $rows,
-        ?string $empty = null, ?string $blurb = null): View
+        ?string $empty = null, ?string $blurb = null, array $filters = [],
+        array $actions = []): View
     {
-        return view('vatssa.preview.list', compact('heading', 'columns', 'rows', 'empty', 'blurb'));
+        return view('vatssa.preview.list',
+            compact('heading', 'columns', 'rows', 'empty', 'blurb', 'filters', 'actions'));
     }
 
     /**

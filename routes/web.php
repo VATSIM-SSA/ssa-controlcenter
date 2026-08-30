@@ -56,6 +56,9 @@ Route::middleware(['auth', 'activity', 'suspended'])->group(function () {
     Route::get('/content', [DashboardController::class, 'content'])->name('content');
     Route::get('/mentor', [DashboardController::class, 'mentor'])->name('mentor');
     Route::get('/trainings', [TrainingController::class, 'index'])->name('requests');
+    // VATSSA: the queue and theory, split off the open list -- see
+    // TrainingController::systemRequests() for why.
+    Route::get('/trainings/system', [TrainingController::class, 'systemRequests'])->name('requests.system');
     Route::get('/trainings/history', [TrainingController::class, 'history'])->name('requests.history');
     Route::get('/users', [UserController::class, 'index'])->name('users');
     Route::get('/users/other', [UserController::class, 'indexOther'])->name('users.other');
