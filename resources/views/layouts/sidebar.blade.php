@@ -20,6 +20,12 @@
 
         <x-sidebar.item :href="route('dashboard')" icon="fa-table-columns" title="Dashboard" :active="Route::is('dashboard')" />
 
+        {{-- VATSSA: your own profile. Reachable before only by searching for
+             yourself, which is an odd thing to have to do. UserPolicy::view
+             already allows `$user->is($model)`, so this needs no gate. --}}
+        <x-sidebar.item :href="route('user.show', Auth::id())" icon="fa-id-card" title="My profile"
+                        :active="Route::is('user.show') && request()->route('user')?->id === Auth::id()" />
+
         @can('update', [\App\Models\Task::class])
             @php
                 // VATSSA: what is on YOUR DESKS, not what carries your name.
@@ -83,6 +89,16 @@
 
         @endcanany
 
+        {{-- VATSSA: the heading only appears if something sits under it.
+
+             Upstream's Members heading was unconditional while everything below
+             it was gated, so an ordinary member saw a section title with an
+             empty space beneath. Two of the three items that used to fill it
+             are now gated too -- the roster came out of the nav, and the
+             endorsement rosters became staff-only -- which made an existing
+             oversight visible on every account. --}}
+        @canany(['users.manage', 'endorsements.rosters.view'])
+
         {{-- Divider --}}
         <div class="sidebar-divider"></div>
 
@@ -131,6 +147,8 @@
                 <x-sidebar.item :href="route('endorsements.visiting')" title="Visiting" collapse />
             </x-sidebar.section>
         @endcan
+
+        @endcanany
 
 
 

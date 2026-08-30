@@ -214,3 +214,205 @@ a.version,
         background: linear-gradient(90deg, #0197b0, #7bd758);
     }
 }
+
+// ============================================================ chrome ========
+//
+// The palette was never the problem. What dates this interface is its CHROME:
+// every card wears a saturated header bar, corners are nearly square, shadows
+// are heavy and grey, tables are tight, and everything shouts at the same
+// volume. That is the 2015 admin-template look, and it survives any palette you
+// pour into it.
+//
+// So this section changes weight and shape, not colour. No token above is
+// touched, which means `contrast-check.py` still governs every pair and nothing
+// here can quietly fail AA.
+//
+// ALL OF IT LIVES IN THIS ADDED FILE. Not one upstream Blade is edited to get
+// it, so the entire restyle is a single file to revert and it can never be a
+// merge conflict.
+
+// ---- surfaces --------------------------------------------------------------
+//
+// A card should read as a sheet of paper, not a labelled box. A hairline border
+// carries the edge; the shadow only lifts it slightly off the page. Heavy drop
+// shadows are what make an interface feel like it was built in 2015.
+
+.card {
+    border: 1px solid var(--border-card, rgba(127, 143, 148, .22));
+    border-radius: 12px;
+    box-shadow: 0 1px 2px rgba(7, 38, 44, .06), 0 1px 3px rgba(7, 38, 44, .04) !important;
+    overflow: hidden;
+}
+
+// THE SINGLE BIGGEST CHANGE ON THE PAGE.
+//
+// Upstream paints every card header solid primary. Twelve cards on a profile
+// means twelve saturated bars competing for attention, and when everything is
+// emphasised nothing is. The header becomes a quiet strip with a rule under it,
+// and the TITLE carries the colour instead.
+.card > .card-header,
+.card > .card-header.bg-primary {
+    background: var(--bg-card-header) !important;
+    border-bottom: 1px solid var(--border-card, rgba(127, 143, 148, .22));
+    padding-top: .7rem !important;
+    padding-bottom: .7rem !important;
+
+    h6, .h6 {
+        color: var(--color-text-primary) !important;
+        font-size: .8rem;
+        font-weight: 600;
+        letter-spacing: .02em;
+    }
+
+    // Icons keep the brand colour. One small accent per card reads as
+    // deliberate where a full bar reads as decoration.
+    h6 > i, .h6 > i {
+        color: var(--color-primary-text, var(--color-primary));
+    }
+}
+
+.card-body {
+    padding: 1rem 1.1rem;
+}
+
+// ---- type ------------------------------------------------------------------
+//
+// Upstream sets 0.85rem body text with tight leading, which is what makes a
+// dense page feel cramped rather than compact.
+
+body {
+    font-size: .9rem;
+    line-height: 1.55;
+}
+
+dl dt {
+    font-size: .72rem;
+    font-weight: 600;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+    margin-bottom: .1rem;
+}
+
+dl dd {
+    margin-bottom: .7rem;
+}
+
+// ---- tables ----------------------------------------------------------------
+//
+// Room to breathe, and a single hairline instead of a grid. Zebra striping
+// fights the card surface; a hover row does the same job without the noise.
+
+.table {
+    --bs-table-border-color: var(--border-card, rgba(127, 143, 148, .18));
+
+    > :not(caption) > * > * {
+        padding-top: .6rem;
+        padding-bottom: .6rem;
+    }
+
+    thead th {
+        font-size: .72rem;
+        font-weight: 600;
+        letter-spacing: .04em;
+        text-transform: uppercase;
+        color: var(--color-text-muted);
+        border-bottom-width: 1px;
+    }
+}
+
+.table-striped > tbody > tr:nth-of-type(odd) > * {
+    // Striping is off, not restyled: the card already separates content from
+    // page, and a second banding pattern inside it is one signal too many.
+    --bs-table-bg-type: transparent;
+}
+
+// ---- badges ----------------------------------------------------------------
+//
+// Pills, and lighter. Upstream's square bold badges read as buttons, so a table
+// full of them looks like a table full of things to click.
+
+.badge {
+    border-radius: 999px;
+    font-weight: 500;
+    letter-spacing: .01em;
+    padding: .3em .65em;
+}
+
+// ---- controls --------------------------------------------------------------
+
+.btn {
+    border-radius: 8px;
+    font-weight: 500;
+}
+
+.btn-sm {
+    border-radius: 7px;
+}
+
+.form-control,
+.form-select {
+    border-radius: 8px;
+    border-color: var(--border-card, rgba(127, 143, 148, .3));
+
+    &:focus {
+        // A soft ring rather than the default heavy glow.
+        box-shadow: 0 0 0 3px rgba(1, 151, 176, .16);
+        border-color: var(--color-primary);
+    }
+}
+
+.alert {
+    border: 1px solid var(--border-card, rgba(127, 143, 148, .22));
+    border-radius: 10px;
+}
+
+// ---- sidebar ---------------------------------------------------------------
+//
+// The active item is marked with a rounded fill rather than a full-bleed block,
+// which is what makes a nav feel considered rather than stamped out.
+
+.sidebar {
+    .nav-item .nav-link {
+        border-radius: 8px;
+        margin: 1px .5rem;
+        padding-top: .5rem;
+        padding-bottom: .5rem;
+    }
+
+    .nav-item .nav-link.active {
+        background: rgba(255, 255, 255, .1);
+        font-weight: 600;
+    }
+
+    .sidebar-heading {
+        font-size: .68rem;
+        letter-spacing: .09em;
+        opacity: .55;
+    }
+}
+
+// ---- page ------------------------------------------------------------------
+
+h1, .h1, h2, .h2 {
+    font-weight: 600;
+    letter-spacing: -.01em;
+}
+
+// Border token, defined here rather than in the palette block above because it
+// is chrome rather than a colour pair -- nothing renders text on it, so it has
+// no contrast ratio to check.
+:root:not([data-theme="dark"]),
+[data-theme="light"] {
+    --border-card: rgba(7, 38, 44, .12);
+}
+
+:root[data-theme="dark"] {
+    --border-card: rgba(255, 255, 255, .1);
+}
+
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+        --border-card: rgba(255, 255, 255, .1);
+    }
+}
