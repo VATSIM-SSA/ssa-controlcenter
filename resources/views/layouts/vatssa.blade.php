@@ -1,0 +1,147 @@
+{{--
+    VATSSA: the Tailwind shell.
+
+    ## Why a second layout rather than restyling the first
+
+    `layouts/app.blade.php` is upstream's, and so are the 554 blades that
+    extend it. Restyling those means a merge conflict on every one, for ever,
+    maintained by one person. This layout is an ADDED file: the pages that use
+    it are ours, they conflict with nothing, and deleting this file plus the
+    vite entry reverts the entire experiment.
+
+    ## What it does NOT load
+
+    `app.scss`, and therefore Bootstrap. That is the point -- these pages get
+    unprefixed Tailwind and no cascade fights. It also means nothing here can
+    borrow a Bootstrap class by accident, which is the failure mode that turns
+    a migration into a hybrid nobody can style.
+
+    Expects: $title. Yields: content. Optional: sidebar-extra, head, js.
+--}}
+<!DOCTYPE html>
+<html lang="en"
+      data-user-theme="{{ Auth::check() ? Auth::user()->setting_theme ?? 'system' : 'system' }}"
+      class="h-full">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <title>@yield('title', $title ?? 'Control Center') · {{ config('app.owner_name', 'VATSSA') }}</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&display=swap"
+          rel="stylesheet">
+
+    @vite(['resources/css/vatssa.css'])
+    <style>[x-cloak] { display: none !important; }</style>
+    @yield('head')
+</head>
+
+<body class="h-full bg-neutral-50 text-neutral-900 antialiased dark:bg-neutral-950 dark:text-neutral-100">
+
+<div class="flex min-h-full" x-data="{ nav: false }" @keydown.escape.window="nav = false">
+
+    {{-- The scrim. Only below lg, and only while the drawer is open: a
+         click-anywhere-to-close target is the difference between a drawer and
+         a trap on a phone. --}}
+    <div x-show="nav" x-cloak @click="nav = false"
+         class="fixed inset-0 z-30 bg-neutral-900/40 lg:hidden"></div>
+
+    {{-- Sidebar. Fixed on desktop, a drawer below lg. --}}
+    <aside class="fixed inset-y-0 left-0 z-40 w-64 shrink-0 overflow-y-auto border-r border-neutral-200
+                  bg-white transition-transform lg:static lg:translate-x-0
+                  dark:border-neutral-800 dark:bg-neutral-900"
+           :class="nav ? 'translate-x-0' : '-translate-x-full'">
+
+        <div class="flex h-16 items-center gap-2.5 px-5">
+            <span class="grid h-8 w-8 place-items-center rounded-lg bg-brand-500 text-sm font-bold text-white">
+                V
+            </span>
+            <span class="text-[15px] font-semibold tracking-tight">Control Center</span>
+        </div>
+
+        <nav class="space-y-6 px-3 pb-8">
+            @include('vatssa.parts.nav')
+            @yield('sidebar-extra')
+        </nav>
+    </aside>
+
+    <div class="flex min-w-0 flex-1 flex-col">
+
+        {{-- Topbar. Deliberately thin: it holds identity and nothing else,
+             because a second row of navigation is how a dashboard starts
+             feeling like an intranet. --}}
+        <header class="sticky top-0 z-30 flex h-16 items-center gap-4 border-b border-neutral-200
+                       bg-neutral-50/80 px-5 backdrop-blur
+                       dark:border-neutral-800 dark:bg-neutral-950/80">
+
+            <button type="button" @click="nav = ! nav"
+                    class="-ml-1 rounded-lg p-2 text-neutral-500 hover:bg-neutral-100 lg:hidden
+                           dark:hover:bg-neutral-800"
+                    aria-label="Open navigation">
+                <svg class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" d="M4 6h16M4 12h16M4 18h16"/>
+                </svg>
+            </button>
+
+            <div class="min-w-0 flex-1">
+                <h1 class="truncate text-[15px] font-semibold tracking-tight">
+                    @yield('title', $title ?? '')
+                </h1>
+            </div>
+
+            @auth
+                <a href="{{ route('user.show', Auth::id()) }}"
+                   class="flex items-center gap-2.5 rounded-lg py-1.5 pl-2 pr-3 text-sm
+                          hover:bg-neutral-100 dark:hover:bg-neutral-800">
+                    <span class="grid h-7 w-7 place-items-center rounded-full bg-neutral-200 text-[11px]
+                                 font-semibold text-neutral-600
+                                 dark:bg-neutral-700 dark:text-neutral-200">
+                        {{ Str::of(Auth::user()->name)->explode(' ')->take(2)->map(fn ($p) => Str::substr($p, 0, 1))->join('') }}
+                    </span>
+                    <span class="hidden text-neutral-600 sm:block dark:text-neutral-300">
+                        {{ Auth::user()->name }}
+                    </span>
+                </a>
+            @endauth
+        </header>
+
+        <main class="mx-auto w-full max-w-7xl flex-1 px-5 py-8">
+
+            {{-- Flash messages. Same three upstream uses, so a redirect from an
+                 upstream controller into one of these pages still says what
+                 happened. --}}
+            @if(session('success'))
+                <div class="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm
+                            text-emerald-900 dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-200">
+                    {{ session('success') }}
+                </div>
+            @endif
+
+            @if($errors->any())
+                <div class="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm
+                            text-red-900 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-200">
+                    @foreach($errors->all() as $error)
+                        <p>{{ $error }}</p>
+                    @endforeach
+                </div>
+            @endif
+
+            @yield('content')
+        </main>
+
+        {{-- The credit line every VATSSA build carries. No privacy link:
+             Control Center is behind VATSIM SSO and has no public page, and a
+             link to a route that does not exist is worse than none. --}}
+        <footer class="px-5 pb-8 pt-4 text-xs text-neutral-400 dark:text-neutral-600">
+            Control Center © {{ date('Y') }} Daniël Schoonraad
+        </footer>
+    </div>
+</div>
+
+@livewireScripts
+@fluxScripts
+@yield('js')
+</body>
+</html>

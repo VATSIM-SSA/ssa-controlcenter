@@ -1,7 +1,9 @@
 <?php
 
 use App\Http\Controllers\Vatssa\ActionLogController;
+use App\Http\Controllers\Vatssa\AvailabilityController;
 use App\Http\Controllers\Vatssa\InternalNoteController;
+use App\Http\Controllers\Vatssa\PreviewController;
 use App\Http\Controllers\Vatssa\RequestActionController;
 use App\Http\Controllers\Vatssa\SettingsController;
 use App\Http\Controllers\Vatssa\TaskEditController;
@@ -37,6 +39,55 @@ Route::middleware(['web', 'auth', 'activity', 'suspended'])
         // training and an open request cannot disagree.
         Route::post('/{task}/pause/{mode}', [RequestActionController::class, 'pause'])
             ->whereIn('mode', ['pause', 'resume'])->name('pause');
+    });
+
+/*
+| THE TAILWIND PREVIEW -- DELETE THIS BLOCK TO REVERT.
+|
+| Parallel copies of the dashboard, the profile and the trainings table,
+| built in Tailwind, reading real data and writing nothing. The upstream
+| pages are untouched and keep working exactly as they do today.
+|
+| It exists to answer one question -- what would a migration actually look
+| like -- without editing 554 blades that upstream also edits, which would
+| be a merge conflict on every one of them for ever.
+|
+| Reverting: delete this block, app/Http/Controllers/Vatssa/PreviewController.php
+| and resources/views/vatssa/preview/. That is the whole footprint. The
+| Tailwind entry point and layout stay -- the availability tool uses them
+| for real.
+|
+| Staff-gated, not because the data is sensitive (it is the same data on
+| the same pages) but because a half-finished parallel dashboard teaches
+| members that Control Center has two of everything.
+*/
+Route::middleware(['web', 'auth', 'activity', 'suspended', 'can:fir.management.reports.view'])
+    ->prefix('vatssa/preview')
+    ->name('vatssa.preview.')
+    ->group(function () {
+        Route::get('/', [PreviewController::class, 'dashboard'])->name('dashboard');
+        Route::get('/trainings', [PreviewController::class, 'trainings'])->name('trainings');
+        Route::get('/user/{user}', [PreviewController::class, 'profile'])->name('profile');
+    });
+
+/*
+| Availability.
+|
+| The first pages built on Tailwind rather than Bootstrap. They use
+| layouts/vatssa.blade.php, which loads neither app.scss nor the upstream
+| chrome -- so nothing here can conflict with an upstream release, and the
+| whole experiment reverts by deleting a handful of added files.
+|
+| No permission gate: everybody is asked when they are free at some point,
+| and a scheduling tool the people being scheduled cannot open is a
+| scheduling tool nobody uses.
+*/
+Route::middleware(['web', 'auth', 'activity', 'suspended'])
+    ->prefix('vatssa/availability')
+    ->group(function () {
+        Route::get('/', [AvailabilityController::class, 'index'])->name('vatssa.availability');
+        Route::post('/', [AvailabilityController::class, 'store'])->name('vatssa.availability.store');
+        Route::get('/{poll}', [AvailabilityController::class, 'show'])->name('vatssa.availability.show');
     });
 
 /*

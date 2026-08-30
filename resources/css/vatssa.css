@@ -1,0 +1,83 @@
+/*
+    VATSSA: the Tailwind entry point.
+
+    ## Why a second stylesheet instead of using upstream's
+
+    `resources/css/flux.css` imports Tailwind's utilities with `prefix(tw-)` so
+    they cannot collide with Bootstrap, and only scans `resources/views/livewire`
+    for classes. That is the right call for a page that renders Bootstrap and
+    Flux side by side -- and the wrong one here, because these pages render no
+    Bootstrap at all. They use their own layout, which does not load app.scss.
+
+    So: unprefixed utilities, and the VATSSA view directories added as sources.
+    Writing `flex` rather than `tw-flex` matters more than it sounds -- every
+    Tailwind example, component and snippet in the world is written unprefixed,
+    and a prefix turns each one into a translation exercise.
+
+    ## Reverting
+
+    Delete this file, its line in `vite.config.js`, and
+    `resources/views/layouts/vatssa.blade.php`. Nothing upstream depends on any
+    of them.
+*/
+
+@import "tailwindcss";
+@import "../../vendor/livewire/flux/dist/flux.css";
+
+@source "../views/vatssa/**/*.blade.php";
+@source "../views/layouts/vatssa.blade.php";
+@source "../views/livewire/vatssa/**/*.blade.php";
+@source "../../app/Livewire/Vatssa/**/*.php";
+
+/*
+    The brand, as tokens.
+
+    Teal is VATSSA's and it is the only strong colour on the page. Everything
+    else is a neutral ramp: the AI-design tell is a palette where four things
+    compete to be the most important, and restraint is what stops a dashboard
+    looking like a demo.
+*/
+@theme {
+    --color-brand-50: #ecfeff;
+    --color-brand-100: #cff9fe;
+    --color-brand-200: #a5f1fc;
+    --color-brand-300: #67e4f9;
+    --color-brand-400: #22cdee;
+    --color-brand-500: #0197b0;
+    --color-brand-600: #0a8ba6;
+    --color-brand-700: #106f86;
+    --color-brand-800: #175a6d;
+    --color-brand-900: #164b5c;
+    --color-brand-950: #083140;
+
+    --font-sans: "Hanken Grotesk", ui-sans-serif, system-ui, -apple-system,
+        "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+/*
+    Dark by default is wrong for a tool people use at work in daylight, and
+    light by default is wrong for a tool people use at 2am before a CPT. So it
+    follows the same `data-user-theme` attribute upstream already sets from the
+    member's own setting, and falls back to the operating system.
+*/
+@custom-variant dark {
+    &:where([data-user-theme="dark"] *) { @slot; }
+    @media (prefers-color-scheme: dark) {
+        &:where([data-user-theme="system"] *) { @slot; }
+    }
+}
+
+@layer base {
+    html {
+        -webkit-font-smoothing: antialiased;
+    }
+
+    /*
+        A visible focus ring, always. Keyboard users are a minority of this
+        audience and the availability grid is unusable without one.
+    */
+    :focus-visible {
+        outline: 2px solid var(--color-brand-500);
+        outline-offset: 2px;
+    }
+}
