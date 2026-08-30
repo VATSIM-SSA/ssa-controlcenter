@@ -8,6 +8,7 @@ use App\Http\Controllers\TrainingActivityController;
 use App\Models\Training;
 use App\Models\User;
 use App\Models\Vatssa\ActionLog;
+use App\Notifications\TrainingClosedNotification;
 use App\Models\Vatssa\MessageLog;
 use App\Models\Vatssa\MessageTemplate;
 use App\Models\Vatssa\PlatformRequirement;
@@ -171,6 +172,100 @@ class BridgeController extends Controller
         );
 
         return response()->json(['status' => 'ok', 'from' => $old->value, 'to' => $wanted->value]);
+    }
+
+    /**
+     * Write a line on a training timeline.
+     *
+     * EVERY automated action the bot takes gets one of these. Opening a
+     * training in Control Center should tell the whole story of what happened
+     * to that student without anybody having to cross-reference a bot log --
+     * and until this existed, it could not: the bot called an endpoint that
+     * was never built, every comment came back as BridgeUnavailable, and the
+     * whole lot degraded into "here is what to click" lines on a daily email.
+     *
+     * A null actor, deliberately. That is how somebody reading the timeline in
+     * a year can tell the pipeline did this rather than a person, and the
+     * difference between "a coordinator decided" and "nobody was available" is
+     * most of what a timeline is for.
+     */
+    public function comment(Request $request, Training $training): JsonResponse
+    {
+        $data = $request->validate([
+            'comment' => 'required|string|max:512',
+        ]);
+
+        TrainingActivityController::create(
+            $training->id, 'COMMENT', null, null, null, $data['comment']
+        );
+
+        return response()->json(['status' => 'ok']);
+    }
+
+    /**
+     * Close a training the way a person would.
+     *
+     * ## Why the bot is allowed to do this at all
+     *
+     * Three ladders end here: a dead email address before a mentor is
+     * involved, no response to the platform follow-up, and now a student who
+     * left Discord and did not come back after five weeks and six emails.
+     * Every one of them is a training that cannot proceed, and leaving it open
+     * holds a mentor slot the next student in the queue cannot have.
+     *
+     * ## CLOSED_BY_SYSTEM, always
+     *
+     * Not "closed by staff". A closure nobody chose must be visibly
+     * distinguishable from one somebody did, or the first question after every
+     * complaint -- "who closed this?" -- has no answer.
+     *
+     * ## It refuses a training that is already closed
+     *
+     * The bot re-reads the same world every cycle and is meant to be safe to
+     * run twice. Closing an already-closed training would send the student a
+     * second closure email, which is the kind of thing that turns one bad
+     * experience into a formal complaint.
+     */
+    public function close(Request $request, Training $training): JsonResponse
+    {
+        $data = $request->validate([
+            'reason' => 'required|string|max:255',
+        ]);
+
+        if ($training->status->isClosed()) {
+            return response()->json(['status' => 'unchanged']);
+        }
+
+        $old = $training->status;
+
+        $training->fill($training->resolveStatusChanges(TrainingStatus::CLOSED_BY_SYSTEM));
+        $training->closed_reason = $data['reason'];
+        $training->save();
+
+        TrainingActivityController::create(
+            $training->id, 'STATUS', TrainingStatus::CLOSED_BY_SYSTEM->value,
+            $old->value, null, $data['reason']
+        );
+
+        // Upstream's own closure email, so the student gets the message they
+        // would have got from a person. Reproducing it on the bot side would
+        // mean two sources of truth for what a closure says.
+        $training->user?->notify(new TrainingClosedNotification(
+            $training, TrainingStatus::CLOSED_BY_SYSTEM, $data['reason']
+        ));
+
+        ActionLog::did(
+            'training.closed_by_bot',
+            ($training->user?->name ?? ('CID ' . $training->user_id))
+                . ' had their training closed: ' . $data['reason'],
+            $training->id,
+            $training->user_id,
+            ['from' => $old->value, 'reason' => $data['reason']],
+            ActionLog::ACTOR_BOT,
+            mirror: false,
+        );
+
+        return response()->json(['status' => 'ok', 'from' => $old->value]);
     }
 
     /**

@@ -15,9 +15,13 @@ use App\Models\Vatssa\ActionLog;
 use App\Models\Vatssa\MessageLog;
 use App\Models\Vatssa\MessageTemplate;
 use App\Models\Vatssa\MoodleCourse;
+use App\Models\Vatssa\PlatformRequirement;
 use App\Models\Vatssa\RequestTarget;
 use App\Models\Vatssa\TheoryAttempt;
+use App\Models\Vatssa\TrainingMentorSnapshot;
 use App\Models\Vatssa\UserPlatform;
+use App\Notifications\Vatssa\MentorLostNotification;
+use App\Notifications\Vatssa\StudentRemovedFromMentorNotification;
 use App\Services\PermissionMatrix;
 use App\Tasks\Types\CheckoutRequest;
 use App\Tasks\Types\LeaveOfAbsence;
@@ -27,6 +31,7 @@ use Database\Seeders\VatssaPipelineSeeder;
 use Database\Seeders\VatssaSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Schema;
 use PHPUnit\Framework\Attributes\Test;
 use RuntimeException;
@@ -1272,6 +1277,265 @@ class VatssaTest extends TestCase
             ->postJson('/api/vatssa/bridge/action-log', [
                 'action' => 'bot.action', 'summary' => 'x', 'level' => 'critical',
             ])->assertStatus(422);
+    }
+
+    #[Test]
+    public function both_people_are_told_when_a_mentor_disappears(): void
+    {
+        // The half that was missing entirely. The student found out by noticing
+        // that nothing had happened for a month; the mentor kept a slot
+        // reserved for somebody who was not coming back.
+        Notification::fake();
+        $this->seedFixtures();
+
+        $training = $this->mentorless(TrainingStatus::ACTIVE_TRAINING);
+        $mentor = User::find(10000006);
+        $training->mentors()->attach($mentor, ['expire_at' => now()->addYear()]);
+
+        // Prime the snapshot, then take the mentor away.
+        TrainingMentorSnapshot::capture();
+        $training->mentors()->detach($mentor);
+
+        $this->artisan('vatssa:mentor-watch')->assertSuccessful();
+
+        Notification::assertSentTo($mentor, StudentRemovedFromMentorNotification::class);
+        Notification::assertSentTo($training->user, MentorLostNotification::class);
+    }
+
+    #[Test]
+    public function the_old_mentor_is_told_even_when_the_student_is_reassigned(): void
+    {
+        // A swap. The training is never mentorless, so the orphan check sees
+        // nothing at all and the old mentor was never told.
+        Notification::fake();
+        $this->seedFixtures();
+
+        $training = $this->mentorless(TrainingStatus::ACTIVE_TRAINING);
+        $first = User::find(10000006);
+        $second = User::find(10000007);
+        $training->mentors()->attach($first, ['expire_at' => now()->addYear()]);
+
+        TrainingMentorSnapshot::capture();
+        $training->mentors()->detach($first);
+        $training->mentors()->attach($second, ['expire_at' => now()->addYear()]);
+
+        $this->artisan('vatssa:mentor-watch')->assertSuccessful();
+
+        Notification::assertSentTo($first, StudentRemovedFromMentorNotification::class);
+        // And the student hears nothing: they have a mentor.
+        Notification::assertNotSentTo($training->user, MentorLostNotification::class);
+        $this->assertSame(TrainingStatus::ACTIVE_TRAINING, $training->fresh()->status);
+    }
+
+    #[Test]
+    public function the_first_run_seeds_silently(): void
+    {
+        // An empty snapshot means NO PRIOR KNOWLEDGE, not "nobody was
+        // mentoring anybody". Getting this wrong emails every mentor in the
+        // division that they have lost every student.
+        Notification::fake();
+        $this->seedFixtures();
+
+        $this->assertFalse(TrainingMentorSnapshot::isPrimed());
+
+        $this->artisan('vatssa:mentor-watch')->assertSuccessful();
+
+        Notification::assertNothingSentTo(User::find(10000006));
+        $this->assertTrue(TrainingMentorSnapshot::isPrimed());
+    }
+
+    #[Test]
+    public function a_lost_mentor_is_written_onto_the_training_timeline(): void
+    {
+        // UpdateMemberDetails and UserDelete leave the timeline completely
+        // silent, so a student whose mentor left the division had a training
+        // that appeared never to have had a mentor change.
+        Notification::fake();
+        $this->seedFixtures();
+
+        $training = $this->mentorless(TrainingStatus::ACTIVE_TRAINING);
+        $mentor = User::find(10000006);
+        $training->mentors()->attach($mentor, ['expire_at' => now()->addYear()]);
+        TrainingMentorSnapshot::capture();
+        $training->mentors()->detach($mentor);
+
+        $this->artisan('vatssa:mentor-watch')->assertSuccessful();
+
+        $this->assertDatabaseHas('training_activity', [
+            'training_id' => $training->id,
+            'type' => 'MENTOR',
+            'old_data' => $mentor->id,
+        ]);
+    }
+
+    // ---------------------------------------------------------------------
+    // Reachable before trainable
+    // ---------------------------------------------------------------------
+
+    #[Test]
+    public function you_cannot_apply_without_discord_and_moodle(): void
+    {
+        $this->seedFixtures();
+        $applicant = User::find(10000001);
+        UserPlatform::updateOrCreate(['user_id' => $applicant->id],
+            ['on_discord' => false, 'on_moodle' => false, 'checked_at' => now()]);
+
+        $missing = PlatformRequirement::missingFor($applicant);
+
+        $this->assertCount(2, $missing);
+        $this->assertFalse(PlatformRequirement::isSatisfiedBy($applicant));
+    }
+
+    #[Test]
+    public function an_exemption_satisfies_the_requirement(): void
+    {
+        // A rule with no exit gets switched off for everybody the first time it
+        // is genuinely wrong -- a country that blocks Discord, an account stuck
+        // in support.
+        $this->seedFixtures();
+        $applicant = User::find(10000001);
+        UserPlatform::updateOrCreate(['user_id' => $applicant->id],
+            ['on_discord' => false, 'on_moodle' => true, 'checked_at' => now()]);
+
+        PlatformRequirement::create([
+            'user_id' => $applicant->id,
+            'discord' => true,
+            'reason' => 'Discord is blocked in their country.',
+            'granted_by' => User::find(10000009)->id,
+        ]);
+
+        $this->assertTrue(PlatformRequirement::isSatisfiedBy($applicant));
+    }
+
+    #[Test]
+    public function a_never_checked_account_is_treated_as_missing_but_said_differently(): void
+    {
+        // "We checked and you are not there" and "we have not checked" both
+        // block, but telling somebody who joined an hour ago that they are not
+        // on Discord is how a correct rule gets a reputation for being broken.
+        $this->seedFixtures();
+        $applicant = User::find(10000002);
+        UserPlatform::where('user_id', $applicant->id)->delete();
+
+        $this->assertNotEmpty(PlatformRequirement::missingFor($applicant));
+        $this->assertFalse(PlatformRequirement::hasBeenChecked($applicant));
+    }
+
+    #[Test]
+    public function only_the_training_manager_and_admin_may_override_the_gate(): void
+    {
+        // A gate the people who meet it every day can wave through is not a
+        // gate, which is why the pipeline coordinator is explicitly denied.
+        $this->seedFixtures();
+
+        $this->assertTrue(User::find(10000009)->hasPermission(PlatformRequirement::OVERRIDE));
+        $this->assertFalse(User::find(10000008)->hasPermission(PlatformRequirement::OVERRIDE));
+        $this->assertFalse(User::find(10000001)->hasPermission(PlatformRequirement::OVERRIDE));
+    }
+
+    // ---------------------------------------------------------------------
+    // The Moodle webhook
+    // ---------------------------------------------------------------------
+
+    #[Test]
+    public function the_moodle_hook_refuses_everything_without_a_secret(): void
+    {
+        // Unset means CLOSED. That property is what makes it safe to ship this
+        // route before Moodle has been configured.
+        config(['vatssa.moodle_secret' => null]);
+
+        $this->postJson('/api/vatssa/moodle/hook', [
+            'event' => 'user_created', 'cid' => 10000001,
+        ])->assertUnauthorized();
+    }
+
+    #[Test]
+    public function the_moodle_hook_marks_an_account_as_present(): void
+    {
+        $this->seedFixtures();
+        config(['vatssa.moodle_secret' => 'moodle-secret']);
+
+        $this->withHeader('Authorization', 'Bearer moodle-secret')
+            ->postJson('/api/vatssa/moodle/hook', [
+                'event' => 'user_created',
+                'cid' => 10000001,
+                'moodle_user_id' => 4242,
+            ])->assertOk();
+
+        $this->assertTrue(UserPlatform::find(10000001)->on_moodle);
+    }
+
+    #[Test]
+    public function an_unmatched_moodle_account_is_recorded_rather_than_swallowed(): void
+    {
+        // 200, not 404: Moodle retries failures, and retrying will not make an
+        // unmatched account match. It is also the exact shape of a student
+        // about to be stuck with no way to explain why.
+        $this->seedFixtures();
+        config(['vatssa.moodle_secret' => 'moodle-secret']);
+
+        $this->withHeader('Authorization', 'Bearer moodle-secret')
+            ->postJson('/api/vatssa/moodle/hook', [
+                'event' => 'user_created',
+                'email' => 'nobody@example.invalid',
+            ])->assertOk()->assertJson(['status' => 'unmatched']);
+
+        $this->assertDatabaseHas('vatssa_action_log', [
+            'action' => 'moodle.unmatched_account',
+            'level' => ActionLog::WARNING,
+        ]);
+    }
+
+    // ---------------------------------------------------------------------
+    // The bot writing back
+    // ---------------------------------------------------------------------
+
+    #[Test]
+    public function the_bridge_closes_a_training_only_once(): void
+    {
+        // The bot re-reads the same world every cycle. A second close would
+        // send the student a second closure email, which turns one bad
+        // experience into a complaint.
+        Notification::fake();
+        $this->seedFixtures();
+        config(['vatssa.bridge_token' => 'test-token']);
+
+        $training = $this->mentorless(TrainingStatus::ACTIVE_TRAINING);
+
+        $this->withHeader('Authorization', 'Bearer test-token')
+            ->postJson("/api/vatssa/bridge/trainings/{$training->id}/close",
+                ['reason' => 'Left the Discord server and did not rejoin'])
+            ->assertOk()->assertJson(['status' => 'ok']);
+
+        $this->assertSame(TrainingStatus::CLOSED_BY_SYSTEM, $training->fresh()->status);
+
+        $this->withHeader('Authorization', 'Bearer test-token')
+            ->postJson("/api/vatssa/bridge/trainings/{$training->id}/close",
+                ['reason' => 'again'])
+            ->assertOk()->assertJson(['status' => 'unchanged']);
+    }
+
+    #[Test]
+    public function a_bot_comment_lands_on_the_timeline_with_no_actor(): void
+    {
+        // A null actor is how somebody reading this in a year can tell the
+        // pipeline did it rather than a person.
+        $this->seedFixtures();
+        config(['vatssa.bridge_token' => 'test-token']);
+
+        $training = $this->mentorless(TrainingStatus::IN_QUEUE);
+
+        $this->withHeader('Authorization', 'Bearer test-token')
+            ->postJson("/api/vatssa/bridge/trainings/{$training->id}/comment",
+                ['comment' => 'Student left the Discord server'])
+            ->assertOk();
+
+        $this->assertDatabaseHas('training_activity', [
+            'training_id' => $training->id,
+            'type' => 'COMMENT',
+            'triggered_by_id' => null,
+            'comment' => 'Student left the Discord server',
+        ]);
     }
 
     #[Test]

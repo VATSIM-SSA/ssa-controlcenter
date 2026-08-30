@@ -10,6 +10,7 @@ use App\Http\Controllers\TaskController;
 use App\Models\Rating;
 use App\Models\Task;
 use App\Models\Training;
+use App\Models\TrainingActivity;
 use App\Models\User;
 use App\Models\Vatssa\MessageLog;
 use App\Models\Vatssa\TheoryAttempt;
@@ -217,14 +218,16 @@ class VatssaPipelineSeeder extends Seeder
         $this->backfillTheory();
         $this->seedTasks();
         $this->backfillMessageLog();
+        $this->backfillTimelines();
 
         $this->command?->info(sprintf(
             'VatssaPipelineSeeder: %d platform rows, %d theory attempts, %d logged emails, '
-            . '%d open tasks. Named cohort on CIDs %d-%d.',
+            . '%d open tasks, %d timeline entries. Named cohort on CIDs %d-%d.',
             UserPlatform::count(),
             TheoryAttempt::count(),
             MessageLog::count(),
             Task::where('status', TaskStatus::PENDING)->count(),
+            TrainingActivity::count(),
             self::FIRST_CID,
             self::FIRST_CID + count(self::COHORT) - 1
         ));
@@ -628,6 +631,137 @@ class VatssaPipelineSeeder extends Seeder
     // -----------------------------------------------------------------
     // Keyed writes. Every one of these is safe to repeat.
     // -----------------------------------------------------------------
+
+    /**
+     * Give every open training the history that produced its current state.
+     *
+     * ## Why an empty timeline is worse than no timeline
+     *
+     * The timeline is the first thing a coordinator opens and the main thing
+     * they judge a training by. On dev it was blank for every student, which
+     * made every screen that reads it -- the activity filters, the comment
+     * box, the permission checks on who may see which activity type -- untested
+     * against anything except the one row somebody happened to add by hand.
+     *
+     * It also made a real bug invisible for weeks: MENTOR rows render the
+     * mentor name by looking the user up, and nobody had a MENTOR row to
+     * render.
+     *
+     * ## Backwards from the current status
+     *
+     * Every training gets the entries that MUST have happened for it to be
+     * where it is: created, then theory, then a mentor, then an exam. Inventing
+     * a plausible history is the point -- a timeline of five identical comments
+     * would exercise the page without testing it.
+     *
+     * ## Dates go backwards from the training, not from today
+     *
+     * A timeline whose entries are all timestamped "now" sorts arbitrarily and
+     * hides ordering bugs, which are exactly the bugs a timeline has.
+     */
+    private function backfillTimelines(): void
+    {
+        $written = 0;
+
+        foreach (Training::with('ratings', 'mentors', 'user')->get() as $training) {
+            // Idempotent, like everything else here: deploy-cc.sh runs this on
+            // every dev and staging deploy, and a second run must not double
+            // every timeline.
+            if (TrainingActivity::where('training_id', $training->id)->exists()) {
+                continue;
+            }
+
+            $opened = $training->created_at ?? now()->subDays(80);
+            $step = 0;
+            $at = fn () => (clone $opened)->addDays(++$step * 3);
+
+            $rows = [];
+
+            // Every training was in the queue once, whatever it says now.
+            $rows[] = ['COMMENT', null, null, 'Application received.', clone $opened];
+
+            $status = $training->status;
+
+            // How far this training GOT, which is not the same as where it is.
+            // Closed statuses order below the queue -- correct for a dropdown,
+            // wrong here: somebody who passed their CPT went through every
+            // stage, and a completed training whose timeline skips theory and
+            // mentoring is a worse fixture than none.
+            $reached = $status === TrainingStatus::COMPLETED
+                ? TrainingStatus::AWAITING_EXAM->lifecycleOrder()
+                : $status->lifecycleOrder();
+
+            // Theory: anything that got past the queue went through it.
+            if ($reached >= TrainingStatus::PRE_TRAINING->lifecycleOrder()) {
+                $rows[] = ['STATUS', TrainingStatus::PRE_TRAINING->value,
+                    TrainingStatus::IN_QUEUE->value, null, $at()];
+                $rows[] = ['COMMENT', null, null,
+                    'Enrolled in the theory course.', $at()];
+            }
+
+            if ($reached >= TrainingStatus::AWAITING_MENTOR->lifecycleOrder()) {
+                $rows[] = ['COMMENT', null, null,
+                    'Theory passed. Waiting for a mentor.', $at()];
+                $rows[] = ['STATUS', TrainingStatus::AWAITING_MENTOR->value,
+                    TrainingStatus::PRE_TRAINING->value, null, $at()];
+            }
+
+            // A MENTOR row for each mentor actually attached, so the renderer
+            // that looks up the name by id is exercised.
+            foreach ($training->mentors as $mentor) {
+                $rows[] = ['MENTOR', $mentor->id, null, null, $at()];
+                $rows[] = ['STATUS', TrainingStatus::ACTIVE_TRAINING->value,
+                    TrainingStatus::AWAITING_MENTOR->value, null, $at()];
+            }
+
+            if ($status === TrainingStatus::AWAITING_EXAM) {
+                $rows[] = ['COMMENT', null, null,
+                    'Ready for a CPT. Examiner to be arranged.', $at()];
+                $rows[] = ['STATUS', TrainingStatus::AWAITING_EXAM->value,
+                    TrainingStatus::ACTIVE_TRAINING->value, null, $at()];
+            }
+
+            if ($status === TrainingStatus::COMPLETED) {
+                $rows[] = ['COMMENT', null, null, 'CPT passed.', $at()];
+                $rows[] = ['STATUS', TrainingStatus::COMPLETED->value,
+                    TrainingStatus::AWAITING_EXAM->value, null, $at()];
+            }
+
+            if ($status->isClosed() && $status !== TrainingStatus::COMPLETED) {
+                $rows[] = ['STATUS', $status->value, TrainingStatus::IN_QUEUE->value,
+                    'Closed.', $at()];
+            }
+
+            if ($training->paused_at !== null) {
+                $rows[] = ['PAUSE', 1, 0, 'Leave of absence granted.', $at()];
+            }
+
+            foreach ($rows as [$type, $new, $old, $comment, $when]) {
+                // Assigned field by field rather than through create(). The
+                // model's $fillable lists five columns and does NOT include
+                // training_id or the timestamps, so a mass assignment would
+                // drop them silently -- every row orphaned, with no error and
+                // a timeline that looks empty for a reason nobody could see.
+                $activity = new TrainingActivity();
+                $activity->training_id = $training->id;
+                $activity->type = $type;
+                $activity->new_data = $new;
+                $activity->old_data = $old;
+                // Null actor on the automated rows, a real staff member on the
+                // decisions. Both render differently and both need to exist for
+                // anybody to notice if one breaks.
+                $activity->triggered_by_id = $type === 'COMMENT' ? null : 10000008;
+                $activity->comment = $comment;
+                $activity->created_at = $when;
+                $activity->updated_at = $when;
+                $activity->save();
+
+                $written++;
+            }
+        }
+
+        $this->command?->info("VatssaPipelineSeeder: {$written} timeline entries written.");
+    }
 
     private function writePlatforms(int $userId, bool $discord, bool $moodle, bool $vatsimMember,
         ?string $enrolment = 'active'): void

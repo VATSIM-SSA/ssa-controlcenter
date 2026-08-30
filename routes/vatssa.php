@@ -56,6 +56,8 @@ Route::middleware(['vatssa-bridge', 'throttle:120,1'])
         Route::post('/users/{user}/theory-attempts', [BridgeController::class, 'theoryAttempt'])->name('theory');
         Route::post('/trainings/{training}/messages', [BridgeController::class, 'logMessage'])->name('messages');
         Route::patch('/trainings/{training}/status', [BridgeController::class, 'setStatus'])->name('status');
+        Route::post('/trainings/{training}/comment', [BridgeController::class, 'comment'])->name('comment');
+        Route::post('/trainings/{training}/close', [BridgeController::class, 'close'])->name('close');
         Route::post('/action-log', [BridgeController::class, 'actionLog'])->name('action-log');
         Route::get('/exemptions', [BridgeController::class, 'exemptions'])->name('exemptions');
         Route::get('/templates', [BridgeController::class, 'templates'])->name('templates');
