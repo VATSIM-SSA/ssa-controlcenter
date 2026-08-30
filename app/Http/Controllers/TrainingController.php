@@ -20,6 +20,8 @@ use App\Models\TrainingExamination;
 use App\Models\TrainingInterest;
 use App\Models\TrainingReport;
 use App\Models\User;
+use App\Models\Vatssa\ActionLog;
+use App\Models\Vatssa\PlatformRequirement;
 use App\Notifications\TrainingClosedNotification;
 use App\Notifications\TrainingCreatedNotification;
 use App\Notifications\TrainingMentorNotification;
@@ -131,16 +133,16 @@ class TrainingController extends Controller
         $openTrainings = Auth::user()->viewableModels(Training::class, [['status', '>=', TrainingStatus::IN_QUEUE]], ['area', 'ratings', 'activities', 'mentors', 'user', 'user.atcActivity'])
             ->filter(fn ($training) => in_array($training->status, $statuses, true))
             ->sort(function ($a, $b) {
-            if ($a->status === $b->status) {
-                return $a->created_at->timestamp - $b->created_at->timestamp;
-            }
+                if ($a->status === $b->status) {
+                    return $a->created_at->timestamp - $b->created_at->timestamp;
+                }
 
-            // VATSSA: lifecycle order, not stored value. AWAITING_MENTOR
-            // is stored as 4 so nothing had to be renumbered, which would
-            // otherwise sort it above 'awaiting exam' -- a student waiting
-            // for a mentor listed as further along than one sitting a CPT.
-            return $b->status->lifecycleOrder() - $a->status->lifecycleOrder();
-        });
+                // VATSSA: lifecycle order, not stored value. AWAITING_MENTOR
+                // is stored as 4 so nothing had to be renumbered, which would
+                // otherwise sort it above 'awaiting exam' -- a student waiting
+                // for a mentor listed as further along than one sitting a CPT.
+                return $b->status->lifecycleOrder() - $a->status->lifecycleOrder();
+            });
 
         $types = TrainingController::$types;
 
@@ -405,16 +407,16 @@ class TrainingController extends Controller
             return null;    // upstream already answered this above
         }
 
-        $missing = \App\Models\Vatssa\PlatformRequirement::missingFor($applicant);
+        $missing = PlatformRequirement::missingFor($applicant);
 
         if ($missing === []) {
             return null;
         }
 
-        if (Auth::user()->hasPermission(\App\Models\Vatssa\PlatformRequirement::OVERRIDE)) {
+        if (Auth::user()->hasPermission(PlatformRequirement::OVERRIDE)) {
             // Allowed through, and SAID SO. An override that leaves no trace is
             // how a rule quietly stops applying to anybody.
-            \App\Models\Vatssa\ActionLog::noticed(
+            ActionLog::noticed(
                 'training.platform_gate_overridden',
                 Auth::user()->name . ' created a training for ' . $applicant->name
                     . ' who still needs to ' . implode(' and ', $missing) . '.',
@@ -436,7 +438,7 @@ class TrainingController extends Controller
             . ' before ' . ($self ? 'you' : 'they') . ' can apply for training. '
             . 'We use both to run the training itself, so we cannot start without them.';
 
-        if (! \App\Models\Vatssa\PlatformRequirement::hasBeenChecked($applicant)) {
+        if (! PlatformRequirement::hasBeenChecked($applicant)) {
             // Never seen by the sweep. Saying "you are not on Discord" to
             // somebody who joined an hour ago is how a correct rule gets a
             // reputation for being broken.

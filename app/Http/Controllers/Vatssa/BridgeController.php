@@ -8,13 +8,13 @@ use App\Http\Controllers\TrainingActivityController;
 use App\Models\Training;
 use App\Models\User;
 use App\Models\Vatssa\ActionLog;
-use App\Notifications\TrainingClosedNotification;
 use App\Models\Vatssa\MessageLog;
 use App\Models\Vatssa\MessageTemplate;
-use App\Models\Vatssa\PlatformRequirement;
 use App\Models\Vatssa\MoodleCourse;
+use App\Models\Vatssa\PlatformRequirement;
 use App\Models\Vatssa\TheoryAttempt;
 use App\Models\Vatssa\UserPlatform;
+use App\Notifications\TrainingClosedNotification;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 

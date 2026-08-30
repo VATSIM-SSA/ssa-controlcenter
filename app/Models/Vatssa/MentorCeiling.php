@@ -2,11 +2,11 @@
 
 namespace App\Models\Vatssa;
 
-use App\Helpers\VatsimRating;
 use App\Models\Rating;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Collection;
 
 /**
  * VATSSA: how far up the ladder a mentor may teach, and how many at once.
@@ -72,7 +72,7 @@ class MentorCeiling extends Model
     /**
      * The ratings this mentor may teach, for a picker.
      *
-     * @return \Illuminate\Support\Collection<int, Rating>
+     * @return Collection<int, Rating>
      */
     public static function ratingsFor(int $userId)
     {

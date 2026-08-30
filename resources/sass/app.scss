@@ -34,3 +34,8 @@
 
 // Apply CSS variables to override Bootstrap
 @import "theme-overrides";
+
+// VATSSA: the interface migration. LAST, and that is the whole point -- it
+// restyles Bootstrap's own components, so anything imported after it would
+// win. See resources/sass/_migration.scss.
+@import "migration";

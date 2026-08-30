@@ -260,7 +260,6 @@ class VatssaTest extends TestCase
         $this->assertSame([], $orphans);
     }
 
-
     // ---------------------------------------------------------------------
     // The training pipeline
     // ---------------------------------------------------------------------
@@ -441,7 +440,6 @@ class VatssaTest extends TestCase
         $this->assertStringContainsString("'solo' =>", $source);
     }
 
-
     // ---------------------------------------------------------------------
     // Request routing
     // ---------------------------------------------------------------------
@@ -610,7 +608,6 @@ class VatssaTest extends TestCase
         $this->assertContains('atc-training-manager', $matrix->rolesFor('fir.management.reports.view'));
         $this->assertContains('pipeline-coordinator', $matrix->rolesFor('fir.management.reports.view'));
     }
-
 
     // ---------------------------------------------------------------------
     // Who may read which desk
@@ -801,8 +798,15 @@ class VatssaTest extends TestCase
         // Placeholder ids must not read as "this student has no attempts",
         // which is indistinguishable from a room full of failures. Dropping the
         // rating instead makes it visibly need no theory, which gets fixed.
-        MoodleCourse::create(['rating' => 'S2', 'course_id' => 14, 'exam_quiz_id' => 52, 'pass_mark' => 80]);
-        MoodleCourse::create(['rating' => 'S3', 'course_id' => 0, 'exam_quiz_id' => 0, 'pass_mark' => 80]);
+        // updateOrCreate, not create. The seeding migration already inserts
+        // S1/S2/S3/C1 as placeholders, and RefreshDatabase runs migrations --
+        // so create() collides with the unique index on `rating`. Writing the
+        // test against a table it assumed was empty is the bug, not the
+        // migration: shipping the placeholders is the whole point of them.
+        MoodleCourse::updateOrCreate(['rating' => 'S2'],
+            ['course_id' => 14, 'exam_quiz_id' => 52, 'pass_mark' => 80]);
+        MoodleCourse::updateOrCreate(['rating' => 'S3'],
+            ['course_id' => 0, 'exam_quiz_id' => 0, 'pass_mark' => 80]);
 
         $map = MoodleCourse::map();
 
@@ -818,7 +822,6 @@ class VatssaTest extends TestCase
         // quietly -- worse than the manual choice it replaces.
         $this->assertSame([], config('vatssa.task_routing'));
     }
-
 
     // ---------------------------------------------------------------------
     // The pipeline cohort

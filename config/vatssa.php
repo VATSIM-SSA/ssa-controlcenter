@@ -3,6 +3,7 @@
 use App\Tasks\Types\MentorCapacityRequest;
 use App\Tasks\Types\MentorNeeded;
 use App\Tasks\Types\RatingUpgrade;
+use App\Tasks\Types\SoloEndorsement;
 
 /*
 |--------------------------------------------------------------------------
@@ -115,7 +116,7 @@ return [
     | routing table that breaks on a database restore is worse than useless.
     */
     'request_ratings' => [
-        \App\Tasks\Types\SoloEndorsement::class => ['S2', 'S3', 'C1'],
+        SoloEndorsement::class => ['S2', 'S3', 'C1'],
     ],
 
     /*

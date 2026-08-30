@@ -210,8 +210,8 @@ return [
             '!training.ratings.manage',         // admin only
             '!training.create.manual',          // ATM + admin only
             '!training.platform-requirement.override', // ATM + admin only; the gate is
-                                                      // pointless if the people who see
-                                                      // it every day can wave it through
+            // pointless if the people who see
+            // it every day can wave it through
             '!training.results.grades',         // ATM + admin only; pass/fail is enough
             'examinations.manage',
             'endorsements.solo.*',

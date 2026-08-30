@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers\Vatssa;
 
+use anlutro\LaravelSettings\Facade as Setting;
+use App\Helpers\ActivityLevel;
 use App\Helpers\TaskStatus;
 use App\Helpers\TrainingStatus;
-use anlutro\LaravelSettings\Facade as Setting;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\TaskController;
+use App\Http\Controllers\TrainingController;
 use App\Models\ActivityLog;
 use App\Models\Booking;
 use App\Models\Endorsement;
@@ -163,7 +165,7 @@ class PreviewController extends Controller
             'reportsAndExams' => $reportsAndExams,
             'interests' => TrainingInterest::where('training_id', $training->id)
                 ->latest()->get(),
-            'types' => \App\Http\Controllers\TrainingController::$types,
+            'types' => TrainingController::$types,
             // The VATSSA panels. Read straight from the models rather than
             // through the Bootstrap partials, which cannot be reused here --
             // they render inside a page that loads app.scss and this one does
@@ -339,14 +341,14 @@ class PreviewController extends Controller
                     e($t->type()->getName()),
                     $t->subject ? e($t->subject->name) : $this->muted('nobody in particular'),
                     $t->vatssa_tier
-                        ? e(\App\Models\Vatssa\RequestTarget::label($t->vatssa_tier))
+                        ? e(RequestTarget::label($t->vatssa_tier))
                         : $this->muted('unrouted'),
                     $this->taskState($t->status),
                     e($t->created_at?->diffForHumans(null, true)),
                 ],
                 'meta' => [
                     'desk' => $t->vatssa_tier
-                        ? \App\Models\Vatssa\RequestTarget::label($t->vatssa_tier)
+                        ? RequestTarget::label($t->vatssa_tier)
                         : 'Unrouted',
                     'state' => match ($t->status) {
                         TaskStatus::COMPLETED => 'Done',
@@ -361,10 +363,10 @@ class PreviewController extends Controller
             [
                 ['key' => 'state', 'label' => 'State', 'options' => ['Open', 'Done', 'Declined']],
                 ['key' => 'desk', 'label' => 'Desk',
-                    'options' => collect(\App\Models\Vatssa\RequestTarget::TIERS)
+                    'options' => collect(RequestTarget::TIERS)
                         ->pluck('label')->push('Unrouted')->all()],
                 ['key' => 'kind', 'label' => 'Kind',
-                    'options' => collect(\App\Http\Controllers\TaskController::getTypes())
+                    'options' => collect(TaskController::getTypes())
                         ->map(fn ($type) => $type->getName())->sort()->values()->all()],
             ],
             // The one write the mirror allows. See newRequest().
@@ -428,8 +430,8 @@ class PreviewController extends Controller
                     $b->exam ? 'exam' : null,
                     $b->event ? 'event' : null,
                 ])) ?: ['booking']),
-                e(\Carbon\Carbon::parse($b->time_start)->format('j M · H:i') . 'z'),
-                e(\Carbon\Carbon::parse($b->time_end)->format('H:i') . 'z'),
+                e(Carbon::parse($b->time_start)->format('j M · H:i') . 'z'),
+                e(Carbon::parse($b->time_end)->format('H:i') . 'z'),
             ])->values()->all(),
             'Nothing booked.',
             'All times Zulu, as they are everywhere else in this application.');
@@ -536,7 +538,7 @@ class PreviewController extends Controller
                 ['key' => 'area', 'label' => 'Area',
                     'options' => $logs->pluck('log_name')->filter()->unique()->sort()->values()->all()],
                 ['key' => 'level', 'label' => 'Level',
-                    'options' => collect(\App\Helpers\ActivityLevel::cases())
+                    'options' => collect(ActivityLevel::cases())
                         ->map(fn ($case) => $case->value)->all()],
             ]);
     }
@@ -603,14 +605,10 @@ class PreviewController extends Controller
     private function stage(TrainingStatus $status): string
     {
         $tone = match ($status) {
-            TrainingStatus::AWAITING_MENTOR, TrainingStatus::IN_QUEUE
-                => 'bg-warn-wash text-warn',
-            TrainingStatus::ACTIVE_TRAINING, TrainingStatus::PRE_TRAINING
-                => 'bg-brand-wash text-brand-strong',
-            TrainingStatus::COMPLETED
-                => 'bg-good-wash text-good',
-            default
-                => 'bg-card-header text-ink-soft',
+            TrainingStatus::AWAITING_MENTOR, TrainingStatus::IN_QUEUE => 'bg-warn-wash text-warn',
+            TrainingStatus::ACTIVE_TRAINING, TrainingStatus::PRE_TRAINING => 'bg-brand-wash text-brand-strong',
+            TrainingStatus::COMPLETED => 'bg-good-wash text-good',
+            default => 'bg-card-header text-ink-soft',
         };
 
         return '<span class="rounded-md px-2 py-1 text-xs font-medium ' . $tone . '">'
@@ -636,10 +634,10 @@ class PreviewController extends Controller
      */
     private function expiry(\DateTimeInterface $date): string
     {
-        $soon = \Carbon\Carbon::parse($date)->lessThan(now()->addDays(30));
+        $soon = Carbon::parse($date)->lessThan(now()->addDays(30));
 
         return '<span class="' . ($soon ? 'font-medium text-warn' : '') . '">'
-            . e(\Carbon\Carbon::parse($date)->format('j M Y')) . '</span>';
+            . e(Carbon::parse($date)->format('j M Y')) . '</span>';
     }
 
     private function link(string $href, string $text): string
