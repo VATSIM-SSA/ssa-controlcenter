@@ -1,6 +1,6 @@
-@extends('layouts.app')
+@extends('layouts.vatssa')
 
-@section('title', 'Moodle course map')
+@section('title', 'Theory courses')
 
 @section('content')
 
@@ -10,100 +10,104 @@
     A table rather than a file in the bot's container, because these change with
     course revisions rather than with code, and a new course should not be a
     rebuild and a restart.
+
+    Converted to Tailwind. Field names unchanged:
+    courses[i][rating|course_id|exam_quiz_id|pass_mark|active].
+
+    The design idea: an UNCONFIGURED rating is the state that matters, and in
+    Bootstrap it was a row that looked exactly like every other row. It now
+    marks itself.
 --}}
+<form method="POST" action="{{ route('vatssa.admin.courses.update') }}" class="space-y-8">
+    @csrf
 
-<div class="row">
-    <div class="col-xl-12 col-md-12 mb-12">
-        <div class="alert alert-info" role="alert">
-            <i class="fas fa-circle-info"></i>&nbsp;
-            <strong>One quiz per course counts</strong> — the course's final
-            quiz, which is that rating's theory exam. Earlier quizzes in a
-            course are practice and are not tracked at all. Every attempt at the
-            exam quiz is kept, and <strong>the latest one decides</strong>: a
-            pass followed by a failed retake is not currently a pass.
-        </div>
-        <div class="alert alert-warning" role="alert">
-            <i class="fas fa-triangle-exclamation"></i>&nbsp;
-            A rating with an id of <code>0</code> is treated as
-            <strong>not configured</strong> and is left out of the map, so that
-            rating needs no theory at all. That is deliberate: it is visible and
-            gets fixed, where sending real ids for a course that does not exist
-            would give every student no attempts — indistinguishable from a room
-            full of failures.
-        </div>
+    <div class="max-w-3xl space-y-3">
+        <h2 class="text-xl font-semibold tracking-tight">Theory courses</h2>
+
+        <p class="text-sm text-neutral-600 dark:text-neutral-400">
+            <span class="text-neutral-800 dark:text-neutral-200">One quiz per course counts</span> —
+            the course's final quiz, which is that rating's theory exam. Earlier quizzes are
+            practice and are not tracked at all. Every attempt at the exam quiz is kept, and
+            <span class="text-neutral-800 dark:text-neutral-200">the latest one decides</span>:
+            a pass followed by a failed retake is not currently a pass.
+        </p>
+
+        <p class="text-sm text-neutral-600 dark:text-neutral-400">
+            A rating with an id of <code class="font-mono text-xs">0</code> is treated as
+            <span class="text-neutral-800 dark:text-neutral-200">not configured</span> and left
+            out of the map, so that rating needs no theory at all. Deliberate: it is visible and
+            gets fixed, where sending real ids for a course that does not exist would give every
+            student no attempts — indistinguishable from a room full of failures.
+        </p>
     </div>
-</div>
 
-<div class="row">
-    <div class="col-xl-12 col-md-12 mb-12">
-        <div class="card shadow mb-4">
-            <div class="card-header bg-primary py-3">
-                <h6 class="m-0 fw-bold text-white">Theory courses</h6>
-            </div>
-            <div class="card-body">
-                <form method="POST" action="{{ route('vatssa.admin.courses.update') }}">
-                    @csrf
+    <section class="overflow-hidden rounded-xl border border-neutral-200 bg-white
+                    dark:border-neutral-800 dark:bg-neutral-900">
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b border-neutral-200 text-left dark:border-neutral-800">
+                        @foreach(['Rating', 'Course', 'Exam quiz', 'Pass mark', 'Active'] as $heading)
+                            <th class="px-5 py-3 text-[11px] font-semibold uppercase tracking-wider text-neutral-400">
+                                {{ $heading }}
+                            </th>
+                        @endforeach
+                    </tr>
+                </thead>
 
-                    <div class="table-responsive">
-                        <table class="table table-sm align-middle">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>Rating</th>
-                                    <th>Moodle course id</th>
-                                    <th>Exam quiz id</th>
-                                    <th>Pass mark</th>
-                                    <th>Active</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach($courses as $index => $course)
-                                    <tr>
-                                        <td>
-                                            <input type="text" class="form-control form-control-sm" style="max-width: 8rem"
-                                                   name="courses[{{ $index }}][rating]" value="{{ $course->rating }}" readonly>
-                                        </td>
-                                        <td>
-                                            <input type="number" class="form-control form-control-sm" min="0"
-                                                   name="courses[{{ $index }}][course_id]" value="{{ $course->course_id }}">
-                                        </td>
-                                        <td>
-                                            <input type="number" class="form-control form-control-sm" min="0"
-                                                   name="courses[{{ $index }}][exam_quiz_id]" value="{{ $course->exam_quiz_id }}">
-                                        </td>
-                                        <td>
-                                            <div class="input-group input-group-sm" style="max-width: 8rem">
-                                                <input type="number" class="form-control" min="0" max="100" step="0.5"
-                                                       name="courses[{{ $index }}][pass_mark]" value="{{ $course->pass_mark }}">
-                                                <span class="input-group-text">%</span>
-                                            </div>
-                                        </td>
-                                        <td>
-                                            <input type="hidden" name="courses[{{ $index }}][active]" value="0">
-                                            <input type="checkbox" class="form-check-input"
-                                                   name="courses[{{ $index }}][active]" value="1" @checked($course->active)>
-                                        </td>
-                                    </tr>
-                                @endforeach
-
-                                @if($courses->isEmpty())
-                                    <tr>
-                                        <td colspan="5" class="text-muted">
-                                            No ratings configured. The pipeline seeds these on its
-                                            first run against the bridge.
-                                        </td>
-                                    </tr>
+                <tbody class="divide-y divide-neutral-100 dark:divide-neutral-800">
+                    @foreach($courses as $index => $course)
+                        @php
+                            $unset = ! $course->course_id || ! $course->exam_quiz_id;
+                            $field = 'w-24 rounded-lg border border-neutral-300 bg-white px-2 py-1.5 '
+                                . 'text-sm tabular-nums focus:border-brand-500 '
+                                . 'dark:border-neutral-700 dark:bg-neutral-950';
+                        @endphp
+                        <tr class="{{ $unset ? 'bg-amber-50/60 dark:bg-amber-950/20' : '' }}">
+                            <td class="px-5 py-3">
+                                <span class="font-medium">{{ $course->rating }}</span>
+                                <input type="hidden" name="courses[{{ $index }}][rating]"
+                                       value="{{ $course->rating }}">
+                                @if($unset)
+                                    <p class="mt-0.5 text-xs text-amber-700 dark:text-amber-400">
+                                        Not configured — students skip theory
+                                    </p>
                                 @endif
-                            </tbody>
-                        </table>
-                    </div>
-
-                    @if($courses->isNotEmpty())
-                        <button type="submit" class="btn btn-primary btn-sm">Save</button>
-                    @endif
-                </form>
-            </div>
+                            </td>
+                            <td class="px-5 py-3">
+                                <input type="number" min="0" name="courses[{{ $index }}][course_id]"
+                                       value="{{ $course->course_id }}" class="{{ $field }}">
+                            </td>
+                            <td class="px-5 py-3">
+                                <input type="number" min="0" name="courses[{{ $index }}][exam_quiz_id]"
+                                       value="{{ $course->exam_quiz_id }}" class="{{ $field }}">
+                            </td>
+                            <td class="px-5 py-3">
+                                <input type="number" min="0" max="100" step="0.1"
+                                       name="courses[{{ $index }}][pass_mark]"
+                                       value="{{ $course->pass_mark }}" class="{{ $field }}">
+                            </td>
+                            <td class="px-5 py-3">
+                                {{-- The hidden 0 goes first. An unchecked box is
+                                     omitted entirely by the browser, so without it
+                                     every save would leave every course active. --}}
+                                <input type="hidden" name="courses[{{ $index }}][active]" value="0">
+                                <input type="checkbox" name="courses[{{ $index }}][active]" value="1"
+                                       @checked($course->active)
+                                       class="h-4 w-4 rounded border-neutral-300 text-brand-500
+                                              focus:ring-brand-500 dark:border-neutral-600 dark:bg-neutral-800">
+                            </td>
+                        </tr>
+                    @endforeach
+                </tbody>
+            </table>
         </div>
-    </div>
-</div>
+    </section>
+
+    <button type="submit"
+            class="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600">
+        Save courses
+    </button>
+</form>
 
 @endsection

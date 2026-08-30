@@ -1,90 +1,83 @@
-@extends('layouts.app')
+@extends('layouts.vatssa')
 
-@section('title', 'Request routing')
+@section('title', 'Request desks')
 
 @section('content')
 
 {{--
     VATSSA: who sits at each request desk.
 
-    Upstream asks the requester to name a person and offers a datalist of
-    everyone holding any role. This is what replaces that: the requester picks a
-    desk, and this page says who that desk currently is.
+    Converted to Tailwind. One of our own pages, so no merge conflict -- see
+    layouts/vatssa.blade.php for why that decides what gets converted.
+
+    The form contract is unchanged: `targets[tier][]` and
+    `targets[tier:ratingId][]`, exactly as the Bootstrap version posted. A
+    restyle that quietly renames a field is a restyle that breaks a controller.
+
+    Checkboxes instead of a multi-select. "Hold Ctrl to pick more than one" is
+    an instruction people do not read on a control they use twice a year, and
+    the result was desks with one person on them because picking a second felt
+    like a trick.
 --}}
-
-<div class="row">
-    <div class="col-xl-12 col-md-12 mb-12">
-        <div class="alert alert-info" role="alert">
-            <i class="fas fa-circle-info"></i>&nbsp;
-            A request goes to the desk, not to a name. Several people per desk is
-            fine — it lands on whichever of them has the fewest open requests,
-            and <strong>everyone at that desk sees it</strong> on the Tasks page.
-            Who may READ a desk is a ladder: leadership sees every desk, the ATC
-            training manager sees theirs and every pipeline, a coordinator sees
-            only their own rating.
-        </div>
-        <div class="alert alert-warning" role="alert">
-            <i class="fas fa-triangle-exclamation"></i>&nbsp;
-            <strong>An empty desk is not a silent failure, but it is a
-            failure.</strong> A request sent to a desk with nobody on it stays
-            with whoever raised it, and a warning goes to the log. Fill in at
-            least the coordinator row for every rating you train.
-        </div>
-    </div>
-</div>
-
-<form method="POST" action="{{ route('vatssa.admin.routing.update') }}">
+<form method="POST" action="{{ route('vatssa.admin.routing.update') }}" class="space-y-8">
     @csrf
 
+    <div class="max-w-3xl">
+        <h2 class="text-xl font-semibold tracking-tight">Request desks</h2>
+        <p class="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
+            A request goes to a desk, not to a person. Everybody at a desk sees the
+            same queue and any of them can act, so a coordinator going on leave does
+            not take their requests with them.
+        </p>
+        <p class="mt-2 text-sm text-neutral-600 dark:text-neutral-400">
+            <span class="text-neutral-800 dark:text-neutral-200">An empty desk is not a safe default.</span>
+            Requests sent to one stay with whoever raised them and a warning goes to the
+            automation log. Fill in at least the coordinator row for every rating you train.
+        </p>
+    </div>
+
     @foreach($tiers as $tierKey => $tier)
-        <div class="row">
-            <div class="col-xl-12 col-md-12 mb-12">
-                <div class="card shadow mb-4">
-                    <div class="card-header bg-primary py-3">
-                        <h6 class="m-0 fw-bold text-white">{{ $tier['label'] }}</h6>
-                    </div>
-                    <div class="card-body">
-                        <p class="text-muted">{{ $tier['hint'] }}</p>
-
-                        @if($tier['per_rating'])
-                            {{-- One row per rating: VATSSA's pipelines are per
-                                 rating, so "the S2 coordinator" is a different
-                                 person from "the C1 coordinator". A rating left
-                                 empty has NO desk, and requests for it stay with
-                                 whoever raised them. --}}
-                            @foreach($ratings as $rating)
-                                @include('vatssa.admin.parts.routing-row', [
-                                    'key' => $tierKey . ':' . $rating->id,
-                                    'label' => $rating->name,
-                                    'selected' => $targets->where('tier', $tierKey)
-                                        ->where('rating_id', $rating->id)->pluck('user_id')->all(),
-                                    'candidates' => $candidates,
-                                ])
-                            @endforeach
-
-                            {{-- No catch-all row. A pipeline desk is always one
-                                 rating's desk -- "the pipeline coordinator" is not
-                                 a thing anybody can be, and a catch-all would put
-                                 somebody on every pipeline queue by accident. --}}
-                        @else
-                            @include('vatssa.admin.parts.routing-row', [
-                                'key' => $tierKey,
-                                'label' => 'Assigned to',
-                                'selected' => $targets->where('tier', $tierKey)->pluck('user_id')->all(),
-                                'candidates' => $candidates,
-                            ])
-                        @endif
-                    </div>
-                </div>
+        <section class="rounded-xl border border-neutral-200 bg-white
+                        dark:border-neutral-800 dark:bg-neutral-900">
+            <div class="border-b border-neutral-100 px-6 py-4 dark:border-neutral-800">
+                <h3 class="text-sm font-semibold tracking-tight">{{ $tier['label'] }}</h3>
+                <p class="mt-0.5 text-sm text-neutral-500 dark:text-neutral-400">{{ $tier['hint'] }}</p>
             </div>
-        </div>
+
+            <div class="divide-y divide-neutral-100 dark:divide-neutral-800">
+                @if($tier['per_rating'])
+                    {{-- One row per rating. VATSSA's pipelines are per rating, so
+                         "the S2 coordinator" is a different person from "the C1
+                         coordinator". A rating left empty has NO desk.
+
+                         No catch-all row: "the pipeline coordinator" is not a
+                         thing anybody can be, and a catch-all would put somebody
+                         on every pipeline queue by accident. --}}
+                    @foreach($ratings as $rating)
+                        @include('vatssa.admin.parts.routing-row', [
+                            'key' => $tierKey . ':' . $rating->id,
+                            'label' => $rating->name,
+                            'selected' => $targets->where('tier', $tierKey)
+                                ->where('rating_id', $rating->id)->pluck('user_id')->all(),
+                            'candidates' => $candidates,
+                        ])
+                    @endforeach
+                @else
+                    @include('vatssa.admin.parts.routing-row', [
+                        'key' => $tierKey,
+                        'label' => 'Assigned to',
+                        'selected' => $targets->where('tier', $tierKey)->pluck('user_id')->all(),
+                        'candidates' => $candidates,
+                    ])
+                @endif
+            </div>
+        </section>
     @endforeach
 
-    <div class="row">
-        <div class="col-xl-12 mb-4">
-            <button type="submit" class="btn btn-primary">Save routing</button>
-        </div>
-    </div>
+    <button type="submit"
+            class="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600">
+        Save routing
+    </button>
 </form>
 
 @endsection
