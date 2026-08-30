@@ -32,6 +32,22 @@ return [
     'bridge_token' => env('VATSSA_BRIDGE_TOKEN'),
 
     /*
+    | Moodle's own webhook secret.
+    |
+    | SEPARATE FROM THE BRIDGE TOKEN, and that is the whole point. The bridge
+    | is 403'd at Caddy so it is unreachable from the internet; Moodle is on
+    | the internet. Handing Moodle the bridge token would mean opening the
+    | bridge, which undoes the thing that makes the bridge safe.
+    |
+    | One endpoint sits behind this, and it may only write platform presence.
+    | A leak from Moodle therefore costs one write path rather than everything.
+    |
+    | Unset means the endpoint refuses everything, which is the correct resting
+    | state -- shipping the route before Moodle is configured is then safe.
+    */
+    'moodle_secret' => env('VATSSA_MOODLE_SECRET'),
+
+    /*
     | The consolidated roster.
     |
     | VATSSA's rule is that active in one area is active everywhere, so the

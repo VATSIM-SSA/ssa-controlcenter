@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Models\Vatssa\ActionLog;
 use App\Models\Vatssa\MessageLog;
 use App\Models\Vatssa\MessageTemplate;
+use App\Models\Vatssa\PlatformRequirement;
 use App\Models\Vatssa\MoodleCourse;
 use App\Models\Vatssa\TheoryAttempt;
 use App\Models\Vatssa\UserPlatform;
@@ -214,6 +215,27 @@ class BridgeController extends Controller
             );
 
         return response()->json(['status' => 'ok']);
+    }
+
+    /**
+     * Who is excused from the platform requirements.
+     *
+     * The bot chases students who leave Discord and eventually closes their
+     * training. It must not do that to somebody an ATC training manager has
+     * excused -- a country that blocks Discord, an account stuck in support --
+     * and the exemption is granted HERE, with a reason and a name against it,
+     * so this is a read.
+     *
+     * Read rather than pushed, on every cycle. An exemption granted five
+     * minutes before the removal sweep has to be honoured by that sweep, and a
+     * push would race it.
+     */
+    public function exemptions(): JsonResponse
+    {
+        return response()->json([
+            'discord' => PlatformRequirement::where('discord', true)->pluck('user_id'),
+            'moodle' => PlatformRequirement::where('moodle', true)->pluck('user_id'),
+        ]);
     }
 
     /**
