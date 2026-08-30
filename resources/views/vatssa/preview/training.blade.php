@@ -46,11 +46,65 @@
             </p>
         </div>
 
-        <a href="{{ route('training.show', $training) }}"
-           class="rounded-lg bg-card-header px-3 py-1.5 text-sm font-medium text-ink
- transition-colors hover:bg-line">
-            Open the real page
-        </a>
+        {{-- Every action the real page has. They post to upstream's own
+             routes: nothing here writes to the database itself, so an edit
+             made from the mirror goes through the same validation, the same
+             policy and the same activity log as one made from the real page.
+             That is what makes the two comparable at all. --}}
+        <div class="flex flex-wrap items-center gap-2">
+            @can('create', [\App\Models\Task::class])
+                <a href="{{ route('vatssa.preview.request') }}?training={{ $training->id }}"
+                   class="rounded-lg bg-card-header px-3 py-1.5 text-sm font-medium text-ink
+                          transition-colors hover:bg-line">
+                    Request
+                </a>
+            @endcan
+
+            @can('create', [\App\Models\TrainingReport::class, $training])
+                @if($training->status->isInProgress())
+                    <a href="{{ route('training.report.create', ['training' => $training->id]) }}"
+                       class="rounded-lg bg-card-header px-3 py-1.5 text-sm font-medium text-ink
+                              transition-colors hover:bg-line">
+                        New report
+                    </a>
+                @endif
+            @endcan
+
+            @can('create', [\App\Models\TrainingExamination::class, $training])
+                @if($training->status === \App\Helpers\TrainingStatus::AWAITING_EXAM)
+                    <a href="{{ route('training.examination.create', ['training' => $training->id]) }}"
+                       class="rounded-lg bg-card-header px-3 py-1.5 text-sm font-medium text-ink
+                              transition-colors hover:bg-line">
+                        Exam report
+                    </a>
+                @endif
+            @endcan
+
+            @can('edit', [\App\Models\Training::class, $training])
+                <a href="{{ route('training.edit', $training->id) }}"
+                   class="rounded-lg bg-card-header px-3 py-1.5 text-sm font-medium text-ink
+                          transition-colors hover:bg-line">
+                    Edit application
+                </a>
+            @endcan
+
+            @can('close', $training)
+                {{-- The only destructive control on the page, and the only one
+                     that asks. Irreversible for the student: closing loses
+                     their place in the queue. --}}
+                <a href="{{ route('training.action.close', $training->id) }}"
+                   onclick="return confirm('Close this training? The student loses their place in the queue.')"
+                   class="rounded-lg border border-bad/40 px-3 py-1.5 text-sm font-medium text-bad
+                          transition-colors hover:bg-bad-wash">
+                    Close training
+                </a>
+            @endcan
+
+            <a href="{{ route('training.show', $training) }}"
+               class="rounded-lg px-3 py-1.5 text-sm text-ink-soft hover:text-ink">
+                Real page
+            </a>
+        </div>
     </div>
 
     {{-- The rail. --}}
@@ -97,11 +151,108 @@
         @endif
     </div>
 
+    @can('update', $training)
+        {{-- The edit form. Posts to training.update.details -- upstream's own
+             controller, which is what applies AssignableTrainingStatus, writes
+             the activity rows and sends the notifications. --}}
+        <form method="POST" action="{{ route('training.update.details', ['training' => $training->id]) }}"
+              class="space-y-5 rounded-xl border border-line bg-card p-6">
+            @csrf
+
+            <h3 class="text-sm font-semibold tracking-tight">Change this training</h3>
+
+            <div class="grid gap-5 sm:grid-cols-2">
+                <label class="block">
+                    <span class="text-sm font-medium">State</span>
+                    <select name="status"
+                            class="mt-1.5 w-full rounded-lg border border-line bg-card px-3 py-2 text-sm
+                                   focus:border-brand">
+                        @foreach($statuses as $status)
+                            {{-- Only what may actually be set by hand. In-queue,
+                                 theory and active training are the pipeline's --
+                                 see AssignableTrainingStatus. Offering them here
+                                 would mean a dropdown whose choices are refused
+                                 on submit. --}}
+                            @continue(! $status->isAssignableFrom($training->status) && $status !== $training->status)
+                            <option value="{{ $status->value }}" @selected($training->status === $status)>
+                                {{ $status->label() }}
+                            </option>
+                        @endforeach
+                    </select>
+                </label>
+
+                <label class="block">
+                    <span class="text-sm font-medium">
+                        Reason <span class="font-normal text-ink-faint">(when closing)</span>
+                    </span>
+                    <input type="text" name="closed_reason" maxlength="65"
+                           placeholder="{{ $training->closed_reason }}"
+                           class="mt-1.5 w-full rounded-lg border border-line bg-card px-3 py-2 text-sm
+                                  focus:border-brand">
+                </label>
+            </div>
+
+            <label class="block">
+                <span class="text-sm font-medium">Mentors</span>
+                {{-- Checkboxes, not a multi-select. "Ctrl/Cmd+Click to select
+                     multiple" is an instruction nobody reads, and two mentors on
+                     one training is normal rather than exotic. --}}
+                <div class="mt-2 grid gap-x-6 gap-y-1.5 sm:grid-cols-2 lg:grid-cols-3">
+                    @forelse($trainingMentors as $mentor)
+                        <label class="flex cursor-pointer items-center gap-2.5 rounded-lg px-2 py-1.5
+                                      text-sm hover:bg-card-header">
+                            <input type="checkbox" name="mentors[]" value="{{ $mentor->id }}"
+                                   @checked($training->mentors->contains($mentor->id))
+                                   class="h-4 w-4 shrink-0 rounded border-line text-brand focus:ring-brand">
+                            <span class="truncate">{{ $mentor->name }}</span>
+                        </label>
+                    @empty
+                        <p class="text-sm text-warn">
+                            Nobody holds the mentor role in {{ $training->area?->name ?? 'this area' }}.
+                        </p>
+                    @endforelse
+                </div>
+            </label>
+
+            <label class="flex items-center gap-2.5 text-sm">
+                <input type="checkbox" name="paused_at" @checked($training->paused_at)
+                       class="h-4 w-4 rounded border-line text-brand focus:ring-brand">
+                <span>On leave — freezes the 90-day theory clock</span>
+            </label>
+
+            <button type="submit"
+                    class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white
+                           hover:bg-brand-strong">
+                Save changes
+            </button>
+        </form>
+    @endcan
+
     <div class="grid gap-6 lg:grid-cols-3">
 
         {{-- The timeline, first and widest. It is what people come for. --}}
         <section class="lg:col-span-2">
             <h3 class="text-sm font-semibold tracking-tight">Timeline</h3>
+
+            @can('comment', [\App\Models\TrainingActivity::class, $training])
+                {{-- Above the timeline, not below it. The box you write into
+                     should be where your eye already is when you finish reading
+                     the last entry. --}}
+                <form method="POST" action="{{ route('training.activity.comment') }}"
+                      class="mt-3 flex gap-2">
+                    @csrf
+                    <input type="hidden" name="training_id" value="{{ $training->id }}">
+                    <input type="text" name="comment" maxlength="512" required
+                           placeholder="Add a comment to this timeline"
+                           class="min-w-0 flex-1 rounded-lg border border-line bg-card px-3 py-2 text-sm
+                                  focus:border-brand">
+                    <button type="submit"
+                            class="shrink-0 rounded-lg bg-card-header px-3 py-2 text-sm font-medium
+                                   text-ink hover:bg-line">
+                        Comment
+                    </button>
+                </form>
+            @endcan
 
             @if($activities->isEmpty())
                 <p class="mt-3 rounded-xl border border-dashed border-line px-4 py-12
@@ -468,6 +619,73 @@
             </section>
         </div>
     </div>
+
+    {{-- Internal notes. Renders NOTHING without the permission -- not an
+         empty card, not a locked one. A panel whose existence hints at hidden
+         notes is itself a leak, which is why this is a @can around the whole
+         thing rather than a disabled form. --}}
+    @can(\App\Models\Vatssa\InternalNote::permissionFor(\App\Models\Vatssa\InternalNote::SCOPE_TRAINING))
+        <section>
+            <div class="flex flex-wrap items-baseline justify-between gap-2">
+                <h3 class="text-sm font-semibold tracking-tight">Internal notes</h3>
+                {{-- The audience, stated above the box, every time. Somebody
+                     writing something sensitive has to know who will read it
+                     BEFORE they type. A note written in the belief it was
+                     admin-only, readable by a training manager, is worse than
+                     no note at all. --}}
+                <p class="text-xs text-ink-soft">
+                    {{ \App\Models\Vatssa\InternalNote::audienceFor(\App\Models\Vatssa\InternalNote::SCOPE_TRAINING) }}
+                </p>
+            </div>
+
+            <div class="mt-3 space-y-2">
+                @foreach($notes as $note)
+                    <div class="rounded-xl border border-line bg-card px-4 py-3">
+                        <p class="whitespace-pre-line text-sm">{{ $note->body }}</p>
+                        <div class="mt-2 flex items-center justify-between gap-3 text-xs text-ink-soft">
+                            <span>
+                                {{ $note->author?->name ?? 'Unknown' }}
+                                · {{ $note->created_at?->diffForHumans() }}
+                            </span>
+                            {{-- The same check InternalNoteController::destroy
+                                 makes. There is no InternalNote policy, so
+                                 a policy-style check would be false always,
+                                 and the button would never appear.
+
+                                 Worth saying out loud: this means the VIEW
+                                 permission also authorises the delete, with no
+                                 record of what was removed. That is upstream's
+                                 rule and the mirror follows it rather than
+                                 inventing a stricter one -- but it is on the
+                                 list of things to fix, not a design. --}}
+                            @can(\App\Models\Vatssa\InternalNote::permissionFor($note->scope))
+                                <form method="POST" action="{{ route('vatssa.notes.destroy', $note) }}"
+                                      onsubmit="return confirm('Delete this note? There is no undo.')">
+                                    @csrf
+                                    @method('DELETE')
+                                    <button type="submit" class="text-bad hover:underline">Delete</button>
+                                </form>
+                            @endcan
+                        </div>
+                    </div>
+                @endforeach
+            </div>
+
+            <form method="POST" action="{{ route('vatssa.notes.training', $training) }}"
+                  class="mt-3 space-y-2">
+                @csrf
+                <textarea name="body" rows="3" maxlength="5000" required
+                          placeholder="Something that has to be recorded and must not be visible to the student."
+                          class="w-full rounded-lg border border-line bg-card px-3 py-2 text-sm
+                                 focus:border-brand"></textarea>
+                <button type="submit"
+                        class="rounded-lg bg-card-header px-3 py-2 text-sm font-medium text-ink
+                               hover:bg-line">
+                    Add note
+                </button>
+            </form>
+        </section>
+    @endcan
 
     @include('vatssa.preview.parts.notice')
 </div>

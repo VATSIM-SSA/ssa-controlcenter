@@ -18,6 +18,7 @@ use App\Models\TrainingExamination;
 use App\Models\TrainingInterest;
 use App\Models\TrainingReport;
 use App\Models\User;
+use App\Models\Vatssa\InternalNote;
 use App\Models\Vatssa\MessageLog;
 use App\Models\Vatssa\RequestTarget;
 use App\Models\Vatssa\TheoryAttempt;
@@ -141,8 +142,21 @@ class PreviewController extends Controller
                 : Carbon::parse($item->examination_date))
             ->values();
 
+        // Everything the real page needs to render its forms. Mirroring a
+        // page means mirroring what it can DO, not only what it says: a
+        // training page you cannot edit, comment on or close is a screenshot.
         return view('vatssa.preview.training', [
             'training' => $training->load('user', 'ratings', 'mentors', 'area'),
+            // Mentors eligible for THIS training's area and ratings, exactly as
+            // upstream picks them. Offering every mentor in the division would
+            // let somebody assign a C1 mentor to an S1 student.
+            'trainingMentors' => $training->area->mentors->sortBy('name'),
+            'statuses' => TrainingStatus::inLifecycleOrder(),
+            'notes' => InternalNote::where('scope', InternalNote::SCOPE_TRAINING)
+                ->where('training_id', $training->id)
+                ->with('author')->latest()->get(),
+            'requestTypes' => TaskController::getTypes(),
+            'desks' => RequestTarget::choicesForTraining($training),
             'activities' => $training->activities()->latest()->limit(40)->get(),
             'tasks' => Task::where('subject_training_id', $training->id)
                 ->with('assignee', 'creator')->latest()->get(),
@@ -554,6 +568,10 @@ class PreviewController extends Controller
         $this->authorize('create', Task::class);
 
         return view('vatssa.preview.request', [
+            // Pre-selected when you arrive from a training page. Arriving with
+            // the student already chosen is most of what makes raising a
+            // request from their page quicker than from the queue.
+            'selected' => request('training'),
             'desks' => RequestTarget::allChoices(),
             'types' => TaskController::getTypes(),
             'trainings' => Training::with('user')

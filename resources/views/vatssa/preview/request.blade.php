@@ -100,7 +100,8 @@
                                focus:border-brand">
                     <option value="">Not about one training</option>
                     @foreach($trainings as $training)
-                        <option value="{{ $training->id }}">
+                        <option value="{{ $training->id }}"
+                            @selected((string) $selected === (string) $training->id)>
                             {{ $training->user?->name ?? 'CID ' . $training->user_id }}
                             — {{ $training->status->label() }}
                         </option>
