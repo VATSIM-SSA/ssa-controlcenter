@@ -89,7 +89,12 @@ class UserRoles extends Component
         $result = [];
 
         foreach (config('roles.roles') as $role => $def) {
-            if ($role === 'admin') {
+            // VATSSA: the flag, not a hardcoded name. This used to test for
+            // 'admin' by string, so every later ungrantable role would have had
+            // to remember to add itself here AND to UserPolicy -- two lists to
+            // keep in step, which is how a role ends up offered in a dropdown
+            // and refused on submit.
+            if (($def['grantable'] ?? true) === false) {
                 continue;
             }
 

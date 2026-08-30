@@ -15,6 +15,46 @@ return [
             'name' => 'Administrator',
             'description' => 'System-wide administrator, assignable only via the user:makeadmin CLI command',
             'scope' => 'global',
+            // Not offered in the interface and refused by the policy. The only
+            // way in is `user:makeadmin`, which is the point: the role that can
+            // do everything should need a shell, not a dropdown.
+            'grantable' => false,
+        ],
+
+        /*
+        | RETIRED ROLES.
+        |
+        | VATSSA replaced these two with atc-training-manager and
+        | pipeline-coordinator; see the remap_moderator_buddy_roles migration.
+        | They are listed here, and nowhere else, for one reason: RoleAssignment
+        | validates against this list, so removing them turned 103 upstream
+        | tests into errors rather than failures -- and a suite that is
+        | permanently red hides real bugs in its own noise. One of mine sat in
+        | there for a day.
+        |
+        | 'grantable' => false is what keeps that honest. They do not appear in
+        | the role picker and UserPolicy::grantRole refuses them outright, so no
+        | route, form or crafted POST can put one on a member. They are a name
+        | the validator recognises, not a role anybody can hold.
+        |
+        | NOT enforced in RoleAssignment's own boot guard, deliberately: the
+        | upstream tests construct these assignments directly, which is exactly
+        | what a test does, and refusing at the model would put the suite back
+        | where it started.
+        |
+        | Deletable once upstream's tests stop referencing them.
+        */
+        'moderator' => [
+            'name' => 'Moderator (retired)',
+            'description' => 'Replaced by ATC Training Manager. Recognised so upstream tests run; cannot be granted.',
+            'scope' => 'both',
+            'grantable' => false,
+        ],
+        'director' => [
+            'name' => 'Director (retired)',
+            'description' => 'Replaced by Pipeline Coordinator. Recognised so upstream tests run; cannot be granted.',
+            'scope' => 'global',
+            'grantable' => false,
         ],
         'atc-training-manager' => [
             'name' => 'ATC Training Manager',
@@ -182,6 +222,12 @@ return [
         'admin' => [
             '**',
         ],
+
+        // The two retired roles grant NOTHING, which is the honest entry for a
+        // role nobody can be given. They are here because every role in the
+        // catalogue needs a matrix entry; see the note beside them above.
+        'moderator' => [],
+        'director' => [],
 
         // Training authority. MUST remain a superset of pipeline-coordinator.
         'atc-training-manager' => [

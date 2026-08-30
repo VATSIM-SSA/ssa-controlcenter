@@ -70,8 +70,15 @@ class UserPolicy
             return false;
         }
 
-        // The admin role is managed exclusively through the user:makeadmin CLI command
-        if ($requestedRole === 'admin') {
+        // VATSSA: roles flagged ungrantable are refused here, not merely
+        // hidden from the picker. A control that is absent from a page is not
+        // a control that cannot be reached -- the request is still a POST, and
+        // the only thing that ever stopped one is a check on this side.
+        //
+        // Covers admin (managed exclusively through the user:makeadmin CLI
+        // command) and the two retired roles kept only so RoleAssignment's
+        // validator recognises them. See config/roles.php.
+        if (config("roles.roles.{$requestedRole}.grantable", true) === false) {
             return false;
         }
 

@@ -1542,6 +1542,51 @@ class VatssaTest extends TestCase
     }
 
     #[Test]
+    public function the_retired_roles_are_recognised_but_cannot_be_granted(): void
+    {
+        // They exist in the catalogue for one reason: RoleAssignment validates
+        // against it, and removing them turned 103 upstream tests into errors.
+        // A permanently red suite hides real bugs in its own noise.
+        //
+        // What must stay true is that recognising a name is not the same as
+        // being able to hand it to somebody.
+        $this->seedFixtures();
+
+        $admin = User::find(10000005);
+        $target = User::find(10000001);
+
+        foreach (['moderator', 'director', 'admin'] as $role) {
+            $this->assertNotNull(config("roles.roles.{$role}.scope"),
+                "{$role} must stay recognised or upstream's tests error again");
+
+            $this->assertFalse(
+                $admin->can('grantRole', [$target, $role, null]),
+                "{$role} must not be grantable, even by an admin"
+            );
+        }
+    }
+
+    #[Test]
+    public function an_ungrantable_role_is_never_offered_in_the_picker(): void
+    {
+        // The picker and the policy read the SAME flag. They used to disagree
+        // by construction: the picker tested for 'admin' by name and the policy
+        // had its own list, so any later ungrantable role would have had to
+        // remember both -- which is how a role ends up offered in a dropdown
+        // and refused on submit.
+        $this->seedFixtures();
+
+        $offered = collect(config('roles.roles'))
+            ->reject(fn ($def) => ($def['grantable'] ?? true) === false)
+            ->keys();
+
+        $this->assertNotContains('moderator', $offered->all());
+        $this->assertNotContains('director', $offered->all());
+        $this->assertNotContains('admin', $offered->all());
+        $this->assertContains('mentor', $offered->all());
+    }
+
+    #[Test]
     public function the_action_log_page_needs_the_reports_permission(): void
     {
         $this->seedFixtures();

@@ -83,8 +83,32 @@ for r, pats in MATRIX.items():
             errors.append(f"{r}: pattern '{pat}' matches no catalogued permission")
 
 # 3. Every roles.<key>.manage entry names a real role, and every grantable
-#    role has one. admin is CLI-only and is never grantable.
-grantable = [r for r in ROLES if r != "admin"]
+#    role has one.
+#
+#    Grantability is read from the role's own `grantable` key rather than by
+#    naming admin here. Three roles are ungrantable now -- admin, which is
+#    CLI-only, and the two retired ones kept so RoleAssignment's validator
+#    recognises them -- and a list of exceptions maintained in two places is
+#    the thing that goes stale.
+def _ungrantable(text):
+    """Roles whose block carries `'grantable' => false`.
+
+    Walks backwards from each flag to the nearest `'key' => [` rather than
+    matching forwards from one. A forward match starts at the OUTER array and
+    happily captures 'roles' itself, because `[^]]*` will cross every nested
+    opening bracket on the way to the flag.
+    """
+    found = set()
+    for hit in re.finditer(r"'grantable'\s*=>\s*false", text):
+        before = text[:hit.start()]
+        keys = re.findall(r"'([a-z-]+)'\s*=>\s*\[", before)
+        if keys:
+            found.add(keys[-1])
+    return found
+
+
+UNGRANTABLE = _ungrantable(src)
+grantable = [r for r in ROLES if r not in UNGRANTABLE]
 grant_perms = {p for p in PERMISSIONS if p.startswith("roles.")}
 for p in grant_perms:
     key = p[len("roles."):-len(".manage")]
