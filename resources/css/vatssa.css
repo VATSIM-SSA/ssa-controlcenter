@@ -80,6 +80,17 @@
     }
 }
 
+/*
+    The brand gradient, teal into green, lifted from the logo itself.
+
+    One utility, used deliberately and rarely. A gradient applied to headings,
+    buttons and cards at once is the single clearest sign that a page was
+    decorated rather than designed -- see references/ai-design-tells.md.
+*/
+@utility brand-gradient {
+    background-image: linear-gradient(to top right, var(--color-brand-500), #7bd758);
+}
+
 @layer base {
     html {
         -webkit-font-smoothing: antialiased;

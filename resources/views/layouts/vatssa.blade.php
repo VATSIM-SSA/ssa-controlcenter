@@ -54,12 +54,25 @@
                   dark:border-neutral-800 dark:bg-neutral-900"
            :class="nav ? 'translate-x-0' : '-translate-x-full'">
 
-        <div class="flex h-16 items-center gap-2.5 px-5">
-            <span class="grid h-8 w-8 place-items-center rounded-lg bg-brand-500 text-sm font-bold text-white">
-                V
-            </span>
-            <span class="text-[15px] font-semibold tracking-tight">Control Center</span>
-        </div>
+{{-- The real wordmark, on a dark block.
+
+             public/images/logos/vatssa.svg is filled #F8F3F0 -- it is drawn for
+             a dark ground and disappears on a white sidebar. Rather than
+             recolouring somebody else's logo, the block behind it is dark in
+             both themes. That is also the only place on these pages where the
+             brand gradient appears, which is what keeps it a brand mark rather
+             than decoration. --}}
+        <a href="{{ route('dashboard') }}"
+           class="m-3 flex h-14 items-center justify-center rounded-xl bg-neutral-900 px-5
+                  transition-opacity hover:opacity-90 dark:bg-neutral-950">
+            <img src="{{ asset('images/logos/vatssa.svg') }}" alt="VATSSA"
+                 class="h-7 w-auto">
+        </a>
+
+        <p class="px-5 pb-4 text-[11px] font-medium uppercase tracking-widest text-neutral-400
+                  dark:text-neutral-500">
+            Control Center
+        </p>
 
         <nav class="space-y-6 px-3 pb-8">
             @include('vatssa.parts.nav')

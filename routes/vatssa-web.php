@@ -65,9 +65,27 @@ Route::middleware(['web', 'auth', 'activity', 'suspended', 'can:fir.management.r
     ->prefix('vatssa/preview')
     ->name('vatssa.preview.')
     ->group(function () {
+        // Pages that are not tables.
         Route::get('/', [PreviewController::class, 'dashboard'])->name('dashboard');
-        Route::get('/trainings', [PreviewController::class, 'trainings'])->name('trainings');
         Route::get('/user/{user}', [PreviewController::class, 'profile'])->name('profile');
+        Route::get('/training/{training}', [PreviewController::class, 'training'])->name('training');
+
+        // Everything that is. See PreviewController for why they share one
+        // template rather than getting twenty near-identical blades.
+        Route::get('/trainings', [PreviewController::class, 'trainings'])->name('trainings');
+        Route::get('/trainings/closed', [PreviewController::class, 'closedTrainings'])
+            ->name('trainings.closed');
+        Route::get('/users', [PreviewController::class, 'users'])->name('users');
+        Route::get('/tasks', [PreviewController::class, 'tasks'])->name('tasks');
+        Route::get('/bookings', [PreviewController::class, 'bookings'])->name('bookings');
+        Route::get('/positions', [PreviewController::class, 'positions'])->name('positions');
+        Route::get('/mentor', [PreviewController::class, 'mentorStudents'])->name('mentor');
+
+        // Rule::in on the segment, so the type reaches the query as one of
+        // three known strings rather than whatever was in the URL.
+        Route::get('/endorsements/{type}', [PreviewController::class, 'endorsements'])
+            ->whereIn('type', ['solo', 'examiner', 'visiting'])
+            ->name('endorsements');
     });
 
 /*

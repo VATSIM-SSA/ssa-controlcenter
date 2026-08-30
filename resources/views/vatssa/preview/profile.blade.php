@@ -41,7 +41,10 @@
             <h3 class="text-sm font-semibold tracking-tight">Trainings</h3>
 
             @forelse($trainings as $training)
-                <a href="{{ route('training.show', $training) }}"
+                {{-- Stays inside the mirror. Bouncing to the Bootstrap page
+                     halfway through looking at the preview is how you end up
+                     judging the wrong thing. --}}
+                <a href="{{ route('vatssa.preview.training', $training) }}"
                    class="flex items-center justify-between gap-4 rounded-xl border border-neutral-200
                           bg-white px-4 py-3.5 transition-colors hover:border-neutral-300
                           dark:border-neutral-800 dark:bg-neutral-900 dark:hover:border-neutral-700">

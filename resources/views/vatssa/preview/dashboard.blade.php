@@ -29,18 +29,28 @@
         </h2>
     </div>
 
-    {{-- The queue, as three numbers. Tabular figures so they line up, which is
-         a small thing that separates a dashboard from a web page. --}}
-    <div class="grid gap-4 sm:grid-cols-3">
+    {{-- The numbers. Tabular figures so they line up, which is a small thing
+         that separates a dashboard from a web page.
+
+         Your own open tasks come FIRST and are the only one that goes amber,
+         because it is the only number on this page you can personally do
+         something about today. --}}
+    <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         @foreach([
-            ['In the queue', $queueDepth, 'Waiting for theory to start'],
-            ['Awaiting a mentor', $awaitingMentor, 'Passed theory, nobody assigned'],
-            ['In training', $inTraining, 'Currently being mentored'],
-        ] as [$label, $value, $hint])
-            <div class="rounded-xl border border-neutral-200 bg-white p-5
-                        dark:border-neutral-800 dark:bg-neutral-900">
+            ['On your desk', $myTasks, 'Open requests assigned to you', true],
+            ['In the queue', $queueDepth, 'Waiting for theory to start', false],
+            ['Awaiting a mentor', $awaitingMentor, 'Passed theory, nobody assigned', false],
+            ['In training', $inTraining, 'Currently being mentored', false],
+        ] as [$label, $value, $hint, $mine])
+            <div class="rounded-xl border p-5
+                        {{ $mine && $value
+                            ? 'border-amber-200 bg-amber-50/60 dark:border-amber-900/50 dark:bg-amber-950/20'
+                            : 'border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900' }}">
                 <p class="text-sm font-medium text-neutral-500 dark:text-neutral-400">{{ $label }}</p>
-                <p class="mt-2 text-3xl font-semibold tabular-nums tracking-tight">{{ $value }}</p>
+                <p class="mt-2 text-3xl font-semibold tabular-nums tracking-tight
+                          {{ $mine && $value ? 'text-amber-700 dark:text-amber-400' : '' }}">
+                    {{ $value }}
+                </p>
                 <p class="mt-1 text-xs text-neutral-400 dark:text-neutral-500">{{ $hint }}</p>
             </div>
         @endforeach
