@@ -371,7 +371,7 @@ theory rather than silently giving every student no attempts.
 ### The automation log, and the lost mentor
 
 `app/Models/Vatssa/ActionLog.php` · `app/Http/Controllers/Vatssa/ActionLogController.php` ·
-`app/Console/Commands/VatssaOrphanedTrainings.php` · `app/Tasks/Types/MentorNeeded.php` ·
+`app/Console/Commands/VatssaMentorWatch.php` · `app/Tasks/Types/MentorNeeded.php` ·
 `resources/views/vatssa/action-log.blade.php` ·
 `database/migrations-vatssa/2026_08_30_150000_vatssa_action_log.php`
 
@@ -381,7 +381,7 @@ the training's status alone. The student stayed in *Active training* with
 nobody teaching them, out of the queue, with no signal anywhere. The student
 usually noticed first, weeks later.
 
-`vatssa:orphaned-trainings` runs daily and does **both halves**:
+`vatssa:mentor-watch` runs daily and does **both halves**:
 
 * **state** — back to *Awaiting mentor*, which is the truthful description and
   is what puts them in a queue a coordinator reads;

@@ -62,6 +62,9 @@ return [
         // -- so restricting manual creation there would take the queue away from
         // the coordinators who work out of it. A separate permission instead.
         'training.create.manual',
+        // VATSSA: apply for training on somebody's behalf, or for
+        // yourself, when they are not on Discord or Moodle yet.
+        'training.platform-requirement.override',
         'training.update',
         'training.delete',
         'training.mentor',
@@ -206,6 +209,9 @@ return [
             '!training.reports.delete',         // ATM + admin only
             '!training.ratings.manage',         // admin only
             '!training.create.manual',          // ATM + admin only
+            '!training.platform-requirement.override', // ATM + admin only; the gate is
+                                                      // pointless if the people who see
+                                                      // it every day can wave it through
             '!training.results.grades',         // ATM + admin only; pass/fail is enough
             'examinations.manage',
             'endorsements.solo.*',

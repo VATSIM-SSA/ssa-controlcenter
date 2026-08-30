@@ -3,6 +3,46 @@
 @section('title', 'Application')
 @section('content')
 
+{{-- VATSSA: reachable before trainable.
+
+     The gate itself is in TrainingController::store(). This is the same rule
+     said BEFORE the form rather than after it: three steps of an application
+     followed by a rejection is a worse way to learn a requirement than one
+     line at the top, and it is the version people email to complain about.
+
+     Shown only when something is actually missing, so it stays a prompt and
+     does not become a banner everyone learns to scroll past. --}}
+@php $vatssaMissing = \App\Models\Vatssa\PlatformRequirement::missingFor(Auth::user()); @endphp
+
+@if($vatssaMissing)
+    <div class="row">
+        <div class="col-12">
+            <div class="alert alert-warning" role="alert">
+                <h5 class="alert-heading">
+                    <i class="fas fa-triangle-exclamation"></i>&nbsp;Two things first
+                </h5>
+                <p class="mb-2">
+                    Before you can apply, you need to:
+                </p>
+                <ul class="mb-2">
+                    @foreach($vatssaMissing as $step)
+                        <li>{{ ucfirst($step) }}</li>
+                    @endforeach
+                </ul>
+                <p class="mb-0">
+                    Your mentor runs sessions and reaches you on Discord, and the
+                    theory course lives on the training site. We cannot start
+                    without both, so an application now would only sit and wait.
+                    @unless(\App\Models\Vatssa\PlatformRequirement::hasBeenChecked(Auth::user()))
+                        <br><small>If you have only just signed up, give it a few
+                        minutes — we check every so often, not instantly.</small>
+                    @endunless
+                </p>
+            </div>
+        </div>
+    </div>
+@endif
+
 <div id="application">
     
     <form id="training-form" action="{{ route('training.store') }}" method="post">

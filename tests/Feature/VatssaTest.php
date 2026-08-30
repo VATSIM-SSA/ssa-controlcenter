@@ -1130,7 +1130,7 @@ class VatssaTest extends TestCase
         $this->seedFixtures();
         $training = $this->mentorless(TrainingStatus::ACTIVE_TRAINING);
 
-        $this->artisan('vatssa:orphaned-trainings')->assertSuccessful();
+        $this->artisan('vatssa:mentor-watch')->assertSuccessful();
 
         $this->assertSame(TrainingStatus::AWAITING_MENTOR, $training->fresh()->status);
 
@@ -1157,8 +1157,8 @@ class VatssaTest extends TestCase
         $this->seedFixtures();
         $training = $this->mentorless(TrainingStatus::ACTIVE_TRAINING);
 
-        $this->artisan('vatssa:orphaned-trainings')->assertSuccessful();
-        $this->artisan('vatssa:orphaned-trainings')->assertSuccessful();
+        $this->artisan('vatssa:mentor-watch')->assertSuccessful();
+        $this->artisan('vatssa:mentor-watch')->assertSuccessful();
 
         $this->assertSame(1, Task::where('type', MentorNeeded::class)
             ->where('subject_training_id', $training->id)->count());
@@ -1173,7 +1173,7 @@ class VatssaTest extends TestCase
         $training = $this->mentorless(TrainingStatus::ACTIVE_TRAINING);
         $training->update(['paused_at' => now()]);
 
-        $this->artisan('vatssa:orphaned-trainings')->assertSuccessful();
+        $this->artisan('vatssa:mentor-watch')->assertSuccessful();
 
         $this->assertSame(TrainingStatus::ACTIVE_TRAINING, $training->fresh()->status);
         $this->assertDatabaseMissing('tasks', [
@@ -1191,7 +1191,7 @@ class VatssaTest extends TestCase
         $this->seedFixtures();
         $training = $this->mentorless(TrainingStatus::AWAITING_EXAM);
 
-        $this->artisan('vatssa:orphaned-trainings')->assertSuccessful();
+        $this->artisan('vatssa:mentor-watch')->assertSuccessful();
 
         $this->assertSame(TrainingStatus::AWAITING_EXAM, $training->fresh()->status);
         $this->assertDatabaseHas('tasks', [
@@ -1216,7 +1216,7 @@ class VatssaTest extends TestCase
         ]);
         $training->ratings()->attach($rating->id);
 
-        $this->artisan('vatssa:orphaned-trainings')->assertSuccessful();
+        $this->artisan('vatssa:mentor-watch')->assertSuccessful();
 
         $this->assertDatabaseHas('vatssa_action_log', [
             'action' => 'training.mentor_lost_no_desk',

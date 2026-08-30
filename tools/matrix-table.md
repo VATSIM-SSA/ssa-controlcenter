@@ -1,12 +1,13 @@
 # Expanded matrix — roles.php
 
-62 permissions x 8 roles.
+63 permissions x 8 roles.
 
 | Permission | admin | atc-training-manager | pipeline-coordinator | mentor | membership-manager | events-team | nav-editor | feedback-team |
 |---|---|---|---|---|---|---|---|---|
 | `training.view` | O | O | O |  | O |  |  |  |
 | `training.create` | O | O | O |  |  |  |  |  |
 | `training.create.manual` | O | O |  |  |  |  |  |  |
+| `training.platform-requirement.override` | O | O |  |  |  |  |  |  |
 | `training.update` | O | O | O |  |  |  |  |  |
 | `training.delete` | O |  |  |  |  |  |  |  |
 | `training.mentor` | O | O | O | O |  |  |  |  |
@@ -67,4 +68,4 @@
 | `roles.mentor.manage` | O | O |  |  |  |  |  |  |
 | `roles.feedback-team.manage` | O |  |  |  |  |  |  |  |
 
-**Totals:** admin **62** · atc-training-manager **41** · pipeline-coordinator **29** · mentor **8** · membership-manager **9** · events-team **5** · nav-editor **2** · feedback-team **3**
+**Totals:** admin **63** · atc-training-manager **42** · pipeline-coordinator **29** · mentor **8** · membership-manager **9** · events-team **5** · nav-editor **2** · feedback-team **3**

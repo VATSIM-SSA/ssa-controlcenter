@@ -59,11 +59,16 @@ class VatssaServiceProvider extends ServiceProvider
                 ->dailyAt('06:00')
                 ->withoutOverlapping();
 
-            // A mentor can be detached by three different upstream paths,
-            // none of which touches the training's status -- so a student
-            // can sit in 'active training' with nobody teaching them and
-            // no signal at all. This is the thing that looks.
-            $schedule->command('vatssa:orphaned-trainings')
+            // A mentor can be detached by at least three upstream paths, and
+            // not one of them touches the training's status, tells the student
+            // or tells the mentor. So a student sat in 'active training' with
+            // nobody teaching them, and a mentor kept a slot reserved for
+            // somebody who was not coming back. This is what notices.
+            //
+            // Diffs against vatssa_training_mentors, so it also catches a SWAP,
+            // where the training is never mentorless and the old mentor would
+            // otherwise never be told.
+            $schedule->command('vatssa:mentor-watch')
                 ->dailyAt('06:15')
                 ->withoutOverlapping();
         });

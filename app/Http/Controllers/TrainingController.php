@@ -237,6 +237,17 @@ class TrainingController extends Controller
             return redirect()->back()->withErrors('You already have an active training request.');
         }
 
+        // VATSSA: reachable before trainable. A student who is not on Discord
+        // and not on Moodle cannot be taught, cannot be enrolled and cannot be
+        // chased -- and the pipeline's commonest stall was exactly that person
+        // sitting in the queue for months while chaser emails went nowhere.
+        //
+        // Checked at the door, where it costs one step at the one moment
+        // somebody is motivated to take it. See App\Models\Vatssa\PlatformRequirement.
+        if ($platformError = $this->vatssaPlatformGate($data)) {
+            return $platformError;
+        }
+
         // Training_level comes from the application, ratings comes from the manual creation, we need to seperate those.
         if (isset($data['training_level'])) {
             $ratings = Rating::find(explode('+', $data['training_level']));
@@ -312,6 +323,78 @@ class TrainingController extends Controller
         }
 
         return redirect()->intended($training->path())->withSuccess('Training successfully created!');
+    }
+
+    /**
+     * VATSSA: refuse an application from somebody the division cannot reach.
+     *
+     * Returns a redirect when the applicant is missing a platform, or null when
+     * they are fine.
+     *
+     * ## Who it applies to
+     *
+     * The APPLICANT, not the person clicking. Staff creating a training on
+     * somebody's behalf are checking that student, and the student is the one
+     * who has to be reachable.
+     *
+     * ## The override
+     *
+     * `training.platform-requirement.override` -- ATC training manager and
+     * admin. Not the pipeline coordinator, deliberately: a gate that the people
+     * who meet it every day can wave through is not a gate. When a coordinator
+     * hits it for a genuine case, the answer is an exemption row from the ATM,
+     * which is reviewable, rather than a habit of clicking past it.
+     *
+     * @return RedirectResponse|null
+     */
+    private function vatssaPlatformGate(array $data)
+    {
+        $applicant = isset($data['user_id']) ? User::find($data['user_id']) : Auth::user();
+
+        if ($applicant === null) {
+            return null;    // upstream already answered this above
+        }
+
+        $missing = \App\Models\Vatssa\PlatformRequirement::missingFor($applicant);
+
+        if ($missing === []) {
+            return null;
+        }
+
+        if (Auth::user()->hasPermission(\App\Models\Vatssa\PlatformRequirement::OVERRIDE)) {
+            // Allowed through, and SAID SO. An override that leaves no trace is
+            // how a rule quietly stops applying to anybody.
+            \App\Models\Vatssa\ActionLog::noticed(
+                'training.platform_gate_overridden',
+                Auth::user()->name . ' created a training for ' . $applicant->name
+                    . ' who still needs to ' . implode(' and ', $missing) . '.',
+                null,
+                $applicant->id,
+                ['missing' => $missing, 'by' => Auth::id()],
+            );
+
+            return null;
+        }
+
+        $self = $applicant->id === Auth::id();
+        $who = $self ? 'You need to' : $applicant->name . ' needs to';
+
+        // "Not on Discord" is a verdict. "Join the Discord server" is an
+        // instruction, and the difference decides whether somebody acts or
+        // emails to complain.
+        $message = $who . ' ' . implode(', and ', $missing)
+            . ' before ' . ($self ? 'you' : 'they') . ' can apply for training. '
+            . 'We use both to run the training itself, so we cannot start without them.';
+
+        if (! \App\Models\Vatssa\PlatformRequirement::hasBeenChecked($applicant)) {
+            // Never seen by the sweep. Saying "you are not on Discord" to
+            // somebody who joined an hour ago is how a correct rule gets a
+            // reputation for being broken.
+            $message .= ' If ' . ($self ? 'you have' : 'they have')
+                . ' only just signed up, it can take a few minutes for us to see it.';
+        }
+
+        return redirect()->back()->withErrors($message);
     }
 
     /**
