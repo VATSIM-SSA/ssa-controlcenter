@@ -214,6 +214,22 @@ enum TrainingStatus: int
             return in_array($current, [self::ACTIVE_TRAINING, self::AWAITING_EXAM], true);
         }
 
+        // AND BACK AGAIN, from awaiting-exam to active training.
+        //
+        // This was blocked, and blocking it was wrong. The pipeline sets
+        // ACTIVE_TRAINING when a mentor is assigned, which is why it is not
+        // freely assignable -- but moving somebody OUT of awaiting-exam is not
+        // that fact being asserted, it is a human saying the exam is not
+        // happening yet. A failed CPT, a cancelled one, a student who turned
+        // out not to be ready: all three leave a training parked in a stage
+        // that claims they are ready to sit, with no way back.
+        //
+        // The pipeline never contradicts this, because nothing in it moves a
+        // training out of ACTIVE_TRAINING on its own.
+        if ($this === self::ACTIVE_TRAINING) {
+            return $current === self::AWAITING_EXAM;
+        }
+
         return $this->isAssignableByStaff();
     }
 

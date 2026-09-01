@@ -16,8 +16,10 @@ use App\Models\User;
 use App\Models\Vatssa\ActionLog;
 use App\Models\Vatssa\AvailabilityPoll;
 use App\Models\Vatssa\AvailabilityResponse;
+use App\Models\Vatssa\Confirmation;
 use App\Models\Vatssa\Exam;
 use App\Models\Vatssa\MessageLog;
+use App\Models\Vatssa\RosterWarning;
 use App\Models\Vatssa\TheoryAttempt;
 use App\Models\Vatssa\UserPlatform;
 use Carbon\CarbonImmutable;
@@ -227,15 +229,21 @@ class VatssaPipelineSeeder extends Seeder
         $this->backfillTimelines();
         $this->seedExams();
         $this->seedActionLog();
+        $this->seedConfirmations();
+        $this->seedStandalonePolls();
+        $this->seedRosterWarnings();
 
         $this->command?->info(sprintf(
             'VatssaPipelineSeeder: %d platform rows, %d theory attempts, %d logged emails, '
-            . '%d open tasks, %d timeline entries. Named cohort on CIDs %d-%d.',
+            . '%d open tasks, %d timeline entries, %d confirmations, %d polls. '
+            . 'Named cohort on CIDs %d-%d.',
             UserPlatform::count(),
             TheoryAttempt::count(),
             MessageLog::count(),
             Task::where('status', TaskStatus::PENDING)->count(),
             TrainingActivity::count(),
+            Confirmation::count(),
+            AvailabilityPoll::count(),
             self::FIRST_CID,
             self::FIRST_CID + count(self::COHORT) - 1
         ));
@@ -842,6 +850,181 @@ class VatssaPipelineSeeder extends Seeder
         $this->command?->info('VatssaPipelineSeeder: ' . ActionLog::count() . ' automation log rows.');
     }
 
+    /**
+     * The four kinds of deadline, across the cohort.
+     *
+     * Every state the Confirmations table can draw: met, missed, invalidated,
+     * still open, and open-but-past-its-deadline. That last one is the reason
+     * this is not three rows -- "overdue" is a state the sweep has not settled
+     * yet, it appears nowhere else, and it is the row a coordinator most needs
+     * to see today.
+     */
+    private function seedConfirmations(): void
+    {
+        if (Confirmation::query()->exists()) {
+            return;
+        }
+
+        $trainings = Training::whereBetween('user_id',
+            [self::FIRST_CID, self::FIRST_CID + count(self::COHORT) - 1])
+            ->orderBy('id')
+            ->take(8)
+            ->get();
+
+        if ($trainings->isEmpty()) {
+            return;
+        }
+
+        // [type, days since sent, deadline in days from sent, outcome]
+        // outcome: 'met' | 'missed' | 'invalidated' | 'open' | 'overdue'
+        $plan = [
+            [Confirmation::JOIN_DISCORD, 40, 7, 'met'],
+            [Confirmation::JOIN_MOODLE, 38, 7, 'met'],
+            [Confirmation::COMPLETE_MOODLE, 35, 90, 'open'],
+
+            [Confirmation::JOIN_DISCORD, 30, 7, 'overdue'],
+            [Confirmation::JOIN_MOODLE, 60, 7, 'missed'],
+            [Confirmation::COMPLETE_MOODLE, 120, 90, 'missed'],
+
+            // Leave was granted, so the theory clock stopped. Invalidated is
+            // NOT a tidier word for missed: it means we stopped asking, and
+            // using it for a real miss erases the evidence somebody was chased.
+            [Confirmation::COMPLETE_MOODLE, 100, 90, 'invalidated'],
+
+            [Confirmation::JOIN_DISCORD, 3, 7, 'open'],
+        ];
+
+        foreach ($trainings as $i => $training) {
+            [$type, $sentDaysAgo, $window, $outcome] = $plan[$i] ?? $plan[0];
+
+            $sent = now()->subDays($sentDaysAgo);
+
+            $confirmation = Confirmation::create([
+                'training_id' => $training->id,
+                'type' => $type,
+                'sent_at' => $sent,
+                // 'overdue' needs a deadline in the past with nothing settled,
+                // so it is built from the send date like every other row and
+                // simply has a short window.
+                'deadline' => $outcome === 'overdue'
+                    ? now()->subDays(2)
+                    : $sent->copy()->addDays($window),
+                'confirmed_at' => $outcome === 'met' ? $sent->copy()->addDays(2) : null,
+                // Chased twice before anything happened. The first question
+                // asked when somebody appeals a removal.
+                'reminders' => in_array($outcome, ['missed', 'overdue'], true) ? 2 : 0,
+            ]);
+
+            match ($outcome) {
+                'missed' => $confirmation->miss(),
+                'invalidated' => $confirmation->invalidate(),
+                default => null,
+            };
+        }
+
+        $this->command?->info('VatssaPipelineSeeder: ' . Confirmation::count()
+            . ' confirmations across every outcome.');
+    }
+
+    /**
+     * Availability polls that belong to nobody's exam.
+     *
+     * `seedExamPoll()` covers the CPT case, which is the one the workflow
+     * drives. The tool also takes a mentoring session and a meeting, and those
+     * are reached by a person clicking "ask a group" -- a path that stayed
+     * untested on dev because nothing seeded it.
+     *
+     * One of them is confirmed, so the settled list is not empty either.
+     */
+    private function seedStandalonePolls(): void
+    {
+        if (AvailabilityPoll::where('purpose', '!=', AvailabilityPoll::CPT)->exists()) {
+            return;
+        }
+
+        $staff = User::find(10000009) ?? User::first();
+        $cohort = User::whereBetween('id',
+            [self::FIRST_CID, self::FIRST_CID + count(self::COHORT) - 1])->take(4)->get();
+
+        if ($staff === null || $cohort->isEmpty()) {
+            return;
+        }
+
+        $from = CarbonImmutable::now()->addDays(2);
+
+        $mentoring = AvailabilityPoll::create([
+            'purpose' => AvailabilityPoll::MENTORING,
+            'title' => 'S2 radar sessions — week of ' . $from->format('j M'),
+            'description' => 'Two hours, twice. Mark everything you could make.',
+            'starts_on' => $from,
+            'ends_on' => $from->addWeeks(2),
+            'created_by' => $staff->id,
+            'slot_minutes' => 30,
+        ]);
+
+        $meeting = AvailabilityPoll::create([
+            'purpose' => AvailabilityPoll::MEETING,
+            'title' => 'Training staff catch-up',
+            'starts_on' => $from,
+            'ends_on' => $from->addWeeks(1),
+            'created_by' => $staff->id,
+            'slot_minutes' => 60,
+        ]);
+
+        foreach ([$mentoring, $meeting] as $poll) {
+            $evenings = $poll->slots()
+                ->filter(fn ($slot) => (int) $slot->format('H') >= 17)
+                ->take(20)
+                ->map(fn ($slot) => $slot->toIso8601String())
+                ->values();
+
+            // Overlapping but not identical, so the grid shows a real
+            // intersection. Identical answers make every cell look agreed and
+            // hide the one thing the shading is for.
+            foreach ($cohort as $offset => $member) {
+                AvailabilityResponse::create([
+                    'poll_id' => $poll->id,
+                    'user_id' => $member->id,
+                    'role' => AvailabilityPoll::ROLE_PARTICIPANT,
+                    'slots' => $evenings->slice($offset, 12)->values()->all(),
+                ]);
+            }
+        }
+
+        // One settled, so the "Settled" section on the index is not dead.
+        $meeting->forceFill([
+            'confirmed_slot' => $from->addDays(3)->setTime(19, 0),
+            'confirmed_at' => now()->subDay(),
+            'confirmed_by' => $staff->id,
+        ])->save();
+
+        $this->command?->info('VatssaPipelineSeeder: 2 standalone polls, one settled.');
+    }
+
+    /**
+     * A roster place about to lapse.
+     *
+     * The alert only renders for a future expiry, so a fixture dated in the
+     * past shows nothing and reads as the panel being broken.
+     */
+    private function seedRosterWarnings(): void
+    {
+        if (RosterWarning::query()->exists()) {
+            return;
+        }
+
+        $user = User::find(self::FIRST_CID + 2);
+
+        if ($user === null) {
+            return;
+        }
+
+        RosterWarning::updateOrCreate(['user_id' => $user->id], [
+            'expires_on' => now()->addDays(5),
+            'warned_at' => now()->subDays(2),
+        ]);
+    }
+
     private function backfillTimelines(): void
     {
         $written = 0;
@@ -959,8 +1142,24 @@ class VatssaPipelineSeeder extends Seeder
             // account: these CIDs do not exist on VATSIM either.
             'discord_user_id' => $discord ? 900000000000000000 + $userId : null,
             'on_discord' => $discord,
+            // WHEN they joined, and deliberately not for everybody.
+            //
+            // Every row written before the sweep started asking for these has
+            // no date and never will, so the panel has to render "?" as a
+            // normal state rather than as a gap. Seeding it for all of them
+            // would mean the one thing the view does specially is the one thing
+            // dev never shows.
+            //
+            // Every third member keeps a null date, which is roughly the real
+            // proportion after a backfill.
+            'discord_joined_at' => $discord && $userId % 3 !== 0
+                ? now()->subDays(($userId % 400) + 20)
+                : null,
             'moodle_user_id' => $moodle ? $userId : null,
             'on_moodle' => $moodle,
+            'moodle_registered_at' => $moodle && $userId % 3 !== 0
+                ? now()->subDays(($userId % 300) + 10)
+                : null,
             'vatsim_member' => $vatsimMember,
             // Recent, so nothing reads as stale. Push this back two days to see
             // what the staleness warning looks like.

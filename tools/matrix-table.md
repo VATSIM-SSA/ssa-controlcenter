@@ -1,6 +1,6 @@
 # Expanded matrix — roles.php
 
-64 permissions x 10 roles.
+65 permissions x 10 roles.
 
 | Permission | admin | moderator | director | atc-training-manager | pipeline-coordinator | mentor | membership-manager | events-team | nav-editor | feedback-team |
 |---|---|---|---|---|---|---|---|---|---|---|
@@ -28,6 +28,7 @@
 | `examinations.manage` | O |  |  | O | O |  |  | O |  |  |
 | `events.exams.manage` | O |  |  | O |  |  |  | O |  |  |
 | `examinations.create` | O |  |  | O |  |  |  |  |  |  |
+| `availability.polls.create` | O |  |  |  |  | O |  | O |  |  |
 | `endorsements.rosters.view` | O |  |  | O | O |  | O |  |  |  |
 | `endorsements.solo.manage` | O |  |  | O | O |  |  |  |  |  |
 | `endorsements.solo.delete` | O |  |  | O | O |  |  |  |  |  |
@@ -69,4 +70,4 @@
 | `roles.mentor.manage` | O |  |  | O |  |  |  |  |  |  |
 | `roles.feedback-team.manage` | O |  |  |  |  |  |  |  |  |  |
 
-**Totals:** admin **64** · moderator **0** · director **0** · atc-training-manager **43** · pipeline-coordinator **29** · mentor **8** · membership-manager **9** · events-team **6** · nav-editor **2** · feedback-team **3**
+**Totals:** admin **65** · moderator **0** · director **0** · atc-training-manager **43** · pipeline-coordinator **29** · mentor **9** · membership-manager **9** · events-team **7** · nav-editor **2** · feedback-team **3**

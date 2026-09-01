@@ -46,7 +46,8 @@
                     <p class="mb-0 text-muted">
                         {{ $poll->starts_on->format('j M Y') }}
                         &ndash; {{ $poll->ends_on->format('j M Y') }},
-                        in {{ $poll->slot_minutes }}-minute slots. All times zulu.
+                        in {{ $poll->slot_minutes }}-minute slots.
+                        All times {{ \App\Models\Vatssa\AvailabilityPoll::timezoneLabel() }}.
                     </p>
                 @endif
             </div>

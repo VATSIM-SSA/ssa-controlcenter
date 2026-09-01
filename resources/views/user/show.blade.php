@@ -19,6 +19,12 @@
             <div class="card-body">
 
                 <dl class="copyable">
+                    {{-- VATSSA: platforms live in this list, not in a card of
+                         their own further down. "Are they on Discord" is part
+                         of who somebody is here, and a reader going down a
+                         profile should not have to know to go looking. --}}
+                    @include('vatssa.parts.platform-lines', ['user' => $user])
+
                     <dt>VATSIM ID</dt>
                     <dd>
                         {{ $user->id }}
@@ -294,7 +300,10 @@
                 @include('vatssa.parts.theory', ['user' => $user])
             </div>
             <div class="col-xl-4 col-lg-12 col-md-12">
-                @include('vatssa.parts.platforms', ['user' => $user])
+                {{-- The card is gone; its facts are in the summary at the top.
+                     The roster warning is not a fact, it is a deadline, so it
+                     stays as an alert. --}}
+                @include('vatssa.parts.roster-warning', ['user' => $user])
             </div>
         </div>
 

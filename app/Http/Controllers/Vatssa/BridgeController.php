@@ -43,14 +43,34 @@ class BridgeController extends Controller
     {
         $data = $request->validate([
             'discord_user_id' => 'nullable|integer',
-            'on_discord' => 'required|boolean',
+            // `sometimes`, not `required`, and this was a bug.
+            //
+            // The bot sends only what the call it is making actually knows: a
+            // live Discord join event knows about Discord and nothing about
+            // Moodle, and its client deliberately omits the rest rather than
+            // sending nulls that would wipe facts that are true. `required`
+            // then rejected every one of those pushes with a 422 -- so live
+            // join and leave detection never wrote anything, and only the daily
+            // sweep (which happens to send both) worked.
+            //
+            // A partial payload is the normal case here, not the exception.
+            // updateOrCreate only writes the keys it is given, so an absent
+            // field is left exactly as it was.
+            'on_discord' => 'sometimes|boolean',
             'moodle_user_id' => 'nullable|integer',
-            'on_moodle' => 'required|boolean',
+            'on_moodle' => 'sometimes|boolean',
             // Enrolment is not the same fact as having an account. null means
             // registered but in no course, which is the stall worth seeing.
             'moodle_enrolment' => 'sometimes|nullable|in:active,suspended',
             'moodle_course' => 'sometimes|nullable|string|max:20',
             'vatsim_member' => 'sometimes|boolean',
+            // When they joined. Only ever knowable from the platform itself --
+            // Discord's guild member object and Moodle's user record -- so a
+            // row written before the sweep started asking has no date and never
+            // will. The views render that as "?" rather than as a blank, which
+            // would read as "did not join".
+            'discord_joined_at' => 'sometimes|nullable|date',
+            'moodle_registered_at' => 'sometimes|nullable|date',
         ]);
 
         // checked_at is set here rather than accepted from the bot, so the

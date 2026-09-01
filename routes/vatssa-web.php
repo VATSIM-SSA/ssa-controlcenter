@@ -84,11 +84,18 @@ Route::middleware(['web', 'auth', 'activity', 'suspended'])
     ->prefix('vatssa/availability')
     ->group(function () {
         Route::get('/', [AvailabilityController::class, 'index'])->name('vatssa.availability');
-        // Throttled. Creating a poll is open to every member on purpose --
-        // anybody may need to find a time -- and open plus unbounded is how a
-        // table fills with junk nobody can sort through.
+        // Permission AND throttle, and they stop different things.
+        //
+        // The permission stops arbitrary members putting a titled item on other
+        // people's pages -- a poll is named, it appears in a group's list, and
+        // attached to a training it shows on that student's record. The
+        // throttle stops somebody who legitimately holds the permission filling
+        // the table by accident or in a temper.
+        //
+        // ANSWERING a poll is deliberately ungated. The student being scheduled
+        // is the point of the tool and holds no permission at all.
         Route::post('/', [AvailabilityController::class, 'store'])
-            ->middleware('throttle:10,1')
+            ->middleware(['can:availability.polls.create', 'throttle:10,1'])
             ->name('vatssa.availability.store');
         Route::get('/{poll}', [AvailabilityController::class, 'show'])->name('vatssa.availability.show');
     });

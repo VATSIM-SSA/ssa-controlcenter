@@ -149,6 +149,44 @@ return [
     | and per rating, on the mentorship admin page. Null means no default limit,
     | which is different from a limit of zero and is shown differently.
     */
+    /*
+    |--------------------------------------------------------------------------
+    | Availability grid
+    |--------------------------------------------------------------------------
+    |
+    | The window of the day the grid draws, and the timezone it is labelled in.
+    |
+    | Configurable because the honest answer differs by division and by season.
+    | 06:00-23:00 Zulu is right for VATSSA, whose members sit between UTC+0 and
+    | UTC+4: it covers everybody's evening. A division sitting in UTC-5 wants a
+    | different seventeen hours, and hard-coding ours makes the grid useless to
+    | them while looking deliberate.
+    |
+    | ## The timezone is a LABEL, not a conversion
+    |
+    | Slots are stored and compared in UTC and always will be. This setting
+    | changes what the grid says the times are, nothing else. Setting it to
+    | anything other than UTC without also converting the display is how a CPT
+    | gets confirmed for the wrong hour, which is the worst bug this workflow
+    | has. It exists so the label can be made explicit -- "Zulu (UTC)" -- rather
+    | than so the times can be moved.
+    |
+    */
+    'availability' => [
+        'day_starts' => (int) env('VATSSA_AVAILABILITY_DAY_STARTS', 6),
+        'day_ends' => (int) env('VATSSA_AVAILABILITY_DAY_ENDS', 23),
+
+        // Shown on the grid and in every email that links to it. Say the offset
+        // out loud: "Zulu" alone is read as local time by roughly everybody who
+        // has not controlled yet, and the students are the ones answering.
+        'timezone_label' => env('VATSSA_AVAILABILITY_TZ_LABEL', 'Zulu (UTC+0)'),
+
+        // Longest window somebody may ask about, in weeks. The form offers 2, 4
+        // and 8; this is the ceiling the server enforces, because the form is a
+        // courtesy and the POST is the rule.
+        'max_weeks' => (int) env('VATSSA_AVAILABILITY_MAX_WEEKS', 8),
+    ],
+
     'default_mentor_capacity' => env('VATSSA_DEFAULT_MENTOR_CAPACITY') !== null
         ? (int) env('VATSSA_DEFAULT_MENTOR_CAPACITY')
         : null,

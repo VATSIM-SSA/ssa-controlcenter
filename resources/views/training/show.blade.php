@@ -115,6 +115,13 @@
                         @endif
                     </dd>
 
+                    {{-- VATSSA: can we actually reach this person.
+                         Beside their rating and their name, because that is
+                         where it gets read. The full card is gone from this
+                         page -- same facts, and one of them had to be the
+                         one people trust. --}}
+                    @include('vatssa.parts.platform-lines', ['user' => $training->user])
+
                     <dt class="pt-2">Vatsim ID</dt>
                     <dd>
                         <a href="{{ route('user.show', $training->user->id) }}">
@@ -534,59 +541,15 @@
             </div>
         </div>
 
-        <div class="card shadow mb-4">
-            <div class="card-header bg-primary py-3 d-flex flex-row align-items-center justify-content-between">
-                <h6 class="m-0 fw-bold text-white">
-                    Training Interest Confirmations
-                </h6>
-            </div>
-            <div class="card-body {{ $trainingInterests->count() == 0 ? '' : 'p-0' }}">
+        {{-- The interest-confirmation table used to be here, showing one of
+             the four deadlines a student is given and calling itself the
+             confirmation history. It is now `vatssa.parts.confirmations`, in
+             the narrow column beside the theory panel, unioned with the three
+             platform deadlines the pipeline enforces.
 
-                @if($trainingInterests->count() == 0)
-                    <p class="mb-0">No confirmation history</p>
-                @else
-                    <div class="table-responsive">
-                        <table class="table table-sm table-leftpadded mb-0" width="100%" cellspacing="0">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>Interest sent</th>
-                                    <th>Confirmation Deadline</th>
-                                    <th>Interest confirmed</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach($trainingInterests as $interest)
-                                <tr>
-                                    <td>
-                                        {{ $interest->created_at->toEuropeanDate() }}
-                                    </td>
-                                    <td>
-                                        {{ $interest->deadline->toEuropeanDate() }}
-                                    </td>
-                                    <td>
-                                        @if($interest->confirmed_at)
-                                            <i class="fas fa-check text-success"></i>&nbsp;{{ $interest->confirmed_at->toEuropeanDate() }}
-                                        @elseif($interest->expired)
-                                            @if($interest->expired == 1)
-                                                <i class="fas fa-times text-warning"></i>&nbsp;Invalidated
-                                            @else
-                                                <i class="fas fa-times text-danger"></i>&nbsp;Not confirmed
-                                            @endif
-                                        @else
-                                            <i class="fas fa-hourglass text-warning"></i>&nbsp;Awaiting confirmation
-                                        @endif
-
-                                    </td>
-                                </tr>
-                                @endforeach
-                            </tbody>
-                        </table>
-                    </div>
-                @endif
-
-            </div>
-        </div>
-
+             Showing a quarter of the picture was worse than showing none: a
+             coordinator read an empty-looking history and concluded nobody had
+             been chased. --}}
         <div class="card shadow mb-4">
             <div class="card-header bg-primary py-3 d-flex flex-row align-items-center justify-content-between">
                 <h6 class="m-0 fw-bold text-white">
@@ -687,7 +650,21 @@
         ])
     </div>
     <div class="col-xl-4 col-lg-12 col-md-12">
-        @include('vatssa.parts.platforms', ['user' => $training->user])
+        {{-- The Platforms CARD is gone from this page. Its facts moved up into
+             the summary above, where they are read as part of the record
+             rather than as a separate errand. Two panels showing the same two
+             badges meant one of them was the one people trusted, and it was
+             never going to be the one furthest down.
+
+             The roster warning stays, because it is an alert rather than a
+             fact: a lapsing roster place is a deadline, and deadlines do not
+             belong in a definition list. --}}
+        @include('vatssa.parts.roster-warning', ['user' => $training->user])
+
+        @include('vatssa.parts.confirmations', [
+            'training' => $training,
+            'trainingInterests' => $trainingInterests,
+        ])
     </div>
 </div>
 

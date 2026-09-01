@@ -249,9 +249,9 @@ class AvailabilityGrid extends Component
     {
         $times = collect();
         $cursor = CarbonImmutable::parse($this->weekStart)
-            ->setTime(AvailabilityPoll::DAY_STARTS, 0);
+            ->setTime(AvailabilityPoll::dayStarts(), 0);
         $end = CarbonImmutable::parse($this->weekStart)
-            ->setTime(AvailabilityPoll::DAY_ENDS, 0);
+            ->setTime(AvailabilityPoll::dayEnds(), 0);
 
         while ($cursor < $end) {
             $times->push($cursor->format('H:i'));

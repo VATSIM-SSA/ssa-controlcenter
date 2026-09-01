@@ -160,6 +160,20 @@ return [
         'events.exams.manage',
         'examinations.create',
 
+        // VATSSA: creating an availability poll.
+        //
+        // ANSWERING one needs no permission and must not: the student being
+        // scheduled is the whole point, and a student holds nothing. What is
+        // gated is ASKING -- a poll names a group of people, appears in their
+        // list, and (attached to a training) shows on that student's record.
+        //
+        // It was open to every authenticated member, on the reasoning that
+        // anybody may need to find a time. That is true of finding a time and
+        // false of putting a titled item on other people's pages: an unbounded
+        // create is a way to write arbitrary text onto strangers' dashboards,
+        // and a throttle limits the rate of that, not the fact.
+        'availability.polls.create',
+
         // Endorsements
         // VATSSA: the three endorsement roster pages. Upstream leaves them
         // open to any logged-in member -- indexSolos, indexExaminers and
@@ -303,6 +317,9 @@ return [
         // Mentors: their own students only; cannot create training for others.
         'mentor' => [
             'training.mentor',
+            // Arranging a session with their own student is the ordinary case,
+            // and the one this tool was built for.
+            'availability.polls.create',
             'training.mentor-dashboard.view',
             'training.reports.one-time-link',
             'training.attachments.view-hidden',
@@ -331,6 +348,7 @@ return [
             'bookings.**',
             'examinations.manage',
             'events.exams.manage',      // clear the calendar, then publish
+            'availability.polls.create',    // a meeting, or a slot for an exam
         ],
 
         'nav-editor' => [

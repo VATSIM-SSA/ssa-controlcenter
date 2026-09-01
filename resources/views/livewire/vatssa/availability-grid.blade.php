@@ -39,7 +39,14 @@
             {{-- All times Zulu, said out loud. VATSSA spans four hours of time
                  zones and the worst bug in this workflow is a CPT confirmed for
                  the wrong hour. --}}
-            <span class="badge bg-light text-dark">All times Zulu (UTC)</span>
+            {{-- The timezone, said out loud, from config.
+                 VATSSA spans four hours of time zones and the worst bug this
+                 workflow has is a CPT confirmed for the wrong hour. "Zulu"
+                 alone is read as local time by roughly everybody who has not
+                 controlled yet, and the students are the ones answering. --}}
+            <span class="badge bg-light text-dark">
+                All times {{ \App\Models\Vatssa\AvailabilityPoll::timezoneLabel() }}
+            </span>
             @unless($readOnly)
                 <button type="button" wire:click="clearWeek"
                         class="btn btn-sm btn-outline-light border-0">

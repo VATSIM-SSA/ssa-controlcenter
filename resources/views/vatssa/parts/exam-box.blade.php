@@ -79,26 +79,16 @@
         </div>
     </div>
 @else
-    @can('create', [\App\Models\Vatssa\Exam::class, $training])
-        <div class="card shadow mb-4">
-            <div class="card-header bg-primary py-3">
-                <h6 class="m-0 fw-bold text-white">
-                    <i class="fas fa-user-graduate"></i>&nbsp;Practical exam
-                </h6>
-            </div>
-            <div class="card-body">
-                <p class="text-muted">
-                    Nothing arranged. Requesting one asks the ATC training manager to authorise
-                    it; the student is only asked for availability once they have.
-                </p>
+    {{-- Nothing here when no exam is being arranged, and deliberately no
+         button.
 
-                <form method="POST" action="{{ route('vatssa.exams.store', $training) }}">
-                    @csrf
-                    <button type="submit" class="btn btn-primary btn-icon">
-                        <i class="fas fa-plus"></i>&nbsp;Request a practical exam
-                    </button>
-                </form>
-            </div>
-        </div>
-    @endcan
+         There was a "Request a practical exam" button, and it was the wrong
+         control in the wrong place. Requesting a CPT is a REQUEST: it goes
+         through the request form, lands on a desk, and is answered by the ATC
+         training manager. A second door into the same workflow, sitting in a
+         summary panel, meant two ways to start one thing -- and the one people
+         found first was the one that skipped the queue.
+
+         The panel's job is to say where an exam has got to. When there is no
+         exam, it has nothing to say. --}}
 @endif

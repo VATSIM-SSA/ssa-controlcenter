@@ -24,7 +24,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  *
  * ## Every note states its own audience
  *
- * `audience()` says in words who can read one, and the form says it before you
+ * `audience()` says in words who can read one; the panel header carries the
+ * short form and the form carries the full sentence before you
  * type. Somebody writing something sensitive has to know exactly who will see
  * it: a note written in the belief it was admin-only, readable by a manager, is
  * worse than no note at all.
@@ -49,11 +50,17 @@ class InternalNote extends Model
             'permission' => 'training.notes.view',
             'label' => 'Training note',
             'audience' => 'Visible to the ATC training manager and admins. Not to the student, and not to their mentor.',
+            // The same thing in three words, for the panel header. The long
+            // form stays: it is what the FORM says, where somebody is about
+            // to type, and that is the moment the full sentence earns its
+            // length. On the header it was a grey slab above every note.
+            'audience_short' => 'ATC training manager, admins',
         ],
         self::SCOPE_USER => [
             'permission' => 'users.notes.view',
             'label' => 'Member note',
             'audience' => 'Visible to admins only. Not to training staff, not to the member.',
+            'audience_short' => 'Admins only',
         ],
     ];
 

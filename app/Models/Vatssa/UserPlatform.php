@@ -21,8 +21,9 @@ class UserPlatform extends Model
     public $incrementing = false;
 
     protected $fillable = [
-        'user_id', 'discord_user_id', 'on_discord',
-        'moodle_user_id', 'on_moodle', 'moodle_enrolment', 'moodle_course',
+        'user_id', 'discord_user_id', 'on_discord', 'discord_joined_at',
+        'moodle_user_id', 'on_moodle', 'moodle_registered_at',
+        'moodle_enrolment', 'moodle_course',
         'vatsim_member', 'checked_at',
     ];
 
@@ -31,6 +32,11 @@ class UserPlatform extends Model
         'on_moodle' => 'boolean',
         'vatsim_member' => 'boolean',
         'checked_at' => 'datetime',
+        // Nullable for ever on rows written before the sweep started asking
+        // for them. The views show "?" rather than blank -- see
+        // vatssa/parts/platform-lines.blade.php.
+        'discord_joined_at' => 'datetime',
+        'moodle_registered_at' => 'datetime',
     ];
 
     public function user(): BelongsTo

@@ -94,8 +94,8 @@ class AvailabilityPoll extends Model
         $last = CarbonImmutable::parse($this->ends_on)->startOfDay();
 
         while ($day <= $last) {
-            $cursor = $day->setTime(self::DAY_STARTS, 0);
-            $end = $day->setTime(self::DAY_ENDS, 0);
+            $cursor = $day->setTime(self::dayStarts(), 0);
+            $end = $day->setTime(self::dayEnds(), 0);
 
             while ($cursor < $end) {
                 $slots->push($cursor);
@@ -108,9 +108,33 @@ class AvailabilityPoll extends Model
         return $slots;
     }
 
-    public const DAY_STARTS = 6;
+    /**
+     * The window of the day the grid draws.
+     *
+     * Were constants. Now config, because 06:00-23:00 Zulu is right for a
+     * division sitting between UTC+0 and UTC+4 and wrong for one that is not,
+     * and a constant makes that look like a decision nobody is allowed to
+     * revisit.
+     *
+     * Clamped rather than trusted: a start after the end produces a poll with
+     * no slots at all, which renders as an empty grid with no error and looks
+     * like the feature is broken.
+     */
+    public static function dayStarts(): int
+    {
+        return max(0, min(23, (int) config('vatssa.availability.day_starts', 6)));
+    }
 
-    public const DAY_ENDS = 23;
+    public static function dayEnds(): int
+    {
+        return max(self::dayStarts() + 1, min(24, (int) config('vatssa.availability.day_ends', 23)));
+    }
+
+    /** What the grid calls the times. A label, never a conversion -- see config. */
+    public static function timezoneLabel(): string
+    {
+        return (string) config('vatssa.availability.timezone_label', 'Zulu (UTC+0)');
+    }
 
     /**
      * Slot start time => the users who can make it.

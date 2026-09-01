@@ -28,6 +28,7 @@ use App\Notifications\TrainingMentorNotification;
 use App\Notifications\TrainingPreStatusNotification;
 use App\Rules\AssignableTrainingStatus;
 use App\Services\ActivityLogService;
+use App\Support\Vatssa\RequestAvailability;
 use Carbon\Carbon;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Contracts\Routing\ResponseFactory;
@@ -496,7 +497,16 @@ class TrainingController extends Controller
 
         $relatedTasks = $training->tasks->sortByDesc('created_at');
 
-        $requestTypes = TaskController::getTypes();
+        // VATSSA: only the requests that make sense on THIS training, at this
+        // stage. `getTypes()` scans a directory and returns all eight, so a
+        // training in the queue offered "Return From Leave" to somebody not on
+        // leave and "Mentor Capacity" to somebody who is not a mentor.
+        //
+        // A menu of mostly-inapplicable options teaches people the list is
+        // decoration, and then the request that gets picked is whichever name
+        // reads closest -- which is how a CPT arrives as a Custom and sits on
+        // the wrong desk for a week.
+        $requestTypes = RequestAvailability::for($training);
         $requestPopularAssignees = TaskController::getPopularAssignees($training->area);
 
         return view('training.show', compact('training', 'reportsAndExams', 'trainingMentors', 'types', 'experiences', 'activities', 'trainingInterests', 'activeTrainingInterest', 'relatedTasks', 'requestTypes', 'requestPopularAssignees'));

@@ -29,16 +29,23 @@
         <div class="card-header bg-primary py-3 d-flex flex-row align-items-center justify-content-between">
             <h6 class="m-0 fw-bold text-white">
                 <i class="fas fa-lock"></i>&nbsp;{{ $meta['label'] }}s
+                {{-- The audience, in the title.
+
+                     It was a full-width grey alert above every note, three
+                     lines of prose repeating what the padlock already says.
+                     On a page that also carries theory, platforms, an exam and
+                     an email log, it read as clutter and got skipped -- which
+                     is the one outcome this text exists to prevent.
+
+                     Short here, in full on the form below, where somebody is
+                     about to type and the sentence earns its length. --}}
+                <small class="fw-normal opacity-75">&middot; {{ $meta['audience_short'] }}</small>
             </h6>
             @if($notes->count())
                 <span class="badge bg-light text-dark">{{ $notes->count() }}</span>
             @endif
         </div>
         <div class="card-body">
-            <div class="alert alert-secondary py-2" role="alert">
-                <small><i class="fas fa-eye"></i>&nbsp;{{ $meta['audience'] }}</small>
-            </div>
-
             @forelse($notes as $note)
                 <div class="border-start border-3 border-secondary ps-3 mb-3">
                     <div style="white-space: pre-wrap">{{ $note->body }}</div>
@@ -68,6 +75,17 @@
                     <textarea class="form-control" name="body" rows="3" maxlength="5000" required
                               placeholder="What happened, and when. Write it as if it will be read back to you."></textarea>
                 </div>
+                {{-- The full sentence, here and only here.
+
+                     This is the moment it matters: somebody is about to write
+                     something they cannot unsay, and a note written in the
+                     belief it was admin-only but readable by a training
+                     manager is worse than no note at all. Above every existing
+                     note it was wallpaper; below the box you are typing in, it
+                     is a warning. --}}
+                <small class="text-muted d-block mb-2">
+                    <i class="fas fa-eye"></i>&nbsp;{{ $meta['audience'] }}
+                </small>
                 <button type="submit" class="btn btn-sm btn-outline-secondary">Add note</button>
             </form>
         </div>
