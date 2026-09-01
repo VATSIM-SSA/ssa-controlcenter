@@ -162,7 +162,15 @@ class SettingsController extends Controller
             'max_rating.*' => 'nullable|exists:ratings,id',
             'resources' => 'sometimes|array',
             'resources.*.label' => 'nullable|string|max:120',
-            'resources.*.url' => 'nullable|url|max:500',
+            // url:http,https, not bare `url`. Laravel's unqualified rule accepts
+            // any scheme that parses, and `javascript://%0aalert(1)` parses --
+            // it has the `//` the pattern wants. Blade escaping does not help:
+            // the payload never breaks out of the attribute, it IS the
+            // attribute, and mentor-panels renders this straight into an href
+            // for every mentor. Injectable only by somebody holding
+            // system.settings.manage, which is exactly the account worth
+            // protecting from a stolen session.
+            'resources.*.url' => 'nullable|url:http,https|max:500',
             'resources.*.icon' => 'nullable|string|max:40',
             'resources.*.description' => 'nullable|string|max:255',
         ]);

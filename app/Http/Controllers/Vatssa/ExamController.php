@@ -16,6 +16,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 
 /**
@@ -105,10 +106,37 @@ class ExamController extends Controller
         // One open exam per training. A second would split the availability,
         // the clearances and the examiner across two rows and leave everybody
         // reading the wrong one.
-        if (Exam::where('training_id', $training->id)->open()->exists()) {
+        //
+        // Locked, because exists() then create() is a read and a write with a
+        // gap: a double-clicked button, or two mentors at once, would both find
+        // nothing and both insert. A partial unique index would be tidier and
+        // is not portable -- MySQL has no `WHERE stage >= 0` on an index, and
+        // the tests run on SQLite.
+        $exam = DB::transaction(function () use ($training) {
+            $existing = Exam::where('training_id', $training->id)
+                ->open()
+                ->lockForUpdate()
+                ->exists();
+
+            if ($existing) {
+                return null;
+            }
+
+            return $this->openExam($training);
+        });
+
+        if ($exam === null) {
             return back()->withErrors('This student already has an exam being arranged.');
         }
 
+        $this->note($exam, 'A practical exam was requested by ' . Auth::user()->name . '.');
+
+        return redirect()->route('vatssa.exams.show', $exam)
+            ->with('success', 'Requested. The ATC training manager authorises it next.');
+    }
+
+    private function openExam(Training $training): Exam
+    {
         $exam = new Exam([
             'training_id' => $training->id,
             'requested_by' => Auth::id(),
@@ -122,10 +150,7 @@ class ExamController extends Controller
         $exam->stage = ExamStage::REQUESTED;
         $exam->save();
 
-        $this->note($exam, 'A practical exam was requested by ' . Auth::user()->name . '.');
-
-        return redirect()->route('vatssa.exams.show', $exam)
-            ->with('success', 'Requested. The ATC training manager authorises it next.');
+        return $exam;
     }
 
     // -----------------------------------------------------------------

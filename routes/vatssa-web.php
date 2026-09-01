@@ -84,7 +84,12 @@ Route::middleware(['web', 'auth', 'activity', 'suspended'])
     ->prefix('vatssa/availability')
     ->group(function () {
         Route::get('/', [AvailabilityController::class, 'index'])->name('vatssa.availability');
-        Route::post('/', [AvailabilityController::class, 'store'])->name('vatssa.availability.store');
+        // Throttled. Creating a poll is open to every member on purpose --
+        // anybody may need to find a time -- and open plus unbounded is how a
+        // table fills with junk nobody can sort through.
+        Route::post('/', [AvailabilityController::class, 'store'])
+            ->middleware('throttle:10,1')
+            ->name('vatssa.availability.store');
         Route::get('/{poll}', [AvailabilityController::class, 'show'])->name('vatssa.availability.show');
     });
 

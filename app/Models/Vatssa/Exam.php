@@ -192,9 +192,33 @@ class Exam extends Model
             return false;
         }
 
-        $this->stage = $stage;
+        // ATOMIC, and it has to be. Checking the stage in PHP and then saving
+        // is a read followed by a write with a gap in between: two examiners
+        // pressing Confirm within the same second would both read
+        // AWAITING_EXAMINER, both pass canFollow(), and both save. The second
+        // silently overwrites the first, and a student ends up with two
+        // examiners expecting to run their CPT -- or one turning up to nothing.
+        //
+        // The WHERE clause makes the database do the check. Exactly one of the
+        // two updates matches a row; the loser gets 0 and is told somebody
+        // already took it.
+        $changed = static::query()
+            ->whereKey($this->getKey())
+            ->where('stage', $this->stage->value)
+            ->update(['stage' => $stage->value, 'updated_at' => now()]);
 
-        return $this->save();
+        if ($changed === 0) {
+            // Somebody moved it between the read and the write. Refreshed so
+            // the caller and the page agree about where it actually is.
+            $this->refresh();
+
+            return false;
+        }
+
+        $this->stage = $stage;
+        $this->syncOriginalAttribute('stage');
+
+        return true;
     }
 
     public function scopeOpen($query)

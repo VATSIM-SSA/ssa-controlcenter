@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Vatssa;
 
 use App\Http\Controllers\Controller;
+use App\Models\Training;
 use App\Models\Vatssa\AvailabilityPoll;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
@@ -80,6 +81,16 @@ class AvailabilityController extends Controller
             'weeks' => 'nullable|integer|min:1|max:8',
             'training_id' => 'nullable|exists:trainings,id',
         ]);
+
+        // A poll attached to a training becomes visible to that student and
+        // their mentors, and shows on the student's own availability list.
+        // `exists:trainings,id` only proves the id is real -- without this,
+        // anybody could hang a poll with any title off any member's training.
+        if (! empty($data['training_id'])) {
+            $training = Training::find($data['training_id']);
+
+            abort_unless($training && Auth::user()->can('view', $training), 403);
+        }
 
         $from = CarbonImmutable::parse($data['starts_on'] ?? 'tomorrow')->startOfDay();
 
