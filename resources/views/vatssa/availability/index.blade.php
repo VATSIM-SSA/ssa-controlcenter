@@ -1,106 +1,135 @@
-@extends('layouts.vatssa')
+@extends('layouts.app')
 
 @section('title', 'My availability')
 
 @section('content')
 
-<div class="space-y-8" x-data="{ asking: false }">
+{{--
+    VATSSA: one availability grid for practical exams, mentoring sessions and
+    meetings.
 
-    <div class="flex flex-wrap items-end justify-between gap-4">
-        <div class="max-w-2xl">
-            <h2 class="text-xl font-semibold tracking-tight">Availability</h2>
-            <p class="mt-1 text-sm text-ink-soft">
-                One grid for practical exams, mentoring sessions and meetings.
-                Mark when you could be there and everybody sees the overlap
-                straight away, instead of a chain of messages working it out.
-            </p>
+    Built in rather than deployed beside. Rallly and Crab.fit both do this well
+    and neither has an API, so a poll answered there could never sync back to
+    the training page it belongs to -- which is the whole point of asking.
+--}}
+
+<div class="row">
+    <div class="col-xl-12 col-md-12 mb-12">
+        <div class="alert alert-info" role="alert">
+            <i class="fas fa-circle-info"></i>&nbsp;
+            Mark when you could be there and everybody sees the overlap straight away,
+            instead of a chain of messages working it out.
         </div>
-
-        <button type="button" @click="asking = ! asking"
-                class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white
- transition-colors hover:bg-brand-strong">
-            Ask a group
-        </button>
     </div>
+</div>
 
-    {{-- The form is folded away, because most visits here are to answer
-         somebody else's question rather than to ask one. --}}
-    <form method="POST" action="{{ route('vatssa.availability.store') }}" x-show="asking" x-cloak
-          class="space-y-5 rounded-xl border border-line bg-card p-6">
-        @csrf
-
-        <div class="grid gap-5 sm:grid-cols-2">
-            <label class="block">
-                <span class="text-sm font-medium">What is it for</span>
-                <select name="purpose"
-                        class="mt-1.5 w-full rounded-lg border border-line bg-card px-3 py-2 text-sm
- focus:border-brand">
-                    <option value="mentoring">Mentoring session</option>
-                    <option value="cpt">Practical exam</option>
-                    <option value="meeting">Meeting</option>
-                </select>
-            </label>
-
-            <label class="block">
-                <span class="text-sm font-medium">How far ahead</span>
-                <select name="weeks"
-                        class="mt-1.5 w-full rounded-lg border border-line bg-card px-3 py-2 text-sm
- focus:border-brand">
-                    <option value="2">2 weeks</option>
-                    <option value="4" selected>4 weeks</option>
-                    <option value="8">8 weeks</option>
-                </select>
-            </label>
+<div class="row">
+    <div class="col-xl-12 col-md-12 mb-12">
+        <div class="card shadow mb-4">
+            <div class="card-header bg-primary py-3 d-flex flex-row align-items-center justify-content-between">
+                <h6 class="m-0 fw-bold text-white">
+                    <i class="fas fa-hourglass-half"></i>&nbsp;Waiting on an answer
+                </h6>
+                <span class="badge bg-light text-dark">{{ $open->count() }}</span>
+            </div>
+            <div class="card-body {{ $open->isEmpty() ? '' : 'p-0' }}">
+                @if($open->isEmpty())
+                    <p class="mb-0 text-muted">Nothing open. Nobody is waiting on you.</p>
+                @else
+                    <div class="list-group list-group-flush">
+                        @foreach($open as $poll)
+                            @include('vatssa.availability.parts.row', ['poll' => $poll])
+                        @endforeach
+                    </div>
+                @endif
+            </div>
         </div>
+    </div>
+</div>
 
-        <label class="block">
-            <span class="text-sm font-medium">Title</span>
-            <input type="text" name="title" required maxlength="120"
-                   placeholder="S2 practical exam — Web One"
-                   class="mt-1.5 w-full rounded-lg border border-line bg-card px-3 py-2 text-sm
- focus:border-brand">
-        </label>
-
-        <label class="block">
-            <span class="text-sm font-medium">Anything people should know <span class="text-ink-faint">(optional)</span></span>
-            <textarea name="description" rows="2" maxlength="1000"
-                      class="mt-1.5 w-full rounded-lg border border-line bg-card px-3 py-2 text-sm
- focus:border-brand"></textarea>
-        </label>
-
-        <button type="submit"
-                class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-strong">
-            Create
-        </button>
-    </form>
-
-    <section>
-        <h3 class="text-sm font-semibold tracking-tight">Waiting on an answer</h3>
-
-        @if($open->isEmpty())
-            <p class="mt-3 rounded-xl border border-dashed border-line px-4 py-8 text-center text-sm
- text-ink-soft">
-                Nothing open. Nobody is waiting on you.
-            </p>
-        @else
-            <div class="mt-3 space-y-2">
-                @foreach($open as $poll)
-                    @include('vatssa.availability.parts.row', ['poll' => $poll])
-                @endforeach
+@if($settled->isNotEmpty())
+    <div class="row">
+        <div class="col-xl-12 col-md-12 mb-12">
+            <div class="card shadow mb-4">
+                <div class="card-header bg-primary py-3 d-flex flex-row align-items-center justify-content-between">
+                    <h6 class="m-0 fw-bold text-white">
+                        <i class="fas fa-circle-check"></i>&nbsp;Settled
+                    </h6>
+                    <span class="badge bg-light text-dark">{{ $settled->count() }}</span>
+                </div>
+                <div class="card-body p-0">
+                    <div class="list-group list-group-flush">
+                        @foreach($settled as $poll)
+                            @include('vatssa.availability.parts.row', ['poll' => $poll])
+                        @endforeach
+                    </div>
+                </div>
             </div>
-        @endif
-    </section>
+        </div>
+    </div>
+@endif
 
-    @if($settled->isNotEmpty())
-        <section>
-            <h3 class="text-sm font-semibold tracking-tight">Settled</h3>
-            <div class="mt-3 space-y-2">
-                @foreach($settled as $poll)
-                    @include('vatssa.availability.parts.row', ['poll' => $poll])
-                @endforeach
+<div class="row">
+    <div class="col-xl-12 col-md-12 mb-12">
+        <div class="card shadow mb-4">
+            {{-- Folded away, because most visits here are to answer somebody
+                 else's question rather than to ask one. Bootstrap's own
+                 collapse rather than Alpine: this page has no other reason to
+                 pull Alpine in, and a dependency carried for one toggle is a
+                 dependency somebody removes without noticing the toggle. --}}
+            <div class="card-header bg-primary py-3">
+                <button class="btn btn-link p-0 m-0 fw-bold text-white text-decoration-none"
+                        type="button" data-bs-toggle="collapse" data-bs-target="#askGroup"
+                        aria-expanded="false" aria-controls="askGroup">
+                    <i class="fas fa-plus"></i>&nbsp;Ask a group when they are free
+                </button>
             </div>
-        </section>
-    @endif
+            <div class="collapse" id="askGroup">
+                <div class="card-body">
+                    <form method="POST" action="{{ route('vatssa.availability.store') }}">
+                        @csrf
+
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label" for="purpose">What is it for</label>
+                                <select class="form-select" id="purpose" name="purpose" required>
+                                    <option value="mentoring">Mentoring session</option>
+                                    <option value="cpt">Practical exam</option>
+                                    <option value="meeting">Meeting</option>
+                                </select>
+                            </div>
+
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label" for="weeks">How far ahead</label>
+                                <select class="form-select" id="weeks" name="weeks" required>
+                                    <option value="2">2 weeks</option>
+                                    <option value="4" selected>4 weeks</option>
+                                    <option value="8">8 weeks</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label" for="title">Title</label>
+                            <input type="text" class="form-control" id="title" name="title"
+                                   required maxlength="120"
+                                   placeholder="S2 practical exam &mdash; Web One">
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label" for="description">
+                                Anything people should know <span class="text-muted">(optional)</span>
+                            </label>
+                            <textarea class="form-control" id="description" name="description"
+                                      rows="2" maxlength="1000"></textarea>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary">Create</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
 @endsection

@@ -4,112 +4,110 @@
     Painting happens entirely in Alpine and only the result is sent. A Livewire
     round trip per cell would make dragging feel broken on a slow connection,
     and half this division is on one.
+
+    ## Why this one keeps its own CSS
+
+    Everything else in the fork is Bootstrap with the restyle over it. Bootstrap
+    has no paintable calendar, so there is nothing to restyle -- the classes
+    below are scoped `.availability-grid__*` in `_migration.scss` and built on
+    the same variables as everything around them. Scoped, so a rule here can
+    never reach a component upstream ships later.
 --}}
-<div class="space-y-4"
+<div class="card shadow mb-4 availability-grid"
      x-data="availabilityGrid(@js($selected), $wire)"
      @pointerup.window="finish()"
      @pointercancel.window="finish()"
      @pointermove.window="track($event)">
 
     {{-- Week navigation. The month is the question; the week is what fits. --}}
-    <div class="flex flex-wrap items-center justify-between gap-3">
-        <div class="flex items-center gap-1">
+    <div class="card-header bg-primary py-3 d-flex flex-wrap align-items-center justify-content-between gap-2">
+        <span class="d-flex align-items-center gap-1">
             <button type="button" wire:click="previousWeek"
-                    class="rounded-lg p-2 text-ink-soft hover:bg-card-header
- disabled:opacity-30">
-                <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" d="m15 19-7-7 7-7"/>
-                </svg>
+                    class="btn btn-sm btn-outline-light border-0" aria-label="Previous week">
+                <i class="fas fa-chevron-left"></i>
             </button>
-            <span class="min-w-[11rem] text-center text-sm font-medium tabular-nums">
-                {{ $days->first()?->format('j M') }} – {{ $days->last()?->format('j M Y') }}
+            <span class="fw-bold text-white text-center availability-grid__range">
+                {{ $days->first()?->format('j M') }} &ndash; {{ $days->last()?->format('j M Y') }}
             </span>
             <button type="button" wire:click="nextWeek"
-                    class="rounded-lg p-2 text-ink-soft hover:bg-card-header
- disabled:opacity-30">
-                <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" d="m9 5 7 7-7 7"/>
-                </svg>
+                    class="btn btn-sm btn-outline-light border-0" aria-label="Next week">
+                <i class="fas fa-chevron-right"></i>
             </button>
-        </div>
+        </span>
 
-        <div class="flex items-center gap-3 text-xs text-ink-soft">
+        <span class="d-flex align-items-center gap-2">
             {{-- All times Zulu, said out loud. VATSSA spans four hours of time
                  zones and the worst bug in this workflow is a CPT confirmed for
                  the wrong hour. --}}
-            <span class="rounded-md bg-card-header px-2 py-1 font-medium">
-                All times Zulu (UTC)
-            </span>
+            <span class="badge bg-light text-dark">All times Zulu (UTC)</span>
             @unless($readOnly)
-                <button type="button" wire:click="clearWeek" class="hover:text-ink">
+                <button type="button" wire:click="clearWeek"
+                        class="btn btn-sm btn-outline-light border-0">
                     Clear this week
                 </button>
             @endunless
+        </span>
+    </div>
+
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="availability-grid__table">
+                <thead>
+                    <tr>
+                        <th class="availability-grid__gutter"></th>
+                        @foreach($days as $day)
+                            <th class="availability-grid__day">
+                                <small class="text-muted d-block text-uppercase">{{ $day->format('D') }}</small>
+                                <span>{{ $day->format('j') }}</span>
+                            </th>
+                        @endforeach
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach($times as $time)
+                        @php $onHour = str_ends_with($time, ':00'); @endphp
+                        <tr @class(['availability-grid__hour' => $onHour])>
+                            <td class="availability-grid__gutter text-muted">
+                                {{ $onHour ? $time : '' }}
+                            </td>
+
+                            @foreach($days as $day)
+                                @php
+                                    $slot = $day->setTimeFromTimeString($time)->toIso8601String();
+                                    $overlap = count($others[$slot] ?? []);
+                                @endphp
+                                <td class="availability-grid__cell">
+                                    <div
+                                        data-slot="{{ $slot }}"
+                                        @unless($readOnly)
+                                            @pointerdown.prevent="start('{{ $slot }}')"
+                                        @endunless
+                                        :class="has('{{ $slot }}') ? 'is-mine' : '{{ $overlap ? 'is-shared' : '' }}'"
+                                        @class([
+                                            'availability-grid__slot',
+                                            'is-editable' => ! $readOnly,
+                                        ])
+                                        @if($overlap)
+                                            title="{{ $overlap }} other {{ Str::plural('person', $overlap) }} free"
+                                        @endif
+                                    ></div>
+                                </td>
+                            @endforeach
+                        </tr>
+                    @endforeach
+                </tbody>
+            </table>
         </div>
     </div>
 
-    {{-- The grid. touch-none so a drag paints instead of scrolling the page. --}}
-    <div class="overflow-x-auto rounded-xl border border-line bg-card">
-        <table class="w-full border-collapse select-none text-sm" style="touch-action: none">
-            <thead>
-                <tr>
-                    <th class="sticky left-0 z-10 w-16 bg-card p-2"></th>
-                    @foreach($days as $day)
-                        <th class="border-l border-line-soft p-2 text-center font-medium">
-                            <div class="text-[11px] uppercase tracking-wide text-ink-faint">
-                                {{ $day->format('D') }}
-                            </div>
-                            <div class="text-[15px] tabular-nums">{{ $day->format('j') }}</div>
-                        </th>
-                    @endforeach
-                </tr>
-            </thead>
-            <tbody>
-                @foreach($times as $time)
-                    @php $onHour = str_ends_with($time, ':00'); @endphp
-                    <tr>
-                        <td class="sticky left-0 z-10 bg-card pr-2 text-right align-top text-[11px]
- tabular-nums text-ink-faint">
-                            {{ $onHour ? $time : '' }}
-                        </td>
-
-                        @foreach($days as $day)
-                            @php
-                                $slot = $day->setTimeFromTimeString($time)->toIso8601String();
-                                $overlap = count($others[$slot] ?? []);
-                            @endphp
-                            <td class="border-l border-line-soft p-0
- {{ $onHour ? 'border-t border-t-line-soft' : '' }}">
-                                <div
-                                    data-slot="{{ $slot }}"
-                                    @unless($readOnly)
-                                        @pointerdown.prevent="start('{{ $slot }}')"
-                                    @endunless
-                                    :class="has('{{ $slot }}')
- ? 'bg-brand'
-                                        : '{{ $overlap ? 'bg-brand-wash' : '' }}'"
-                                    class="h-5 w-full transition-colors
- {{ $readOnly ? '' : 'cursor-pointer hover:bg-brand-wash' }}"
-                                    @if($overlap)
-                                        title="{{ $overlap }} other {{ Str::plural('person', $overlap) }} free"
-                                    @endif
-                                ></div>
-                            </td>
-                        @endforeach
-                    </tr>
-                @endforeach
-            </tbody>
-        </table>
-    </div>
-
-    <div class="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-ink-soft">
-        <span class="flex items-center gap-1.5">
-            <span class="h-3 w-3 rounded-sm bg-brand"></span> You are free
+    <div class="card-footer d-flex flex-wrap align-items-center gap-3 small text-muted">
+        <span class="d-flex align-items-center gap-2">
+            <span class="availability-grid__key is-mine"></span> You are free
         </span>
-        <span class="flex items-center gap-1.5">
-            <span class="h-3 w-3 rounded-sm bg-brand-wash"></span> Somebody else is free
+        <span class="d-flex align-items-center gap-2">
+            <span class="availability-grid__key is-shared"></span> Somebody else is free
         </span>
-        <span x-text="`${count()} slots marked`" class="tabular-nums"></span>
+        <span x-text="`${count()} slots marked`"></span>
         @if($participants > 1)
             <span>{{ $participants }} people have answered</span>
         @endif

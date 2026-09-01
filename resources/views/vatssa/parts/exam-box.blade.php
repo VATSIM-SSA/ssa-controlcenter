@@ -16,7 +16,7 @@
     uses.
 
     Bootstrap markup: this renders inside `training/show.blade.php`, which loads
-    app.scss and not the Tailwind entry point. See layouts/vatssa.blade.php.
+    app.scss, which is now the only stylesheet the fork has.
 
     Expects: $training. Optional: $exam (resolved here when not passed).
 --}}

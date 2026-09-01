@@ -1,102 +1,112 @@
-@extends('layouts.vatssa')
+@extends('layouts.app')
 
 @section('title', $poll->title)
 
 @section('content')
 
-<div class="space-y-8">
-
-    {{-- What this is, and what to do. A grid with no sentence above it gets
-         filled in wrong by half the people who see it. --}}
-    <div class="rounded-xl border border-line bg-card p-6">
-        <div class="flex flex-wrap items-start justify-between gap-4">
-            <div class="min-w-0">
-                <div class="flex items-center gap-2">
-                    <span class="rounded-md bg-brand-wash px-2 py-0.5 text-[11px] font-semibold uppercase
- tracking-wide text-brand-strong">
-                        {{ $poll->purposeLabel() }}
-                    </span>
-                    @unless($poll->isOpen())
-                        <span class="rounded-md bg-good-wash px-2 py-0.5 text-[11px] font-semibold uppercase
- tracking-wide text-good">
-                            Confirmed
-                        </span>
-                    @endunless
-                </div>
-
-                <h2 class="mt-2 text-xl font-semibold tracking-tight">{{ $poll->title }}</h2>
-
-                @if($poll->description)
-                    <p class="mt-1 max-w-2xl text-sm text-ink-soft">
-                        {{ $poll->description }}
-                    </p>
-                @endif
-
-                <p class="mt-3 text-sm text-ink-soft">
-                    Mark <strong class="text-ink">every</strong> time you could
-                    make, not just your preferred one. Drag to paint, drag again to erase.
-                    More options means a shorter wait.
-                </p>
-            </div>
-
-            @if($poll->confirmed_slot)
-                <div class="rounded-lg border border-good/40 bg-good-wash px-4 py-3 text-sm">
-                    <p class="text-[11px] font-semibold uppercase tracking-wide text-good">
-                        Confirmed for
-                    </p>
-                    <p class="mt-0.5 font-semibold tabular-nums text-good">
-                        {{ $poll->confirmed_slot->format('D j M') }} ·
-                        {{ $poll->confirmed_slot->format('H:i') }}z
-                    </p>
-                </div>
-            @endif
+<div class="row">
+    <div class="col-xl-12 col-md-12 mb-12">
+        {{-- What this is, and what to do. A grid with no sentence above it gets
+             filled in wrong by half the people who see it. --}}
+        <div class="alert alert-info" role="alert">
+            <i class="fas fa-circle-info"></i>&nbsp;
+            Mark <strong>every</strong> time you could make, not just your preferred one.
+            Drag to paint, drag again to erase. More options means a shorter wait.
         </div>
     </div>
+</div>
 
-    @livewire('vatssa.availability-grid', ['poll' => $poll])
+<div class="row">
+    <div class="col-xl-12 col-md-12 mb-12">
+        <div class="card shadow mb-4">
+            <div class="card-header bg-primary py-3 d-flex flex-row align-items-center justify-content-between">
+                <h6 class="m-0 fw-bold text-white">
+                    <i class="fas fa-calendar-check"></i>&nbsp;{{ $poll->title }}
+                </h6>
+                <span>
+                    <span class="badge bg-light text-dark">{{ $poll->purposeLabel() }}</span>
+                    @unless($poll->isOpen())
+                        <span class="badge bg-success">Confirmed</span>
+                    @endunless
+                </span>
+            </div>
+            <div class="card-body">
+                @if($poll->description)
+                    <p>{{ $poll->description }}</p>
+                @endif
 
-    {{-- Who has answered. The thing everybody actually wants to know while
-         waiting is "is it me we are waiting for", and a list answers that
-         faster than any status badge. --}}
-    <div class="rounded-xl border border-line bg-card p-6">
-        <h3 class="text-sm font-semibold tracking-tight">Who has answered</h3>
+                @if($poll->confirmed_slot)
+                    <div class="alert alert-success mb-0" role="alert">
+                        <i class="fas fa-circle-check"></i>&nbsp;
+                        Confirmed for
+                        <strong>{{ $poll->confirmed_slot->format('D j M') }} &middot;
+                            {{ $poll->confirmed_slot->format('H:i') }}z</strong>
+                    </div>
+                @else
+                    <p class="mb-0 text-muted">
+                        {{ $poll->starts_on->format('j M Y') }}
+                        &ndash; {{ $poll->ends_on->format('j M Y') }},
+                        in {{ $poll->slot_minutes }}-minute slots. All times zulu.
+                    </p>
+                @endif
+            </div>
+        </div>
+    </div>
+</div>
 
-        @if($poll->responses->isEmpty())
-            <p class="mt-2 text-sm text-ink-soft">Nobody yet.</p>
-        @else
-            <ul class="mt-4 space-y-2.5">
-                @foreach($poll->responses as $response)
-                    <li class="flex items-center justify-between gap-4 text-sm">
-                        <span class="flex items-center gap-2.5">
-                            <span class="grid h-7 w-7 place-items-center rounded-full bg-card-header
- text-[11px] font-semibold text-ink-soft">
-                                {{ Str::of($response->user?->name ?? '?')->explode(' ')->take(2)
-                                    ->map(fn ($p) => Str::substr($p, 0, 1))->join('') }}
-                            </span>
-                            <span>{{ $response->user?->name ?? 'Unknown' }}</span>
-                            @if($response->role !== 'participant')
-                                <span class="rounded bg-card-header px-1.5 py-0.5 text-[10px] font-medium
- uppercase tracking-wide text-ink-soft">
-                                    {{ $response->role }}
-                                </span>
-                            @endif
-                        </span>
-                        <span class="tabular-nums text-ink-soft">
-                            {{ count($response->slots ?? []) }} slots
-                        </span>
-                    </li>
-                @endforeach
-            </ul>
-        @endif
+<div class="row">
+    <div class="col-xl-8 col-md-12 mb-12">
+        @livewire('vatssa.availability-grid', ['poll' => $poll])
     </div>
 
-    {{-- The link. Everything else in the workflow emails this, but somebody
-         will always want to paste it into Discord themselves. --}}
-    <div class="rounded-xl border border-dashed border-line p-4">
-        <p class="text-xs font-medium text-ink-soft">Share this page</p>
-        <p class="mt-1 break-all font-mono text-xs text-ink">
-            {{ route('vatssa.availability.show', $poll) }}
-        </p>
+    <div class="col-xl-4 col-md-12 mb-12">
+        {{-- Who has answered. The thing everybody actually wants to know while
+             waiting is "is it me we are waiting for", and a list answers that
+             faster than any status badge. --}}
+        <div class="card shadow mb-4">
+            <div class="card-header bg-primary py-3 d-flex flex-row align-items-center justify-content-between">
+                <h6 class="m-0 fw-bold text-white">
+                    <i class="fas fa-users"></i>&nbsp;Who has answered
+                </h6>
+                <span class="badge bg-light text-dark">{{ $poll->responses->count() }}</span>
+            </div>
+            <div class="card-body {{ $poll->responses->isEmpty() ? '' : 'p-0' }}">
+                @if($poll->responses->isEmpty())
+                    <p class="mb-0 text-muted">Nobody yet.</p>
+                @else
+                    <div class="list-group list-group-flush">
+                        @foreach($poll->responses as $response)
+                            <div class="list-group-item d-flex align-items-center justify-content-between gap-3">
+                                <span class="text-truncate">
+                                    {{ $response->user?->name ?? 'Unknown' }}
+                                    @if($response->role !== 'participant')
+                                        <span class="badge bg-secondary">{{ $response->role }}</span>
+                                    @endif
+                                </span>
+                                <small class="text-muted flex-shrink-0">
+                                    {{ count($response->slots ?? []) }} slots
+                                </small>
+                            </div>
+                        @endforeach
+                    </div>
+                @endif
+            </div>
+        </div>
+
+        {{-- The link. Everything else in the workflow emails this, but somebody
+             will always want to paste it into Discord themselves. --}}
+        <div class="card shadow mb-4">
+            <div class="card-header bg-primary py-3">
+                <h6 class="m-0 fw-bold text-white">
+                    <i class="fas fa-link"></i>&nbsp;Share this page
+                </h6>
+            </div>
+            <div class="card-body">
+                <input type="text" class="form-control form-control-sm font-monospace"
+                       value="{{ route('vatssa.availability.show', $poll) }}"
+                       readonly onclick="this.select()">
+            </div>
+        </div>
     </div>
 </div>
 

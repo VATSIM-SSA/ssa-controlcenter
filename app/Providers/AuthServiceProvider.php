@@ -2,6 +2,8 @@
 
 namespace App\Providers;
 
+use App\Models\Vatssa\Exam;
+use App\Policies\Vatssa\ExamPolicy;
 use Illuminate\Foundation\Support\Providers\AuthServiceProvider as ServiceProvider;
 use Illuminate\Support\Facades\Gate;
 
@@ -15,7 +17,7 @@ class AuthServiceProvider extends ServiceProvider
     protected $policies = [
         // VATSSA: the exam booking workflow. Registered explicitly -- the
         // convention resolver does not find policies under a nested namespace.
-        \App\Models\Vatssa\Exam::class => \App\Policies\Vatssa\ExamPolicy::class,
+        Exam::class => ExamPolicy::class,
         'anlutro\LaravelSettings\Facade' => 'App\Policies\SettingPolicy',
         'Illuminate\Notifications\Notification' => 'App\Policies\NotificationPolicy',
     ];

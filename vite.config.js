@@ -42,10 +42,6 @@ export default () => {
                     "/resources/sass/app.scss",
                     "/resources/js/app.js",
                     "/resources/css/flux.css",
-                    // VATSSA: Tailwind for the pages that do not load
-                    // Bootstrap. Deleting this line and resources/css/vatssa.css
-                    // reverts the whole experiment.
-                    "/resources/css/vatssa.css",
                     "/resources/js/theme.js",
                     "/resources/js/vue.js",
                     "/resources/js/easymde.js",

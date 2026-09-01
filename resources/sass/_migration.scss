@@ -1006,3 +1006,89 @@ time,
 .btn {
     white-space: nowrap;
 }
+
+// ---------------------------------------------------------------------------
+// The availability grid
+//
+// The one thing in the fork with no Bootstrap component behind it, so the one
+// thing here with rules of its own rather than a restyle of somebody else's.
+// Every value comes from the same variables as the rest of this file, and
+// every selector is scoped under .availability-grid -- a bare `td` rule here
+// would reach into whatever upstream ships next.
+// ---------------------------------------------------------------------------
+.availability-grid {
+
+    &__range {
+        min-width: 11rem;
+        font-variant-numeric: tabular-nums;
+    }
+
+    &__table {
+        width: 100%;
+        border-collapse: collapse;
+        user-select: none;
+        // A drag has to paint, not scroll the page. Without this a phone marks
+        // one cell and looks broken.
+        touch-action: none;
+    }
+
+    &__gutter {
+        width: 4rem;
+        padding: 0 .5rem 0 0;
+        text-align: right;
+        vertical-align: top;
+        font-size: .6875rem;
+        font-variant-numeric: tabular-nums;
+        // Sticky so the times stay readable once the week scrolls sideways on
+        // a narrow screen, which is most of them.
+        position: sticky;
+        left: 0;
+        z-index: 1;
+        background: var(--bs-card-bg, var(--bs-body-bg));
+    }
+
+    &__day {
+        padding: .5rem;
+        text-align: center;
+        font-weight: 500;
+        border-left: 1px solid var(--bs-border-color);
+
+        small { font-size: .6875rem; letter-spacing: .04em; }
+        span  { font-variant-numeric: tabular-nums; }
+    }
+
+    &__cell {
+        padding: 0;
+        border-left: 1px solid var(--bs-border-color);
+    }
+
+    // Only the hour lines are drawn. A rule between every half hour reads as a
+    // dense table rather than a block of time, and seeing the block is the
+    // entire point of a grid.
+    &__hour &__cell,
+    &__hour &__gutter {
+        border-top: 1px solid var(--bs-border-color);
+    }
+
+    &__slot {
+        height: 1.25rem;
+        width: 100%;
+        transition: background-color .1s ease;
+
+        &.is-editable { cursor: pointer; }
+        &.is-editable:hover { background: rgba(var(--bs-primary-rgb), .18); }
+
+        &.is-mine   { background: rgb(var(--bs-primary-rgb)); }
+        &.is-shared { background: rgba(var(--bs-primary-rgb), .22); }
+    }
+
+    &__key {
+        display: inline-block;
+        height: .75rem;
+        width: .75rem;
+        border-radius: .1875rem;
+
+        &.is-mine   { background: rgb(var(--bs-primary-rgb)); }
+        &.is-shared { background: rgba(var(--bs-primary-rgb), .22); }
+    }
+}
