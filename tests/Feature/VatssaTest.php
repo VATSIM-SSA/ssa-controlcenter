@@ -27,6 +27,7 @@ use App\Models\Vatssa\UserPlatform;
 use App\Notifications\Vatssa\MentorLostNotification;
 use App\Notifications\Vatssa\StudentRemovedFromMentorNotification;
 use App\Services\PermissionMatrix;
+use App\Services\Vatssa\Discord;
 use App\Tasks\Types\CheckoutRequest;
 use App\Tasks\Types\LeaveOfAbsence;
 use App\Tasks\Types\MentorNeeded;
@@ -35,6 +36,8 @@ use Database\Seeders\VatssaPipelineSeeder;
 use Database\Seeders\VatssaSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Schema;
 use PHPUnit\Framework\Attributes\Test;
@@ -1747,6 +1750,91 @@ class VatssaTest extends TestCase
         );
 
         $this->assertContains('events.exams.manage', config('roles.permissions'));
+    }
+
+    // ---------------------------------------------------------------------
+    // Everything sent, written down
+    // ---------------------------------------------------------------------
+
+    #[Test]
+    public function every_email_the_application_sends_is_logged(): void
+    {
+        // A listener on MessageSent rather than a line at each of the nineteen
+        // notification classes. The point is not tidiness: it is that the
+        // twentieth notification somebody adds is logged without them
+        // remembering, so "what was this member told" always has an answer.
+        $this->seedFixtures();
+        $user = User::find(10000001);
+
+        Mail::raw('body', function ($message) use ($user) {
+            $message->to($user->email)->subject('A test notice');
+        });
+
+        $this->assertDatabaseHas('vatssa_action_log', [
+            'action' => 'mail.sent',
+            'user_id' => $user->id,
+        ]);
+
+        $this->assertDatabaseHas('vatssa_message_log', [
+            'user_id' => $user->id,
+            'subject' => 'A test notice',
+            'source' => 'control-center',
+        ]);
+    }
+
+    #[Test]
+    public function mail_to_an_unknown_address_is_still_recorded(): void
+    {
+        // Worth seeing rather than dropping: it usually means somebody's
+        // address changed and the division is emailing into a void.
+        $this->seedFixtures();
+
+        Mail::raw('body', function ($message) {
+            $message->to('nobody@example.invalid')->subject('Into the void');
+        });
+
+        $this->assertDatabaseHas('vatssa_action_log', [
+            'action' => 'mail.sent',
+            'user_id' => null,
+        ]);
+    }
+
+    #[Test]
+    public function an_unconfigured_discord_webhook_is_recorded_rather_than_silent(): void
+    {
+        // Blank is silent, not broken -- but silent must not mean invisible.
+        // A ping nobody can account for leaves "did the examiners get told?"
+        // with no answer, which is the question this workflow exists to end.
+        $this->seedFixtures();
+        config(['vatssa.discord.examiners' => null]);
+
+        $sent = app(Discord::class)
+            ->send('examiners', 'Somebody needs a CPT');
+
+        $this->assertFalse($sent);
+        $this->assertDatabaseHas('vatssa_action_log', [
+            'action' => 'discord.not_configured',
+            'level' => ActionLog::WARNING,
+        ]);
+    }
+
+    #[Test]
+    public function a_discord_ping_can_never_mention_a_role(): void
+    {
+        // A ping that can mention @everyone by accident is one somebody
+        // triggers at 3am. The payload forbids it whatever the message says.
+        $this->seedFixtures();
+        config(['vatssa.discord.events' => 'https://discord.test/hook']);
+
+        Http::fake(['discord.test/*' => Http::response('', 204)]);
+
+        app(Discord::class)->send('events', '@everyone CPT confirmed');
+
+        Http::assertSent(function ($request) {
+            return $request['allowed_mentions'] === ['parse' => []];
+        });
+
+        $this->assertDatabaseHas('vatssa_action_log', ['action' => 'discord.sent']);
     }
 
     #[Test]

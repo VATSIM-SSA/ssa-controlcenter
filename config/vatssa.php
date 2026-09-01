@@ -49,6 +49,29 @@ return [
     'moodle_secret' => env('VATSSA_MOODLE_SECRET'),
 
     /*
+    | Discord webhooks, one per audience.
+    |
+    | Call sites name the AUDIENCE -- 'examiners', 'events' -- and this maps it
+    | to a URL, so moving a channel is one edit here rather than a search
+    | through the application.
+    |
+    | UNSET IS SILENT, NOT BROKEN. App\Services\Vatssa\Discord records that it
+    | could not post and carries on: every stage change is on the page and in
+    | the action log regardless, so a missing webhook costs a notification and
+    | never a step. That is what makes it safe to ship this before the channels
+    | exist.
+    |
+    | Webhook URLs are credentials -- anybody holding one can post to that
+    | channel as the bot. They live in the .env on the VPS and are blank in
+    | every template in this repository, which is public.
+    */
+    'discord' => [
+        'examiners' => env('VATSSA_DISCORD_EXAMINERS'),
+        'events' => env('VATSSA_DISCORD_EVENTS'),
+        'training' => env('VATSSA_DISCORD_TRAINING'),
+    ],
+
+    /*
     | The consolidated roster.
     |
     | VATSSA's rule is that active in one area is active everywhere, so the

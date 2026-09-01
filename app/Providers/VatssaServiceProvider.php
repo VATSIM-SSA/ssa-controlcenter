@@ -3,10 +3,13 @@
 namespace App\Providers;
 
 use App\Http\Middleware\VatssaBridgeToken;
+use App\Listeners\Vatssa\LogSentMail;
 use App\Models\Task;
 use App\Observers\VatssaTaskObserver;
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Mail\Events\MessageSent;
 use Illuminate\Routing\Router;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 
@@ -85,5 +88,12 @@ class VatssaServiceProvider extends ServiceProvider
         // because TaskController::store() calls Task::create() -- so the
         // controller needs no change at all.
         Task::observe(VatssaTaskObserver::class);
+
+        // Every email this application sends, logged. An event listener rather
+        // than a line at each of the nineteen notification classes: those are
+        // upstream files, and -- the part that matters -- the twentieth one
+        // somebody adds would not be logged and nobody would find out until a
+        // member asked what they were told.
+        Event::listen(MessageSent::class, LogSentMail::class);
     }
 }

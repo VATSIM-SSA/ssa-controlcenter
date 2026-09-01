@@ -11,6 +11,7 @@ use App\Models\Vatssa\ActionLog;
 use App\Models\Vatssa\AvailabilityPoll;
 use App\Models\Vatssa\AvailabilityResponse;
 use App\Models\Vatssa\Exam;
+use App\Services\Vatssa\Discord;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -174,6 +175,11 @@ class ExamController extends Controller
         $this->note($exam, 'The exam was authorised. ' . ($exam->student()?->name ?? 'The student')
             . ' has been asked for their availability.');
 
+        // No ping. The only person who has to act is the student, and they get
+        // an email plus the item on their own page -- posting "somebody has
+        // been asked for their availability" to a staff channel is noise that
+        // teaches people to mute it.
+
         return back()->with('success', 'Authorised. The student has been asked for availability.');
     }
 
@@ -205,6 +211,12 @@ class ExamController extends Controller
 
         $this->note($exam, ($exam->student()?->name ?? 'The student')
             . ' submitted ' . count($marked) . ' possible times. With the events team now.');
+
+        $this->ping('events', ($exam->student()?->name ?? 'A student')
+            . ' has given ' . count($marked) . ' possible times for their '
+            . ($exam->training?->ratings->pluck('name')->join(' + ') ?: '') . ' practical exam. '
+            . 'Mark which ones are clear of division plans: ' . route('vatssa.exams.show', $exam),
+            $exam);
 
         return back()->with('success', 'Sent to the events team.');
     }
@@ -250,6 +262,17 @@ class ExamController extends Controller
                 $exam->training?->user_id,
                 ['exam_id' => $exam->id],
             );
+        }
+
+        // Only worth pinging examiners when there is actually something to
+        // take. A ping into an empty list is how a channel gets muted.
+        if ($offerable > 0) {
+            $this->ping('examiners', ($exam->student()?->name ?? 'A student')
+                . ' needs a '
+                . ($exam->training?->ratings->pluck('name')->join(' + ') ?: '')
+                . ' practical exam. ' . $offerable . ' times work for them and the calendar. '
+                . 'First examiner to take it books the slot: ' . route('vatssa.exams.show', $exam),
+                $exam);
         }
 
         return back()->with('success', 'Cleared. Examiners can now take this.');
@@ -299,6 +322,15 @@ class ExamController extends Controller
         $this->note($exam, Auth::user()->name . ' will examine on '
             . $exam->scheduled_for->format('j M Y') . ' at '
             . $exam->scheduled_for->format('H:i') . 'z.');
+
+        // The events team, because the banner and myVATSIM are now theirs and
+        // the seven-day clock is already running.
+        $this->ping('events', 'CPT confirmed: ' . ($exam->student()?->name ?? 'a student')
+            . ' with ' . Auth::user()->name . ' on '
+            . $exam->scheduled_for->format('D j M') . ' at '
+            . $exam->scheduled_for->format('H:i') . 'z. '
+            . 'Banner, Discord, myVATSIM and social please: ' . route('vatssa.exams.show', $exam),
+            $exam);
 
         return back()->with('success', 'Confirmed. The events team publish it next.');
     }
@@ -353,6 +385,15 @@ class ExamController extends Controller
         $this->note($exam, 'The exam was cancelled by ' . Auth::user()->name
             . ': ' . $data['reason']);
 
+        // Both channels. An examiner who has held an evening and an events team
+        // who have made a banner both need to know, and which of them is
+        // affected depends on how far it had got.
+        foreach (['examiners', 'events'] as $channel) {
+            $this->ping($channel, 'CPT cancelled: ' . ($exam->student()?->name ?? 'a student')
+                . ($exam->scheduled_for ? ' on ' . $exam->scheduled_for->format('D j M') : '')
+                . ' — ' . $data['reason'], $exam);
+        }
+
         return back()->with('success', 'Cancelled, and everybody involved can see why.');
     }
 
@@ -376,6 +417,21 @@ class ExamController extends Controller
             ExamStage::AWAITING_EXAMINER => $user->can('confirm', $exam),
             default => false,
         };
+    }
+
+    /**
+     * Tell a Discord channel, and record that it was told.
+     *
+     * Every ping goes through App\Services\Vatssa\Discord, which logs whether
+     * it succeeded, failed or found no webhook. A ping nobody can account for
+     * leaves "did the examiners get told?" with no answer, which is exactly the
+     * question this workflow exists to end.
+     */
+    private function ping(string $channel, string $message, Exam $exam): void
+    {
+        app(Discord::class)->send(
+            $channel, $message, $exam->training_id, $exam->training?->user_id
+        );
     }
 
     /**
