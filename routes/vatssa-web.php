@@ -4,7 +4,6 @@ use App\Http\Controllers\Vatssa\ActionLogController;
 use App\Http\Controllers\Vatssa\AvailabilityController;
 use App\Http\Controllers\Vatssa\ExamController;
 use App\Http\Controllers\Vatssa\InternalNoteController;
-use App\Http\Controllers\Vatssa\PreviewController;
 use App\Http\Controllers\Vatssa\RequestActionController;
 use App\Http\Controllers\Vatssa\SettingsController;
 use App\Http\Controllers\Vatssa\TaskEditController;
@@ -40,67 +39,6 @@ Route::middleware(['web', 'auth', 'activity', 'suspended'])
         // training and an open request cannot disagree.
         Route::post('/{task}/pause/{mode}', [RequestActionController::class, 'pause'])
             ->whereIn('mode', ['pause', 'resume'])->name('pause');
-    });
-
-/*
-| THE TAILWIND PREVIEW -- DELETE THIS BLOCK TO REVERT.
-|
-| Parallel copies of the dashboard, the profile and the trainings table,
-| built in Tailwind, reading real data and writing nothing. The upstream
-| pages are untouched and keep working exactly as they do today.
-|
-| It exists to answer one question -- what would a migration actually look
-| like -- without editing 554 blades that upstream also edits, which would
-| be a merge conflict on every one of them for ever.
-|
-| Reverting: delete this block, app/Http/Controllers/Vatssa/PreviewController.php
-| and resources/views/vatssa/preview/. That is the whole footprint. The
-| Tailwind entry point and layout stay -- the availability tool uses them
-| for real.
-|
-| Staff-gated, not because the data is sensitive (it is the same data on
-| the same pages) but because a half-finished parallel dashboard teaches
-| members that Control Center has two of everything.
-*/
-Route::middleware(['web', 'auth', 'activity', 'suspended', 'can:fir.management.reports.view'])
-    ->prefix('vatssa/preview')
-    ->name('vatssa.preview.')
-    ->group(function () {
-        // Pages that are not tables.
-        Route::get('/', [PreviewController::class, 'dashboard'])->name('dashboard');
-        Route::get('/user/{user}', [PreviewController::class, 'profile'])->name('profile');
-        Route::get('/training/{training}', [PreviewController::class, 'training'])->name('training');
-
-        // Everything that is. See PreviewController for why they share one
-        // template rather than getting twenty near-identical blades.
-        Route::get('/trainings', [PreviewController::class, 'trainings'])->name('trainings');
-        Route::get('/trainings/system', [PreviewController::class, 'systemRequests'])
-            ->name('trainings.system');
-        Route::get('/trainings/closed', [PreviewController::class, 'closedTrainings'])
-            ->name('trainings.closed');
-        Route::get('/users', [PreviewController::class, 'users'])->name('users');
-        Route::get('/tasks', [PreviewController::class, 'tasks'])->name('tasks');
-        Route::get('/bookings', [PreviewController::class, 'bookings'])->name('bookings');
-        Route::get('/positions', [PreviewController::class, 'positions'])->name('positions');
-        Route::get('/mentor', [PreviewController::class, 'mentorStudents'])->name('mentor');
-
-        // Rule::in on the segment, so the type reaches the query as one of
-        // three known strings rather than whatever was in the URL.
-        Route::get('/endorsements/{type}', [PreviewController::class, 'endorsements'])
-            ->whereIn('type', ['solo', 'examiner', 'visiting'])
-            ->name('endorsements');
-
-        // Administration. Read only, like the rest -- each of these changes how
-        // the whole application behaves, and a second form writing them without
-        // the validation the real pages have is a way to break production from
-        // a mockup.
-        Route::get('/settings', [PreviewController::class, 'settings'])->name('settings');
-        Route::get('/logs', [PreviewController::class, 'logs'])->name('logs');
-
-        // The one write the mirror allows. It posts to vatssa.requests.store --
-        // upstream's own controller, validation, policy and observer -- so a
-        // request raised here is byte-for-byte one raised from the real page.
-        Route::get('/request', [PreviewController::class, 'newRequest'])->name('request');
     });
 
 /*

@@ -109,11 +109,18 @@ class ExamController extends Controller
             return back()->withErrors('This student already has an exam being arranged.');
         }
 
-        $exam = Exam::create([
+        $exam = new Exam([
             'training_id' => $training->id,
-            'stage' => ExamStage::REQUESTED,
             'requested_by' => Auth::id(),
         ]);
+
+        // Assigned, not mass assigned. `stage` is deliberately absent from
+        // $fillable so nothing can set it from request input -- see the model.
+        // Passing it to create() would have been silently dropped and worked
+        // anyway, by coincidence of the column default, which is the kind of
+        // thing that keeps working until somebody changes the default.
+        $exam->stage = ExamStage::REQUESTED;
+        $exam->save();
 
         $this->note($exam, 'A practical exam was requested by ' . Auth::user()->name . '.');
 

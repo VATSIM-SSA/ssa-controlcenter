@@ -6,6 +6,7 @@ use App\Models\Vatssa\AvailabilityPoll;
 use App\Models\Vatssa\AvailabilityResponse;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Auth;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 
 /**
@@ -38,9 +39,37 @@ use Livewire\Component;
  */
 class AvailabilityGrid extends Component
 {
+    /*
+    |--------------------------------------------------------------------------
+    | Everything that decides WHAT MAY BE WRITTEN is #[Locked].
+    |--------------------------------------------------------------------------
+    |
+    | Livewire rehydrates public properties from the request payload on every
+    | call. Without #[Locked] the browser owns them, and three of these decide
+    | authorisation rather than presentation:
+    |
+    | `role` was the bad one. A student could paint their own availability,
+    | change `role` to 'events' in the payload, and paint again -- writing a
+    | response row claiming the events team had cleared those times. Exam
+    | ::offerableSlots() intersects the student role with the events role, so
+    | the exam would then go out to examiners offering times the events team
+    | never saw. A student could book their own CPT around the calendar.
+    |
+    | `readOnly` guards a settled poll; the client could set it false and edit
+    | availability for an exam already confirmed.
+    |
+    | `poll` would let one component instance be pointed at another poll --
+    | paint() re-checks visibility, so that one was covered, but it should not
+    | have depended on remembering to.
+    |
+    | `selected` and `weekStart` stay open: they are what the person is
+    | choosing, and paint() validates both against the poll's own slot list.
+    */
+    #[Locked]
     public AvailabilityPoll $poll;
 
     /** This person's role in this poll, which decides the question being asked. */
+    #[Locked]
     public string $role = AvailabilityPoll::ROLE_PARTICIPANT;
 
     /** @var array<int, string> ISO UTC slot start times. */
@@ -49,6 +78,7 @@ class AvailabilityGrid extends Component
     /** Monday of the week on screen. */
     public string $weekStart;
 
+    #[Locked]
     public bool $readOnly = false;
 
     public function mount(AvailabilityPoll $poll, ?string $role = null): void
@@ -60,7 +90,7 @@ class AvailabilityGrid extends Component
         abort_unless($poll->isVisibleTo(Auth::user()), 403);
 
         $this->poll = $poll;
-        $this->role = $role ?? $this->guessRole();
+        $this->role = $this->resolveRole($role);
 
         $existing = $poll->responses()->where('user_id', Auth::id())->first();
         $this->selected = $existing?->slots ?? [];
@@ -74,20 +104,51 @@ class AvailabilityGrid extends Component
     }
 
     /**
-     * What this person is to this poll, when nobody said.
+     * What this person is to this poll, verified rather than taken.
      *
-     * The student on the training is the student. Everybody else is a
-     * participant until a controller says otherwise -- guessing "examiner"
-     * from an endorsement would let somebody answer a question they were not
-     * asked.
+     * The view asks for a role -- the exam page mounts the same grid as
+     * 'student' on one screen and 'events' on another -- and this is where that
+     * request is CHECKED. A caller asking for a role the person does not hold
+     * gets 'participant', not an error: the grid still renders and still
+     * records their times, it simply does not record them as somebody else's.
+     *
+     * #[Locked] stops the browser changing this after mount. This stops a view
+     * being wrong in the first place, which is the half a locked property
+     * cannot cover.
      */
-    private function guessRole(): string
+    private function resolveRole(?string $requested): string
     {
-        if ($this->poll->training?->user_id === Auth::id()) {
-            return AvailabilityPoll::ROLE_STUDENT;
+        $user = Auth::user();
+        $isStudent = $this->poll->training?->user_id === $user->id;
+
+        $allowed = [AvailabilityPoll::ROLE_PARTICIPANT];
+
+        if ($isStudent) {
+            $allowed[] = AvailabilityPoll::ROLE_STUDENT;
         }
 
-        return AvailabilityPoll::ROLE_PARTICIPANT;
+        // Clearing the calendar is the events team's job and nobody else's --
+        // the same separation ExamPolicy::clear() enforces. See the note there
+        // on why this cannot be a bookings query.
+        if ($user->hasPermission('events.exams.manage')) {
+            $allowed[] = AvailabilityPoll::ROLE_EVENTS;
+        }
+
+        if ($user->hasPermission('examinations.manage')) {
+            $allowed[] = AvailabilityPoll::ROLE_EXAMINER;
+        }
+
+        if ($this->poll->training?->mentors->contains($user->id)) {
+            $allowed[] = AvailabilityPoll::ROLE_MENTOR;
+        }
+
+        if ($requested !== null && in_array($requested, $allowed, true)) {
+            return $requested;
+        }
+
+        return $isStudent
+            ? AvailabilityPoll::ROLE_STUDENT
+            : AvailabilityPoll::ROLE_PARTICIPANT;
     }
 
     public function previousWeek(): void
@@ -144,7 +205,11 @@ class AvailabilityGrid extends Component
 
         AvailabilityResponse::updateOrCreate(
             ['poll_id' => $this->poll->id, 'user_id' => Auth::id()],
-            ['slots' => $this->selected, 'role' => $this->role],
+            // Re-derived on every write rather than trusting the property, even
+            // though it is #[Locked]. Locked is a Livewire guarantee; this is
+            // the application's own, and the cost of being wrong here is a
+            // student clearing their own calendar.
+            ['slots' => $this->selected, 'role' => $this->resolveRole($this->role)],
         );
     }
 

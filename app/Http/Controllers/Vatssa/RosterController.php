@@ -83,7 +83,16 @@ class RosterController extends Controller
                     'visiting' => $this->named($live, 'VISITING'),
                     // No 'examiner' key, on purpose. See the class docblock.
                 ],
-                'last_online' => $user->atcActivity->max('last_online')?->toIso8601String(),
+                // A DATE, not a timestamp, and this endpoint needs no
+                // credential to read.
+                //
+                // Name, CID, rating and endorsements are all genuinely public
+                // -- they are on the roster page and on VATSIM's own stats
+                // site. A minute-accurate last-seen is not: it says when a
+                // named person was at their computer, for every member, to
+                // anybody who asks. Nothing on the homepage needs better than a
+                // day, and `atc_active` already answers "are they current".
+                'last_online' => $user->atcActivity->max('last_online')?->toDateString(),
             ];
         })->sortBy('name')->values()->all();
     }

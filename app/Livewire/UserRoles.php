@@ -17,6 +17,20 @@ class UserRoles extends Component
 {
     use AuthorizesRequests;
 
+    /*
+    | VATSSA: #[Locked].
+    |
+    | mount() authorises `viewAccess` on this user -- once, on the request that
+    | built the component. Livewire rehydrates public properties from the
+    | payload on every call after that, so swapping the id rendered somebody
+    | else's roles to anybody who could legitimately open this for one member.
+    |
+    | Granting was never exposed: GrantRole re-authorises `updateRole` against
+    | whichever user it is handed. The disclosure was the hole, and it is the
+    | quieter half of this class of bug -- nothing fails, a page just answers a
+    | question it was not asked.
+    */
+    #[\Livewire\Attributes\Locked]
     public User $user;
 
     public bool $showAddModal = false;

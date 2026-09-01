@@ -18,11 +18,21 @@ use Illuminate\Support\Facades\Route;
 */
 
 /*
-| The consolidated roster. Read-only, no secrets, and the same list the public
-| website already shows -- so it is open, like upstream's own /api/bookings and
-| /api/positions. Cached; see config/vatssa.php.
+| The consolidated roster. Read-only and open, like upstream's own
+| /api/bookings and /api/positions, because it is the list the public website
+| already shows. Cached; see config/vatssa.php.
+|
+| THROTTLED. It was not, and it is the one VATSSA endpoint an outsider can
+| reach with no credential at all. Every other route in this file is rate
+| limited; this one returning the whole division's roster for free, as fast as
+| anybody cares to ask, was an oversight rather than a decision.
+|
+| 30/minute is far above what the homepage needs -- it caches for five minutes
+| -- and far below what makes bulk collection comfortable.
 */
-Route::get('/roster', [RosterController::class, 'index'])->name('vatssa.roster');
+Route::middleware('throttle:30,1')
+    ->get('/roster', [RosterController::class, 'index'])
+    ->name('vatssa.roster');
 
 /*
 | The training pipeline bridge.

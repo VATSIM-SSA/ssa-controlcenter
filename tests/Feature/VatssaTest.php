@@ -6,6 +6,7 @@ use App\Helpers\ExamStage;
 use App\Helpers\TaskStatus;
 use App\Helpers\TrainingStatus;
 use App\Http\Controllers\TaskController;
+use App\Livewire\Vatssa\AvailabilityGrid;
 use App\Models\Area;
 use App\Models\Position;
 use App\Models\Rating;
@@ -40,6 +41,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Schema;
+use Livewire\Livewire;
 use PHPUnit\Framework\Attributes\Test;
 use RuntimeException;
 use Tests\TestCase;
@@ -1835,6 +1837,109 @@ class VatssaTest extends TestCase
         });
 
         $this->assertDatabaseHas('vatssa_action_log', ['action' => 'discord.sent']);
+    }
+
+    // ---------------------------------------------------------------------
+    // Nobody clears their own calendar
+    // ---------------------------------------------------------------------
+
+    #[Test]
+    public function a_student_cannot_record_availability_as_the_events_team(): void
+    {
+        // The worst bug found in review, and it was mine. `role` was a public
+        // Livewire property, so a student could paint their own times, change
+        // role to 'events' in the payload, and paint again -- claiming the
+        // events team had cleared those slots.
+        //
+        // Exam::offerableSlots() intersects the student role with the events
+        // role, so the exam would then reach examiners offering times the
+        // events team never saw: a student booking their own CPT around the
+        // division calendar.
+        $this->seedFixtures();
+
+        $poll = AvailabilityPoll::create([
+            'purpose' => AvailabilityPoll::CPT,
+            'title' => 'test',
+            'starts_on' => now()->addDays(10),
+            'ends_on' => now()->addDays(40),
+            'slot_minutes' => 30,
+        ]);
+
+        $student = User::find(10000001);
+        $this->assertFalse($student->hasPermission('events.exams.manage'),
+            'this test is meaningless if the student can already clear');
+
+        $slot = $poll->slots()->first()->toIso8601String();
+
+        Livewire::actingAs($student)
+            ->test(AvailabilityGrid::class, [
+                'poll' => $poll,
+                // Asking for the role a student must never hold.
+                'role' => AvailabilityPoll::ROLE_EVENTS,
+            ])
+            ->call('paint', [$slot]);
+
+        $written = AvailabilityResponse::where('poll_id', $poll->id)
+            ->where('user_id', $student->id)->first();
+
+        $this->assertNotNull($written, 'their own availability should still record');
+        $this->assertNotSame(AvailabilityPoll::ROLE_EVENTS, $written->role,
+            'a student must never be recorded as the events team');
+    }
+
+    #[Test]
+    public function the_events_team_can_still_clear(): void
+    {
+        // The fix must not break the thing it protects.
+        $this->seedFixtures();
+
+        $events = User::whereHas('roleAssignments',
+            fn ($q) => $q->where('role', 'events-team'))->first();
+
+        if ($events === null) {
+            $this->markTestSkipped('no seeded events-team member');
+        }
+
+        $poll = AvailabilityPoll::create([
+            'purpose' => AvailabilityPoll::CPT,
+            'title' => 'test',
+            'starts_on' => now()->addDays(10),
+            'ends_on' => now()->addDays(40),
+            'slot_minutes' => 30,
+        ]);
+
+        Livewire::actingAs($events)
+            ->test(AvailabilityGrid::class, [
+                'poll' => $poll,
+                'role' => AvailabilityPoll::ROLE_EVENTS,
+            ])
+            ->call('paint', [$poll->slots()->first()->toIso8601String()]);
+
+        $this->assertSame(
+            AvailabilityPoll::ROLE_EVENTS,
+            AvailabilityResponse::where('poll_id', $poll->id)
+                ->where('user_id', $events->id)->first()?->role,
+        );
+    }
+
+    #[Test]
+    public function the_public_roster_gives_a_date_not_a_timestamp(): void
+    {
+        // This endpoint needs no credential. Name, CID, rating and endorsements
+        // are genuinely public; a minute-accurate last-seen is not -- it says
+        // when a named person was at their computer, to anybody who asks.
+        $this->seedFixtures();
+
+        $response = $this->getJson('/api/vatssa/roster')->assertOk();
+
+        foreach ($response->json('data') ?? [] as $row) {
+            if ($row['last_online'] !== null) {
+                $this->assertMatchesRegularExpression(
+                    '/^\d{4}-\d{2}-\d{2}$/', $row['last_online'],
+                    'last_online must be a date, never a timestamp'
+                );
+            }
+        }
     }
 
     #[Test]

@@ -25,6 +25,25 @@ class Combobox extends Component
 
     /** FQCN of a ComboboxOptionProvider. Locked so a tampered request cannot swap it. */
     #[Locked]
+    /*
+    | VATSSA: #[Locked].
+    |
+    | `options()` does `app($this->provider)` -- it resolves a class name out of
+    | the container. Livewire rehydrates public properties from the request
+    | payload, so without this the class name comes from the browser.
+    |
+    | The `instanceof ComboboxOptionProvider` check below stops the RESULT of a
+    | wrong class being returned. It does not stop the class being built:
+    | `app()` instantiates before anything is checked, so any constructor the
+    | container can satisfy runs first. That is a real primitive to hand a
+    | member, for no benefit -- the provider is set once by the blade that
+    | mounts this and is never something a person chooses.
+    |
+    | `$context` is locked for the same reason: it is passed straight to
+    | `options()`, and every provider treats it as trusted (`['area' => 5]`),
+    | which is exactly what a filter that decides what rows come back must not be.
+    */
+    #[Locked]
     public string $provider;
 
     /**
@@ -35,6 +54,7 @@ class Combobox extends Component
      * @var array<string, mixed>|null
      */
     #[Reactive]
+    #[Locked]
     public ?array $context = null;
 
     public int $minChars = 2;

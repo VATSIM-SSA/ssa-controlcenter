@@ -20,7 +20,27 @@ class Exam extends Model
 {
     protected $table = 'vatssa_exams';
 
-    protected $guarded = [];
+    /**
+     * Explicit, not `$guarded = []`.
+     *
+     * Nothing today passes request input straight into `Exam::create()` -- the
+     * controller builds every array by hand. This is about what happens next:
+     * the first person to add a form that fills an exam from a request would
+     * otherwise be handing over `stage`, `examiner_id` and `confirmed_at` as
+     * well, and a student could confirm their own exam by adding two fields to
+     * a POST.
+     *
+     * `stage` is deliberately ABSENT. It moves only through
+     * `moveTo()`, which enforces the ordering; a mass assignment that could set
+     * it would route around the entire workflow.
+     */
+    protected $fillable = [
+        'training_id', 'requested_by', 'authorised_by', 'authorised_at',
+        'poll_id', 'availability_submitted_at', 'events_cleared_at',
+        'examiner_id', 'confirmed_at', 'scheduled_for', 'position_id',
+        'banner_made', 'on_discord', 'on_myvatsim', 'on_social',
+        'vatsim_approved', 'published_at', 'outcome_note',
+    ];
 
     protected $casts = [
         'stage' => ExamStage::class,
