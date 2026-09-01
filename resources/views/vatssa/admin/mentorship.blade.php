@@ -1,177 +1,172 @@
-@extends('layouts.vatssa')
+@extends('layouts.app')
 
 @section('title', 'Mentorship')
 
 @section('content')
 
 {{--
-    VATSSA: mentor capacity and ceilings.
+    VATSSA: mentor capacity and the resource links.
 
-    Converted to Tailwind. Our own page, so no merge conflict -- see
-    layouts/vatssa.blade.php for why that decides what gets converted.
-
-    Every form field name is unchanged: max_rating[id], total[id],
-    capacity[id][ratingId], resources[i][label|url|icon]. A restyle that quietly
-    renames a field is a restyle that breaks a controller.
-
-    The one design idea: THREE NUMBERS, and they mean different things.
-    Bootstrap rendered them as three identical little boxes in a row, so nobody
-    could tell the ceiling from the total from the per-rating limit without
-    reading the header. They are grouped and labelled here instead.
+    Both were going to live on a separate portal at mentors.vatssa.com, behind
+    Cloudflare Access, with its own VATSIM login and its own copy of who mentors
+    whom. They are a number and a list of links.
 --}}
-<form method="POST" action="{{ route('vatssa.admin.mentorship.update') }}" class="space-y-8">
+
+<form method="POST" action="{{ route('vatssa.admin.mentorship.update') }}">
     @csrf
 
-    <div class="max-w-3xl">
-        <h2 class="text-xl font-semibold tracking-tight">Mentorship</h2>
-        <p class="mt-2 text-sm text-ink-soft">
-            <strong class="font-medium text-ink">Up to</strong> is the ceiling:
-            the highest rating this mentor may teach at all.
-            <strong class="font-medium text-ink">Total</strong> caps students
-            across every rating.
-            The per-rating numbers cap each pipeline on its own.
-        </p>
-        <p class="mt-2 text-sm text-ink-soft">
-            Blank is <em>no limit</em>. <strong class="font-medium text-ink">0</strong>
-            means they take nobody for that rating. Those are different instructions, and
-            the difference is why a blank box is never treated as a zero.
-        </p>
+    <div class="row">
+        <div class="col-xl-12 col-lg-12 mb-12">
+            <div class="card shadow mb-4">
+                <div class="card-header bg-primary py-3">
+                    <h6 class="m-0 fw-bold text-white">
+                        <i class="fas fa-users"></i>&nbsp;Mentor capacity
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted">
+                        Everything on this page is yours to set. A mentor asks
+                        through the request desk and you decide -- there is no
+                        self-service field anywhere, because one beside the
+                        request would make the request pointless.
+                    </p>
+                    <p class="text-muted mb-3">
+                        <strong>Up to</strong> is the ceiling: the highest rating
+                        they may mentor at all. A rating above it does not appear
+                        to them. <strong>Total</strong> caps students across
+                        every rating; the per-rating numbers cap each one. Both
+                        apply, and the smaller wins -- a total of 5 with an S2
+                        limit of 4 means four S2s and one of something else.
+                    </p>
+                    <p class="text-muted mb-3">
+                        Blank is no limit. <strong>0</strong> means they take
+                        nobody for that rating. Those are different instructions.
+                    </p>
+
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Mentor</th>
+                                    <th style="min-width: 9rem">Up to</th>
+                                    <th style="min-width: 5rem">Total</th>
+                                    @foreach($ratings as $rating)
+                                        <th style="min-width: 4.5rem">{{ $rating->name }}</th>
+                                    @endforeach
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @forelse($mentors as $mentor)
+                                    @php $ceiling = $ceilings->get($mentor->id); @endphp
+                                    <tr>
+                                        <td>
+                                            {{ $mentor->name }}
+                                            <small class="text-muted d-block">
+                                                {{ $mentor->id }} — running
+                                                {{ \App\Models\Vatssa\MentorCapacity::loadFor($mentor) }}
+                                            </small>
+                                        </td>
+                                        <td>
+                                            <select class="form-select form-select-sm"
+                                                    name="max_rating[{{ $mentor->id }}]">
+                                                <option value="">No ceiling</option>
+                                                @foreach($ratings as $rating)
+                                                    <option value="{{ $rating->id }}"
+                                                        @selected($ceiling?->max_rating_id === $rating->id)>
+                                                        {{ $rating->name }}
+                                                    </option>
+                                                @endforeach
+                                            </select>
+                                        </td>
+                                        <td>
+                                            <input type="number" min="0" max="99"
+                                                   class="form-control form-control-sm"
+                                                   name="total[{{ $mentor->id }}]"
+                                                   value="{{ $ceiling?->total_limit }}"
+                                                   placeholder="—">
+                                        </td>
+                                        @foreach($ratings as $rating)
+                                            @php
+                                                $row = $capacity->where('user_id', $mentor->id)
+                                                    ->where('rating_id', $rating->id)->first();
+                                            @endphp
+                                            <td>
+                                                <input type="number" min="0" max="99"
+                                                       class="form-control form-control-sm"
+                                                       name="capacity[{{ $mentor->id }}][{{ $rating->id }}]"
+                                                       value="{{ $row?->student_limit }}"
+                                                       placeholder="—">
+                                            </td>
+                                        @endforeach
+                                    </tr>
+                                @empty
+                                    <tr>
+                                        <td colspan="{{ 3 + $ratings->count() }}" class="text-muted">
+                                            Nobody holds the mentor role.
+                                        </td>
+                                    </tr>
+                                @endforelse
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-12 col-lg-12 mb-12">
+            <div class="card shadow mb-4">
+                <div class="card-header bg-primary py-3">
+                    <h6 class="m-0 fw-bold text-white">
+                        <i class="fas fa-folder-open"></i>&nbsp;Mentor resources
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted">
+                        The syllabus, the sweatbox files, the exam template.
+                        Editable here so a moved folder is a one-minute fix by
+                        whoever moved it, rather than a pinned Discord message
+                        nobody can find.
+                    </p>
+
+                    {{-- A fixed number of rows rather than add/remove controls.
+                         Six links is the realistic ceiling, and a blank row
+                         costs nothing where a JavaScript row-builder costs a
+                         maintenance burden forever. --}}
+                    @for($i = 0; $i < 8; $i++)
+                        @php $resource = $resources->values()->get($i); @endphp
+                        <div class="row g-1 mb-2">
+                            <div class="col-sm-4">
+                                <input type="text" class="form-control form-control-sm"
+                                       name="resources[{{ $i }}][label]"
+                                       value="{{ $resource?->label }}" placeholder="Label">
+                            </div>
+                            <div class="col-sm-5">
+                                <input type="url" class="form-control form-control-sm"
+                                       name="resources[{{ $i }}][url]"
+                                       value="{{ $resource?->url }}" placeholder="https://">
+                            </div>
+                            <div class="col-sm-3">
+                                <input type="text" class="form-control form-control-sm"
+                                       name="resources[{{ $i }}][icon]"
+                                       value="{{ $resource?->icon }}" placeholder="fa-link">
+                            </div>
+                        </div>
+                    @endfor
+
+                    <small class="text-muted">
+                        A row with no label or no address is dropped. Icons are
+                        Font Awesome names, such as <code>fa-book</code>.
+                    </small>
+                </div>
+            </div>
+        </div>
     </div>
 
-    <section class="overflow-hidden rounded-xl border border-line bg-card">
-        <div class="overflow-x-auto">
-            <table class="w-full text-sm">
-                <thead>
-                    <tr class="border-b border-line text-left">
-                        <th class="px-5 py-3 text-[11px] font-semibold uppercase tracking-wider text-ink-faint">
-                            Mentor
-                        </th>
-                        <th class="px-3 py-3 text-[11px] font-semibold uppercase tracking-wider text-ink-faint">
-                            Up to
-                        </th>
-                        <th class="px-3 py-3 text-[11px] font-semibold uppercase tracking-wider text-ink-faint">
-                            Total
-                        </th>
-                        {{-- The per-rating block gets its own visual group, so
-                             the eye can tell "one number about the mentor" from
-                             "one number per pipeline". --}}
-                        <th colspan="{{ $ratings->count() }}"
-                            class="border-l border-line px-3 py-3 text-center text-[11px]
- font-semibold uppercase tracking-wider text-ink-faint">
-                            Per rating
-                        </th>
-                    </tr>
-                    <tr class="border-b border-line-soft text-left">
-                        <th colspan="3"></th>
-                        @foreach($ratings as $rating)
-                            <th class="{{ $loop->first ? 'border-l border-line' : '' }}
- px-3 pb-2 text-center text-xs font-medium text-ink-soft">
-                                {{ $rating->name }}
-                            </th>
-                        @endforeach
-                    </tr>
-                </thead>
-
-                <tbody class="divide-y divide-line-soft">
-                    @forelse($mentors as $mentor)
-                        @php
-                            $ceiling = $ceilings->get($mentor->id);
-                            $load = \App\Models\Vatssa\MentorCapacity::loadFor($mentor);
-                            $field = 'w-full rounded-lg border border-line bg-card px-2 py-1.5 '
-                                . 'text-sm tabular-nums focus:border-brand '
-                                . '';
-                        @endphp
-                        <tr class="align-middle">
-                            <td class="px-5 py-3">
-                                <p class="font-medium">{{ $mentor->name }}</p>
-                                <p class="mt-0.5 text-xs text-ink-soft">
-                                    <span class="tabular-nums">{{ $mentor->id }}</span>
-                                    · running {{ $load }}
-                                </p>
-                            </td>
-
-                            <td class="px-3 py-3">
-                                <select name="max_rating[{{ $mentor->id }}]" class="{{ $field }}">
-                                    <option value="">No ceiling</option>
-                                    @foreach($ratings as $rating)
-                                        <option value="{{ $rating->id }}"
-                                            @selected($ceiling?->max_rating_id === $rating->id)>
-                                            {{ $rating->name }}
-                                        </option>
-                                    @endforeach
-                                </select>
-                            </td>
-
-                            <td class="px-3 py-3">
-                                <input type="number" min="0" max="99" placeholder="—"
-                                       name="total[{{ $mentor->id }}]"
-                                       value="{{ $ceiling?->total_limit }}"
-                                       class="{{ $field }} w-20">
-                            </td>
-
-                            @foreach($ratings as $rating)
-                                @php
-                                    $row = $capacity->where('user_id', $mentor->id)
-                                        ->where('rating_id', $rating->id)->first();
-                                @endphp
-                                <td class="{{ $loop->first ? 'border-l border-line-soft' : '' }} px-3 py-3">
-                                    <input type="number" min="0" max="99" placeholder="—"
-                                           name="capacity[{{ $mentor->id }}][{{ $rating->id }}]"
-                                           value="{{ $row?->student_limit }}"
-                                           class="{{ $field }} w-16 text-center">
-                                </td>
-                            @endforeach
-                        </tr>
-                    @empty
-                        <tr>
-                            <td colspan="{{ 3 + $ratings->count() }}"
-                                class="px-5 py-12 text-center text-ink-soft">
-                                Nobody holds the mentor role.
-                            </td>
-                        </tr>
-                    @endforelse
-                </tbody>
-            </table>
+    <div class="row">
+        <div class="col-xl-12 mb-4">
+            <button type="submit" class="btn btn-primary">Save</button>
         </div>
-    </section>
-
-    {{-- Mentor resources: the links that appear on every mentor's own page.
-         Six rows is the realistic ceiling, and a blank row is how you add one --
-         an "add row" button for something used twice a year is a control to
-         maintain rather than a feature. --}}
-    <section class="rounded-xl border border-line bg-card">
-        <div class="border-b border-line-soft px-6 py-4">
-            <h3 class="text-sm font-semibold tracking-tight">Mentor resources</h3>
-            <p class="mt-0.5 text-sm text-ink-soft">
-                Links shown on every mentor's page. Clear the label to remove one.
-            </p>
-        </div>
-
-        <div class="space-y-3 p-6">
-            @for($i = 0; $i < 6; $i++)
-                @php $resource = $resources[$i] ?? null; @endphp
-                <div class="grid gap-3 sm:grid-cols-[1fr_2fr_8rem]">
-                    <input type="text" name="resources[{{ $i }}][label]"
-                           value="{{ $resource?->label }}" placeholder="Label"
-                           class="rounded-lg border border-line bg-card px-3 py-2 text-sm
- focus:border-brand">
-                    <input type="url" name="resources[{{ $i }}][url]"
-                           value="{{ $resource?->url }}" placeholder="https://"
-                           class="rounded-lg border border-line bg-card px-3 py-2 text-sm
- focus:border-brand">
-                    <input type="text" name="resources[{{ $i }}][icon]"
-                           value="{{ $resource?->icon }}" placeholder="fa-link"
-                           class="rounded-lg border border-line bg-card px-3 py-2 text-sm
- focus:border-brand">
-                </div>
-            @endfor
-        </div>
-    </section>
-
-    <button type="submit"
-            class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-strong">
-        Save
-    </button>
+    </div>
 </form>
 
 @endsection
