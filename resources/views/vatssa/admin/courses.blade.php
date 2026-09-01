@@ -56,11 +56,23 @@
                                 </tr>
                             </thead>
                             <tbody>
+                                {{-- The unconfigured ones are marked on the row.
+                                     The warning above says an id of 0 means "no
+                                     theory at all", which is the single most
+                                     consequential thing on this page -- and it
+                                     was said only in prose, above a table where
+                                     0 and 4831 look equally deliberate. --}}
                                 @foreach($courses as $index => $course)
-                                    <tr>
+                                    @php $unset = ! $course->course_id || ! $course->exam_quiz_id; @endphp
+                                    <tr @class(['table-warning' => $unset])>
                                         <td>
                                             <input type="text" class="form-control form-control-sm" style="max-width: 8rem"
                                                    name="courses[{{ $index }}][rating]" value="{{ $course->rating }}" readonly>
+                                            @if($unset)
+                                                <small class="text-warning d-block mt-1">
+                                                    <i class="fas fa-triangle-exclamation"></i>&nbsp;No theory required
+                                                </small>
+                                            @endif
                                         </td>
                                         <td>
                                             <input type="number" class="form-control form-control-sm" min="0"

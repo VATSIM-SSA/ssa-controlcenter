@@ -39,63 +39,91 @@
     </div>
 @endif
 
-@foreach($templates as $template)
-    <div class="row">
-        <div class="col-xl-12 col-md-12 mb-12">
-            <div class="card shadow mb-4">
-                <div class="card-header bg-primary py-3 d-flex flex-row align-items-center justify-content-between">
-                    <h6 class="m-0 fw-bold text-white">
-                        {{ $template->key }} — {{ $template->name }}
-                    </h6>
-                    <span class="badge bg-light text-dark">{{ $template->channel }}</span>
-                </div>
-                <div class="card-body">
-                    @if($template->description)
-                        <p class="text-muted">{{ $template->description }}</p>
-                    @endif
+{{--
+    An accordion, not seventeen stacked cards.
 
-                    <form method="POST" action="{{ route('vatssa.admin.templates.update', $template->key) }}">
-                        @csrf
-                        @method('PATCH')
+    Every template is a form with a ten-row textarea, so the page opened at
+    roughly nine screens of editors for the one somebody came to change. The
+    key, the name, the channel and when it last changed are what you scan by;
+    the body is what you scan FOR, and only ever one at a time.
 
-                        @if($template->channel === 'email')
-                            <div class="mb-3">
-                                <label class="form-label" for="subject-{{ $template->key }}">Subject</label>
-                                <input type="text" class="form-control" id="subject-{{ $template->key }}"
-                                       name="subject" value="{{ old('subject', $template->subject) }}" maxlength="255">
-                            </div>
-                        @endif
+    Each stays its own <form>, so saving one still posts one.
+--}}
+<div class="row">
+    <div class="col-xl-12 col-md-12 mb-12">
+        <div class="accordion" id="templateList">
+            @foreach($templates as $template)
+                @php $slug = Str::slug($template->key); @endphp
+                <div class="accordion-item">
+                    <h2 class="accordion-header" id="heading-{{ $slug }}">
+                        <button class="accordion-button collapsed" type="button"
+                                data-bs-toggle="collapse" data-bs-target="#collapse-{{ $slug }}"
+                                aria-expanded="false" aria-controls="collapse-{{ $slug }}">
+                            <span class="d-flex flex-wrap align-items-center gap-2 me-3">
+                                <code>{{ $template->key }}</code>
+                                <span>{{ $template->name }}</span>
+                                <span class="badge bg-secondary">{{ $template->channel }}</span>
+                                @if($template->updated_at)
+                                    <small class="text-muted">
+                                        changed {{ $template->updated_at->diffForHumans() }}
+                                    </small>
+                                @endif
+                            </span>
+                        </button>
+                    </h2>
 
-                        <div class="mb-3">
-                            <label class="form-label" for="body-{{ $template->key }}">Body</label>
-                            <textarea class="form-control font-monospace" id="body-{{ $template->key }}"
-                                      name="body" rows="10">{{ old('body', $template->body) }}</textarea>
-                        </div>
-
-                        @if($template->placeholders())
-                            <p class="mb-3">
-                                <small class="text-muted">
-                                    Placeholders in use:
-                                    @foreach($template->placeholders() as $placeholder)
-                                        <code>&#123;{{ $placeholder }}&#125;</code>@if(! $loop->last), @endif
-                                    @endforeach
-                                </small>
-                            </p>
-                        @endif
-
-                        <div class="d-flex align-items-center justify-content-between">
-                            <button type="submit" class="btn btn-primary btn-sm">Save</button>
-                            @if($template->updated_at)
-                                <small class="text-muted">
-                                    Last changed {{ $template->updated_at->diffForHumans() }}@isset($template->editor) by {{ $template->editor->name }}@endisset
-                                </small>
+                    <div id="collapse-{{ $slug }}" class="accordion-collapse collapse"
+                         aria-labelledby="heading-{{ $slug }}" data-bs-parent="#templateList">
+                        <div class="accordion-body">
+                            @if($template->description)
+                                <p class="text-muted">{{ $template->description }}</p>
                             @endif
+
+                            <form method="POST" action="{{ route('vatssa.admin.templates.update', $template->key) }}">
+                                @csrf
+                                @method('PATCH')
+
+                                @if($template->channel === 'email')
+                                    <div class="mb-3">
+                                        <label class="form-label" for="subject-{{ $slug }}">Subject</label>
+                                        <input type="text" class="form-control" id="subject-{{ $slug }}"
+                                               name="subject" value="{{ old('subject', $template->subject) }}"
+                                               maxlength="255">
+                                    </div>
+                                @endif
+
+                                <div class="mb-3">
+                                    <label class="form-label" for="body-{{ $slug }}">Body</label>
+                                    <textarea class="form-control font-monospace" id="body-{{ $slug }}"
+                                              name="body" rows="10">{{ old('body', $template->body) }}</textarea>
+                                </div>
+
+                                @if($template->placeholders())
+                                    <p class="mb-3">
+                                        <small class="text-muted">
+                                            Placeholders in use:
+                                            @foreach($template->placeholders() as $placeholder)
+                                                <code>&#123;{{ $placeholder }}&#125;</code>@if(! $loop->last), @endif
+                                            @endforeach
+                                        </small>
+                                    </p>
+                                @endif
+
+                                <div class="d-flex align-items-center justify-content-between">
+                                    <button type="submit" class="btn btn-primary btn-sm">Save</button>
+                                    @if($template->updated_at)
+                                        <small class="text-muted">
+                                            Last changed {{ $template->updated_at->diffForHumans() }}@isset($template->editor) by {{ $template->editor->name }}@endisset
+                                        </small>
+                                    @endif
+                                </div>
+                            </form>
                         </div>
-                    </form>
+                    </div>
                 </div>
-            </div>
+            @endforeach
         </div>
     </div>
-@endforeach
+</div>
 
 @endsection
