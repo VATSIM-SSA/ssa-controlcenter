@@ -500,6 +500,50 @@ workflow went green.
 
 ---
 
+## The interface: restyled, not migrated (2026-09-01)
+
+`resources/sass/_migration.scss`, added, imported **last** in `app.scss`.
+
+The alternative was a Tailwind migration of 554 blades. Rejected: every one of
+those is a file upstream also edits, so the fork would take 554 conflicts a
+release, for ever, and every new upstream page would arrive looking like the old
+application until somebody converted it too.
+
+The restyle redefines Bootstrap's own class names and, more importantly,
+Bootstrap's own CSS custom properties -- `--bs-border-radius`,
+`--bs-body-font-family`, `--bs-card-cap-bg` and the rest. **That is why a merged
+upstream component inherits the new look with no work.** A component we have
+never seen uses `.card` and `--bs-border-radius` like every other, so it lands
+already styled.
+
+Two things this depends on, both easy to break:
+
+- **Import order.** `themes/custom` is imported at line 21, *before* Bootstrap.
+  The first attempt at this restyle went in there and did nothing at all,
+  because Bootstrap then overwrote it. `_migration.scss` must stay last in
+  `app.scss`; anything imported after it wins.
+- **Class names, not markup.** Nothing in the restyle requires a blade to
+  change. The moment a rule needs a wrapper div added to a view, it has stopped
+  being a restyle and started being a migration.
+
+`resources/views/layouts/vatssa.blade.php`, `resources/css/vatssa.css`,
+`vatssa/parts/nav.blade.php`, `vatssa/parts/icon.blade.php` and the second vite
+entry are the remains of the abandoned Tailwind layout. They can be deleted once
+`vatssa/availability/{index,show}.blade.php` and `vatssa/parts/exam-box.blade.php`
+are on `layouts.app` -- the last three files still using them.
+
+## Roles are global (2026-09-01)
+
+Every fork role is `'scope' => 'both'` in `config/roles.php`. VATSSA has no
+per-area staff: one division, one set of people, and an area-scoped role reads
+to a coordinator as a role that did not work.
+
+`moderator`, `director` and `admin` are kept in the catalogue with
+`'grantable' => false` -- recognised so existing assignments and 103 CI
+references keep resolving, unassignable so nobody adds another.
+
+---
+
 ## Upstream contributions in flight
 
 Branches cut from `upstream-mirror` with a PR open at Vatsim-Scandinavia. When
