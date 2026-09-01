@@ -696,3 +696,183 @@ time,
         margin-bottom: 0;
     }
 }
+
+
+// ============================================ inherited automatically =======
+//
+// THE POINT OF THIS SECTION: a page upstream adds next month should arrive
+// wearing this interface without anybody touching it.
+//
+// The rest of this file names components -- `.card`, `.btn`, `.table`. That
+// covers what exists today and nothing else, so the first upstream page built
+// on `.list-group` or `.accordion` would render as stock Bootstrap sitting in
+// the middle of a restyled application, and somebody would have to notice and
+// come back here.
+//
+// Bootstrap 5.3 is built on its own CSS custom properties. Setting THOSE
+// reaches every component at once, including the ones nobody has used yet,
+// because each component reads `--bs-border-radius` and `--bs-border-color`
+// rather than hard-coding them. That is the difference between a restyle that
+// keeps needing maintenance and one that holds.
+//
+// The named components below this are then only for the handful where shape
+// alone is not enough -- a card header that must lose a saturated fill, a
+// table that must lose its grid.
+
+:root,
+[data-theme="light"],
+[data-theme="dark"] {
+    // Shape. Bootstrap's default is 0.375rem and upstream overrides it to 2px,
+    // which is what makes every corner in this application look like 2013.
+    --bs-border-radius: 9px;
+    --bs-border-radius-sm: 7px;
+    --bs-border-radius-lg: 12px;
+    --bs-border-radius-xl: 16px;
+    --bs-border-radius-2xl: 20px;
+    --bs-border-radius-pill: 50rem;
+
+    --bs-border-color: var(--border-card, rgba(127, 143, 148, .22));
+    --bs-border-color-translucent: var(--border-card, rgba(127, 143, 148, .18));
+
+    // Type. Every component that sets its own font-family reads this one.
+    --bs-body-font-family: "Hanken Grotesk", Roboto, -apple-system,
+        BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    --bs-body-font-size: .9rem;
+    --bs-body-line-height: 1.55;
+
+    // Surfaces and ink, so a component nobody has styled still lands on the
+    // right ground in both themes.
+    --bs-body-bg: var(--bg-body);
+    --bs-body-color: var(--color-text-primary);
+    --bs-secondary-color: var(--color-text-secondary);
+    --bs-tertiary-color: var(--color-text-muted);
+    --bs-secondary-bg: var(--bg-card-header);
+    --bs-tertiary-bg: var(--bg-card-header);
+    --bs-emphasis-color: var(--color-text-primary);
+
+    --bs-link-color: var(--link-color);
+    --bs-link-hover-color: var(--link-hover-color);
+
+    --bs-primary: var(--color-primary);
+    --bs-primary-rgb: 1, 151, 176;
+
+    // Focus. One ring, everywhere, rather than each component inventing one.
+    --bs-focus-ring-color: rgba(1, 151, 176, .18);
+    --bs-focus-ring-width: 3px;
+
+    --bs-box-shadow: 0 1px 2px rgba(7, 38, 44, .06), 0 1px 3px rgba(7, 38, 44, .04);
+    --bs-box-shadow-sm: 0 1px 2px rgba(7, 38, 44, .05);
+    --bs-box-shadow-lg: 0 10px 30px -10px rgba(7, 38, 44, .22);
+}
+
+// ---- the components that variables cannot reach ----------------------------
+//
+// Shape and colour come from the block above. These four need something a
+// variable cannot express.
+
+// A list group is a table wearing different markup: same rule, that a grid of
+// boxed cells reads as a spreadsheet.
+.list-group {
+    border-radius: 12px;
+
+    .list-group-item {
+        border-color: var(--border-card, rgba(127, 143, 148, .16));
+        padding: .65rem .9rem;
+        background: var(--bg-card);
+        color: var(--color-text-primary);
+    }
+
+    .list-group-item-action:hover {
+        background: var(--bg-card-header);
+    }
+
+    .list-group-item.active {
+        background: var(--color-primary);
+        border-color: var(--color-primary);
+        color: var(--color-on-primary);
+    }
+}
+
+// Accordion headers ship as a grey slab with a heavy border, which is the card
+// header problem again in a different component.
+.accordion {
+    --bs-accordion-border-color: var(--border-card, rgba(127, 143, 148, .22));
+    --bs-accordion-btn-bg: var(--bg-card);
+    --bs-accordion-active-bg: var(--bg-card-header);
+    --bs-accordion-active-color: var(--color-primary-text, var(--color-primary));
+    --bs-accordion-btn-focus-box-shadow: 0 0 0 3px rgba(1, 151, 176, .18);
+    border-radius: 12px;
+
+    .accordion-button {
+        font-weight: 600;
+        font-size: .875rem;
+    }
+}
+
+.toast {
+    --bs-toast-border-color: var(--border-card, rgba(127, 143, 148, .22));
+    --bs-toast-bg: var(--bg-card);
+    --bs-toast-header-bg: var(--bg-card-header);
+    border-radius: 12px;
+}
+
+.pagination {
+    --bs-pagination-border-color: transparent;
+    --bs-pagination-hover-bg: var(--bg-card-header);
+    --bs-pagination-active-bg: var(--color-primary);
+    --bs-pagination-active-border-color: var(--color-primary);
+    --bs-pagination-color: var(--color-text-secondary);
+    --bs-pagination-border-radius: 8px;
+    gap: 2px;
+}
+
+.breadcrumb {
+    font-size: .82rem;
+    --bs-breadcrumb-divider-color: var(--color-text-muted);
+}
+
+.progress {
+    --bs-progress-bg: var(--bg-card-header);
+    --bs-progress-border-radius: 50rem;
+    height: .5rem;
+}
+
+.spinner-border,
+.spinner-grow {
+    color: var(--color-primary-text, var(--color-primary));
+}
+
+.offcanvas {
+    background: var(--bg-card);
+    color: var(--color-text-primary);
+    border-color: var(--border-card, rgba(127, 143, 148, .22));
+}
+
+.popover,
+.tooltip .tooltip-inner {
+    border-radius: 10px;
+}
+
+.popover {
+    --bs-popover-bg: var(--bg-card);
+    --bs-popover-border-color: var(--border-card, rgba(127, 143, 148, .22));
+    --bs-popover-header-bg: var(--bg-card-header);
+}
+
+// The close button is a black SVG data URI, invisible on a dark card. Bootstrap
+// ships .btn-close-white for exactly this and upstream's markup does not use
+// it, so the filter does the job for every close button at once.
+[data-theme="dark"] .btn-close {
+    filter: invert(1) grayscale(100%) brightness(200%);
+}
+
+// Anything upstream adds that is a bare bordered box. Cheap insurance: the
+// radius comes from --bs-border-radius above, this only stops a hairline being
+// the wrong colour.
+.border,
+.border-top,
+.border-bottom,
+.border-start,
+.border-end {
+    border-color: var(--border-card, rgba(127, 143, 148, .22)) !important;
+}

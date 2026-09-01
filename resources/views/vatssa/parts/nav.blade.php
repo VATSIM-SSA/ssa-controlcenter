@@ -19,9 +19,16 @@
     Same sequence as `layouts/sidebar.blade.php`, so moving between a Tailwind
     page and a Bootstrap one does not mean relearning where anything lives.
 
-    THIS FILE AND `layouts/sidebar.blade.php` MUST STAY IN STEP. They are not
-    generated from a shared definition; adding an item to either means adding it
-    to both.
+    THIS FILE AND `layouts/sidebar.blade.php` MUST STAY IN STEP -- same
+    sections, same items, same order, same permission on each. They are not
+    generated from a shared definition, so adding an item to either means adding
+    it to both. That duplication is the one loose thread left in this design and
+    it is worth closing; until then, this comment is the seam.
+
+    A Tailwind page linking out to a Bootstrap one is normal and expected. What
+    is NOT acceptable is the menu changing shape when you cross between them:
+    somebody hunting for Positions should find it in the same place on both, or
+    they learn to distrust the sidebar on one of them.
 
     Only what this person can actually reach. A sidebar that shows doors you
     cannot open teaches people to ignore the sidebar.
@@ -41,6 +48,7 @@
         ['Tasks', route('tasks'), 'inbox', $user->can('tasks.manage')],
         ['Booking', route('booking'), 'calendar', true],
         ['My students', route('mentor'), 'academic', $user->can('training.mentor')],
+        ['Sweatbox Calendar', route('sweatbook'), 'calendar', $user->can('training.mentor')],
     ];
 
     $groups = [
@@ -49,12 +57,40 @@
             ['System Requests', route('requests.system'), 'bolt', $user->can('training.view')],
             ['Closed Requests', route('requests.history'), 'clock', $user->can('training.view')],
         ],
+        'Users' => [
+            ['Member Overview', route('users'), 'users', $user->can('users.manage')],
+            ['Other Users', route('users.other'), 'users', $user->can('users.manage')],
+        ],
+        'Endorsements' => [
+            ['Solo', route('endorsements.solos'), 'check',
+                $user->can('endorsements.rosters.view')],
+            ['Examiner', route('endorsements.examiners'), 'check',
+                $user->can('endorsements.rosters.view')],
+            ['Visiting', route('endorsements.visiting'), 'check',
+                $user->can('endorsements.rosters.view')],
+        ],
         'Reports' => [
+            ['Training Statistics', route('reports.trainings'), 'academic',
+                $user->can('training.statistics.view')],
+            ['Training Activities', route('reports.activities'), 'clock',
+                $user->can('training.activities.view')],
+            ['Mentors', route('reports.mentors'), 'users',
+                $user->can('fir.management.reports.view')],
+            ['Access', route('reports.access'), 'users',
+                $user->can('viewAccessReport', \App\Models\ManagementReport::class)],
+            ['Feedback', route('reports.feedback'), 'check',
+                $user->can('fir.management.reports.view')],
             ['Automation log', route('vatssa.action-log'), 'bolt',
                 $user->can('fir.management.reports.view')],
-            ['Activity log', route('admin.logs'), 'clock', $user->can('system.settings.manage')],
         ],
         'Administration' => [
+            ['Settings', route('admin.settings'), 'check', $user->can('system.health.view')],
+            ['Votes', route('vote.overview'), 'check', $user->can('system.health.view')],
+            ['Logs', route('admin.logs'), 'clock', $user->can('system.health.view')],
+            ['Notification templates', route('admin.templates'), 'inbox',
+                $user->can('users.manage')],
+            ['Positions', route('positions.index'), 'bolt',
+                $user->can('fir.positions.view')],
             ['Request routing', route('vatssa.admin.routing'), 'inbox',
                 $user->can('system.settings.manage')],
             ['Mentorship', route('vatssa.admin.mentorship'), 'users',

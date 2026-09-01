@@ -51,6 +51,13 @@
         @can('view', \App\Models\Booking::class)
             <x-sidebar.item :href="route('booking')" icon="fa-calendar" title="Booking" :active="Route::is('booking*')" />
 
+            {{-- VATSSA: availability. Reached from every page, because
+                 everybody is asked when they are free at some point and a
+                 scheduling tool the people being scheduled cannot open is a
+                 scheduling tool nobody uses. --}}
+            <x-sidebar.item :href="route('vatssa.availability')" icon="fa-calendar-check"
+                title="My Availability" :active="Route::is('vatssa.availability*')" />
+
             {{-- VATSSA: the practical exam workflow. Not gated: a student finds
                  their own exam here, an examiner finds work, and the events team
                  finds what is waiting on them. The LIST is filtered per person;

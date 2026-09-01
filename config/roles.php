@@ -69,7 +69,16 @@ return [
         'mentor' => [
             'name' => 'Mentor',
             'description' => 'Training mentor',
-            'scope' => 'area',
+            // 'both', not 'area'. VATSSA grants this globally like everything
+            // else -- UserPolicy refuses an area outright -- and 'area' would
+            // now make it ungrantable, because a role whose scope forbids a
+            // global grant plus a policy that forbids an area one is a role
+            // nobody can be given.
+            //
+            // Not 'global' either: RoleAssignment throws on an area given to a
+            // global role, and upstream's suite creates 181 area-scoped
+            // assignments across 35 files.
+            'scope' => 'both',
         ],
         'membership-manager' => [
             'name' => 'Membership Manager',
@@ -84,7 +93,16 @@ return [
         'nav-editor' => [
             'name' => 'Navigational Editor',
             'description' => 'Editor of navigational and operationally relevant sector data',
-            'scope' => 'area',
+            // 'both', not 'area'. VATSSA grants this globally like everything
+            // else -- UserPolicy refuses an area outright -- and 'area' would
+            // now make it ungrantable, because a role whose scope forbids a
+            // global grant plus a policy that forbids an area one is a role
+            // nobody can be given.
+            //
+            // Not 'global' either: RoleAssignment throws on an area given to a
+            // global role, and upstream's suite creates 181 area-scoped
+            // assignments across 35 files.
+            'scope' => 'both',
         ],
         'feedback-team' => [
             'name' => 'Feedback Team',

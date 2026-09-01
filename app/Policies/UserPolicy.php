@@ -82,9 +82,29 @@ class UserPolicy
             return false;
         }
 
-        // Global (area-less) assignments require the role's scope to allow them
-        if ($requestedArea === null
-            && ! in_array(config("roles.roles.{$requestedRole}.scope"), ['both', 'global'], true)) {
+        // VATSSA: every role is granted globally, and only globally.
+        //
+        // There are no per-area staff here. One ATC training manager, one set
+        // of pipeline coordinators, one events team, and a mentor who mentors
+        // -- not a mentor for Johannesburg who is somehow not a mentor for Cape
+        // Town. Upstream offers an area on every grant because it is built for
+        // a division where that is a real question; here it is a question with
+        // one right answer, asked every time, and those get answered wrong
+        // eventually.
+        //
+        // Refused HERE rather than by flipping every scope to 'global' in the
+        // catalogue: RoleAssignment throws on an area given to a global role,
+        // and upstream's suite creates 181 area-scoped assignments across 35
+        // files. This closes the door without breaking their tests.
+        if ($requestedArea !== null) {
+            return false;
+        }
+
+        // Kept from upstream, and now unreachable with an area -- a role whose
+        // scope forbids a global grant cannot be granted at all here. That is
+        // correct rather than a gap: 'area' scope means "only meaningful per
+        // area", and VATSSA has decided nothing is.
+        if (! in_array(config("roles.roles.{$requestedRole}.scope"), ['both', 'global'], true)) {
             return false;
         }
 

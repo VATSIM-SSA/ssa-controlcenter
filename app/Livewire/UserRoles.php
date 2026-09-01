@@ -112,10 +112,11 @@ class UserRoles extends Component
                 continue;
             }
 
-            $canGlobal = $this->globalOptionFor($role)['enabled'];
-            $hasArea = collect($this->areaOptionsFor($role))->contains(fn (array $opt) => $opt['enabled']);
-
-            if ($canGlobal || $hasArea) {
+            // VATSSA: global only. The area half of this used to decide
+            // whether a role appeared at all, so a role that was area-only
+            // showed up and then could not be granted -- UserPolicy now
+            // refuses every area-scoped grant.
+            if ($this->globalOptionFor($role)['enabled']) {
                 $result[$role] = $def['name'];
             }
         }

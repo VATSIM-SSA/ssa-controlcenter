@@ -478,7 +478,15 @@ class TrainingController extends Controller
                 return $aSort > $bSort ? -1 : 1;
             });
 
-        $trainingMentors = $training->area->mentors->sortBy('name');
+        // VATSSA: every mentor is global, so `Area::mentors` -- which joins
+        // role_user on area_id -- returns nobody. Asking for mentors of an area
+        // in a division that has no per-area staff is the wrong question, and
+        // the visible cost was an empty dropdown on the one page where a
+        // student gets assigned somebody.
+        $trainingMentors = User::whereHas('roleAssignments',
+            fn ($query) => $query->where('role', 'mentor'))
+            ->orderBy('first_name')
+            ->get();
         $types = TrainingController::$types;
         $experiences = TrainingController::$experiences;
         $activities = $training->activities->sortByDesc('created_at');
