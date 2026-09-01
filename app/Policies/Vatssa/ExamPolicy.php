@@ -39,6 +39,23 @@ class ExamPolicy
      */
     public function before(User $user, string $ability): ?bool
     {
+        // NOT every ability. An unrestricted before() short-circuits the stage
+        // checks below, which are the workflow -- so an admin was offered the
+        // student's availability form on an exam nobody had authorised yet, and
+        // the page died on a poll that does not exist at that stage.
+        //
+        // The stage ordering is the feature. An admin bypassing it is not a
+        // superpower, it is the workflow not applying to the one person most
+        // likely to be clicking around it.
+        //
+        // Reading and stopping are the two an admin genuinely needs at 2am when
+        // the examiner who took it has vanished. Everything else falls through
+        // to its own check, which an admin passes on permission anyway -- at
+        // the right stage.
+        if (! in_array($ability, ['view', 'viewAny', 'cancel'], true)) {
+            return null;
+        }
+
         return $user->hasPermission('system.settings.manage') ? true : null;
     }
 

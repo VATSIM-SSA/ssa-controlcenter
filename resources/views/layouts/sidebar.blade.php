@@ -50,20 +50,6 @@
 
         @can('view', \App\Models\Booking::class)
             <x-sidebar.item :href="route('booking')" icon="fa-calendar" title="Booking" :active="Route::is('booking*')" />
-
-            {{-- VATSSA: availability. Reached from every page, because
-                 everybody is asked when they are free at some point and a
-                 scheduling tool the people being scheduled cannot open is a
-                 scheduling tool nobody uses. --}}
-            <x-sidebar.item :href="route('vatssa.availability')" icon="fa-calendar-check"
-                title="My Availability" :active="Route::is('vatssa.availability*')" />
-
-            {{-- VATSSA: the practical exam workflow. Not gated: a student finds
-                 their own exam here, an examiner finds work, and the events team
-                 finds what is waiting on them. The LIST is filtered per person;
-                 the page is not a secret. --}}
-            <x-sidebar.item :href="route('vatssa.exams.index')" icon="fa-user-graduate"
-                title="Practical Exams" :active="Route::is('vatssa.exams.*')" />
         @endcan
 
         @if(Setting::get('linkMoodle') && Setting::get('linkMoodle') != "")
@@ -83,6 +69,21 @@
             <div class="sidebar-heading">
             Training
             </div>
+
+            {{-- VATSSA: both of these are training, so they live under
+                 Training rather than beside Booking -- two calendars side by
+                 side meaning different things is a menu teaching the wrong
+                 model.
+
+                 NOT gated. A student needs to find their own exam and give
+                 their own availability, and they hold no training permission
+                 at all. Gating these on the mentor dashboard would hide them
+                 from the people the pages exist for. --}}
+            <x-sidebar.item :href="route('vatssa.availability')" icon="fa-calendar-check"
+                title="My Availability" :active="Route::is('vatssa.availability*')" />
+
+            <x-sidebar.item :href="route('vatssa.exams.index')" icon="fa-user-graduate"
+                title="Practical Exams" :active="Route::is('vatssa.exams.*')" />
 
             @can('training.mentor-dashboard.view')
                 <x-sidebar.item :href="route('mentor')" icon="fa-chalkboard-teacher" title="My students" :active="Route::is('mentor')" />

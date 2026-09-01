@@ -99,13 +99,17 @@ class AvailabilityController extends Controller
             'purpose' => $data['purpose'],
             'description' => $data['description'] ?? null,
             'starts_on' => $from,
-            'ends_on' => $from->addWeeks($data['weeks'] ?? 4)->subDay(),
+            // (int), because form input is a STRING. Carbon's addWeeks()
+            // declares int|float and throws a TypeError on "4" -- validation
+            // said `integer`, which checks the value is numeric and does not
+            // change its type.
+            'ends_on' => $from->addWeeks((int) ($data['weeks'] ?? 4))->subDay(),
             'training_id' => $data['training_id'] ?? null,
             'created_by' => Auth::id(),
             // Half an hour for a session or an exam; an hour for a meeting,
             // where nobody schedules to the half hour and the finer grid is
             // just more cells to drag across.
-            'slot_minutes' => $data['purpose'] === AvailabilityPoll::MEETING ? 60 : 30,
+            'slot_minutes' => (int) ($data['purpose'] === AvailabilityPoll::MEETING ? 60 : 30),
         ]);
 
         return redirect()->route('vatssa.availability.show', $poll)

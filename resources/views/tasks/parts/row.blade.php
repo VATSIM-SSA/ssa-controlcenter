@@ -59,22 +59,22 @@
         {{-- VATSSA: move it. A request sent to the wrong desk is otherwise
              declined with "ask X instead", and the asker starts again. Only
              for people who can see every desk -- moving work onto a desk you
-             cannot see the queue of is how things get lost. --}}
+             cannot see the queue of is how things get lost.
+
+             A BUTTON, not an inline dropdown. The dropdown sat in the desk
+             column showing the current desk twice -- once as the badge above
+             it and once as its own selected option -- and made every row two
+             lines tall to offer something used perhaps once a week. It also
+             read as an edit control: a select that changes nothing until you
+             press a second button beside it is the shape people get wrong.
+
+             The choice now happens in a modal, where there is room to say
+             which desk and why it matters. --}}
         @can('tasks.overview')
-            <form method="POST" action="{{ route('vatssa.requests.update', $task) }}"
-                  class="d-flex gap-1 mt-1">
-                @csrf
-                @method('PATCH')
-                <input type="hidden" name="message" value="{{ $task->message }}">
-                <select name="vatssa_tier" class="form-select form-select-sm" style="max-width: 11rem">
-                    @foreach(\App\Models\Vatssa\RequestTarget::TIERS as $tierKey => $tier)
-                        <option value="{{ $tierKey }}" @selected($task->vatssa_tier === $tierKey)>
-                            {{ $tier['label'] }}
-                        </option>
-                    @endforeach
-                </select>
-                <button type="submit" class="btn btn-sm btn-outline-secondary">Move</button>
-            </form>
+            <button type="button" class="btn btn-sm btn-outline-secondary mt-1"
+                    data-bs-toggle="modal" data-bs-target="#moveDesk{{ $task->id }}">
+                <i class="fas fa-right-left"></i>&nbsp;Move
+            </button>
         @endcan
     </td>
 
@@ -147,3 +147,64 @@
         @endif
     </td>
 </tr>
+
+@can('tasks.overview')
+    {{-- Rendered AFTER the row rather than inside it. A <div> inside a <tr> is
+         invalid HTML: the parser hoists it out of the table, and the modal ends
+         up outside the element Bootstrap expects to find it in. --}}
+    <div class="modal fade" id="moveDesk{{ $task->id }}" tabindex="-1"
+         aria-labelledby="moveDeskLabel{{ $task->id }}" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <form method="POST" action="{{ route('vatssa.requests.update', $task) }}">
+                    @csrf
+                    @method('PATCH')
+                    <input type="hidden" name="message" value="{{ $task->message }}">
+
+                    <div class="modal-header">
+                        <h1 class="modal-title fs-5" id="moveDeskLabel{{ $task->id }}">
+                            Move this request
+                        </h1>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"
+                                aria-label="Close"></button>
+                    </div>
+
+                    <div class="modal-body">
+                        <p class="text-muted">
+                            {{ $task->type()->getName() }}@if($task->subject) &mdash;
+                                {{ $task->subject->name }}
+                            @endif
+                        </p>
+
+                        <div class="mb-3">
+                            <label class="form-label" for="moveDeskTier{{ $task->id }}">
+                                Which desk
+                            </label>
+                            <select class="form-select" id="moveDeskTier{{ $task->id }}"
+                                    name="vatssa_tier" required>
+                                @foreach(\App\Models\Vatssa\RequestTarget::TIERS as $tierKey => $tier)
+                                    <option value="{{ $tierKey }}"
+                                        @selected($task->vatssa_tier === $tierKey)>
+                                        {{ $tier['label'] }}
+                                    </option>
+                                @endforeach
+                            </select>
+                            <small class="text-muted">
+                                Everybody at that desk sees it and any of them can act. Moving it
+                                does not tell the person who raised it, so say so if they are
+                                waiting.
+                            </small>
+                        </div>
+                    </div>
+
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                            Cancel
+                        </button>
+                        <button type="submit" class="btn btn-primary">Move request</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+@endcan

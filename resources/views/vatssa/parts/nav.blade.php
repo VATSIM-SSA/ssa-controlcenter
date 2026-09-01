@@ -43,11 +43,14 @@
     $top = [
         ['Dashboard', route('dashboard'), 'bolt', true],
         ['My profile', route('user.show', $user->id), 'user', true],
-        ['My availability', route('vatssa.availability'), 'calendar', true],
-        ['Practical exams', route('vatssa.exams.index'), 'clock', true],
         ['Tasks', route('tasks'), 'inbox', $user->can('tasks.manage')],
         ['Booking', route('booking'), 'calendar', true],
         ['My students', route('mentor'), 'academic', $user->can('training.mentor')],
+        // Both are training, so they sit with training rather than beside
+        // Booking -- two calendars side by side meaning different things is a
+        // menu teaching the wrong model.
+        ['My Availability', route('vatssa.availability'), 'calendar', true],
+        ['Practical Exams', route('vatssa.exams.index'), 'clock', true],
         ['Sweatbox Calendar', route('sweatbook'), 'calendar', $user->can('training.mentor')],
     ];
 

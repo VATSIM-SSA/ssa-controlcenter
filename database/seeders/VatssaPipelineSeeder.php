@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Helpers\ExamStage;
 use App\Helpers\FactoryHelper;
 use App\Helpers\TaskStatus;
 use App\Helpers\TrainingStatus;
@@ -12,9 +13,14 @@ use App\Models\Task;
 use App\Models\Training;
 use App\Models\TrainingActivity;
 use App\Models\User;
+use App\Models\Vatssa\ActionLog;
+use App\Models\Vatssa\AvailabilityPoll;
+use App\Models\Vatssa\AvailabilityResponse;
+use App\Models\Vatssa\Exam;
 use App\Models\Vatssa\MessageLog;
 use App\Models\Vatssa\TheoryAttempt;
 use App\Models\Vatssa\UserPlatform;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 
@@ -219,6 +225,8 @@ class VatssaPipelineSeeder extends Seeder
         $this->seedTasks();
         $this->backfillMessageLog();
         $this->backfillTimelines();
+        $this->seedExams();
+        $this->seedActionLog();
 
         $this->command?->info(sprintf(
             'VatssaPipelineSeeder: %d platform rows, %d theory attempts, %d logged emails, '
@@ -659,6 +667,181 @@ class VatssaPipelineSeeder extends Seeder
      * A timeline whose entries are all timestamped "now" sorts arbitrarily and
      * hides ordering bugs, which are exactly the bugs a timeline has.
      */
+    /**
+     * One exam at every stage of the booking workflow.
+     *
+     * ## Why every stage rather than one realistic one
+     *
+     * The workflow has nine states and each shows a different page: the
+     * authorise button, the student's grid, the events team's grid, the
+     * examiner's slot picker, the publishing checklist. Seeding one exam
+     * exercises one of those, and the other eight are found by a person on the
+     * day they matter.
+     *
+     * The awkward states are seeded on purpose too -- an exam inside the
+     * seven-day notice period with paperwork outstanding, and one whose cleared
+     * slots have all aged out. Those are the two the daily sweep exists to
+     * catch, and neither can be produced by clicking through the happy path.
+     */
+    private function seedExams(): void
+    {
+        if (Exam::query()->exists()) {
+            return;     // idempotent, like everything else here
+        }
+
+        $trainings = Training::whereIn('status', [
+            TrainingStatus::ACTIVE_TRAINING, TrainingStatus::AWAITING_EXAM,
+        ])->with('user', 'ratings')->take(6)->get();
+
+        if ($trainings->isEmpty()) {
+            return;
+        }
+
+        $examiner = User::find(self::FIRST_CID + 5) ?? User::find(10000006);
+        $manager = User::find(10000009);
+
+        $plan = [
+            [ExamStage::REQUESTED, null],
+            [ExamStage::AWAITING_AVAILABILITY, null],
+            [ExamStage::AWAITING_EVENTS, null],
+            [ExamStage::AWAITING_EXAMINER, null],
+            // Confirmed and comfortably legal.
+            [ExamStage::CONFIRMED, 21],
+            // Confirmed, inside the notice period, paperwork unfinished. The
+            // one row vatssa:exam-watch should shout about.
+            [ExamStage::CONFIRMED, 3],
+        ];
+
+        foreach ($trainings as $i => $training) {
+            [$stage, $daysOut] = $plan[$i] ?? $plan[0];
+
+            $exam = new Exam([
+                'training_id' => $training->id,
+                'requested_by' => $training->mentors->first()?->id,
+                'authorised_by' => $stage->value > ExamStage::REQUESTED->value ? $manager?->id : null,
+                'authorised_at' => $stage->value > ExamStage::REQUESTED->value ? now()->subDays(9) : null,
+            ]);
+            $exam->stage = $stage;
+            $exam->save();
+
+            if ($stage->value >= ExamStage::AWAITING_AVAILABILITY->value) {
+                $exam->update(['poll_id' => $this->seedExamPoll($exam, $stage)->id]);
+            }
+
+            if ($daysOut !== null) {
+                $exam->update([
+                    'examiner_id' => $examiner?->id,
+                    'confirmed_at' => now()->subDays(2),
+                    'scheduled_for' => now()->addDays($daysOut)->setTime(18, 0),
+                    // Deliberately incomplete on the close one, complete enough
+                    // on the far one to look like work in progress.
+                    'banner_made' => true,
+                    'on_discord' => $daysOut > 7,
+                    'on_myvatsim' => $daysOut > 7,
+                ]);
+            }
+        }
+
+        $this->command?->info('VatssaPipelineSeeder: ' . Exam::count() . ' exams across the workflow.');
+    }
+
+    /**
+     * The availability behind a seeded exam.
+     *
+     * The student answers from the moment they are asked; the events team only
+     * once it has reached them. Seeding the events response earlier would make
+     * every exam look cleared, which is exactly the state the page is for
+     * distinguishing.
+     */
+    private function seedExamPoll(Exam $exam, ExamStage $stage): AvailabilityPoll
+    {
+        $from = CarbonImmutable::now()->addDays(Exam::NOTICE_DAYS);
+
+        $poll = AvailabilityPoll::create([
+            'purpose' => AvailabilityPoll::CPT,
+            'title' => ($exam->training?->user?->name ?? 'Student') . ' — practical exam',
+            'starts_on' => $from,
+            'ends_on' => $from->addWeeks(6),
+            'training_id' => $exam->training_id,
+            'created_by' => $exam->authorised_by,
+            'slot_minutes' => 30,
+        ]);
+
+        $evenings = $poll->slots()
+            ->filter(fn ($slot) => (int) $slot->format('H') >= 17)
+            ->take(24)
+            ->map(fn ($slot) => $slot->toIso8601String())
+            ->values();
+
+        if ($stage->value >= ExamStage::AWAITING_EVENTS->value && $exam->training?->user_id) {
+            AvailabilityResponse::create([
+                'poll_id' => $poll->id,
+                'user_id' => $exam->training->user_id,
+                'role' => AvailabilityPoll::ROLE_STUDENT,
+                'slots' => $evenings->all(),
+            ]);
+        }
+
+        if ($stage->value >= ExamStage::AWAITING_EXAMINER->value) {
+            $events = User::whereHas('roleAssignments',
+                fn ($q) => $q->where('role', 'events-team'))->first();
+
+            if ($events) {
+                AvailabilityResponse::create([
+                    'poll_id' => $poll->id,
+                    'user_id' => $events->id,
+                    'role' => AvailabilityPoll::ROLE_EVENTS,
+                    // Half of them, so the intersection is a real subset rather
+                    // than "everything the student said", which would hide a
+                    // clash that never happens in seeded data.
+                    'slots' => $evenings->take(12)->all(),
+                ]);
+            }
+        }
+
+        return $poll;
+    }
+
+    /**
+     * A populated automation log, both kinds of row.
+     *
+     * The warnings matter more than the actions: the page defaults to them, and
+     * a page whose default view is empty on dev is one nobody looks at twice.
+     */
+    private function seedActionLog(): void
+    {
+        if (ActionLog::query()->exists()) {
+            return;
+        }
+
+        $training = Training::with('user')->first();
+
+        ActionLog::did('training.returned_to_queue',
+            ($training?->user?->name ?? 'A student')
+                . ' was in active training with no mentor, so they were returned to the queue.',
+            $training?->id, $training?->user_id, [], ActionLog::ACTOR_SYSTEM, mirror: false);
+
+        ActionLog::did('roster.expiry_warned',
+            'Web Three was warned that their roster place lapses on '
+                . now()->addDays(7)->toDateString() . '.',
+            null, 10000003, [], ActionLog::ACTOR_SYSTEM, mirror: false);
+
+        ActionLog::noticed('request.desk_empty',
+            'A request was sent to the Membership desk, but nobody is assigned to it.',
+            null, null, [], ActionLog::ACTOR_SYSTEM, mirror: false);
+
+        ActionLog::noticed('theory.no_course',
+            'S3 has no Moodle course configured, so its waiting students skip theory entirely.',
+            null, null, [], ActionLog::ACTOR_BOT, mirror: false);
+
+        ActionLog::noticed('exam.notice_breached',
+            ($training?->user?->name ?? 'A student')
+                . ' has an exam in 3 days that still needs a banner and a myVATSIM upload.',
+            $training?->id, $training?->user_id, [], ActionLog::ACTOR_SYSTEM, mirror: false);
+
+        $this->command?->info('VatssaPipelineSeeder: ' . ActionLog::count() . ' automation log rows.');
+    }
+
     private function backfillTimelines(): void
     {
         $written = 0;

@@ -876,3 +876,133 @@ time,
 .border-end {
     border-color: var(--border-card, rgba(127, 143, 148, .22)) !important;
 }
+
+
+// ============================================== reported on sight ===========
+//
+// Four things that only showed up once the restyle was on a real screen, which
+// is the argument for looking rather than reasoning.
+
+// ---- a card header that was never meant to have padding --------------------
+//
+// The chrome section gives every .card-header .7rem of vertical padding. That
+// is right for a header holding a title, and wrong for one holding a full-bleed
+// child -- the accordion rows on the reports archive put their highlight on an
+// <h5> INSIDE the header, so the padding became two teal strips above and below
+// an orange bar that should have filled the row.
+//
+// `p-0` is Bootstrap's own way of saying "this header has no padding". Honour
+// it rather than overriding it and then compensating somewhere else.
+.card > .card-header.p-0 {
+    padding: 0 !important;
+
+    // And the highlight fills the row, edge to edge, rather than sitting in it.
+    > h5, > h6, > .h5, > .h6 {
+        border-radius: 0;
+        padding: 0;
+    }
+
+    .btn-link {
+        display: block;
+        width: 100%;
+        text-align: left;
+        padding: .7rem .95rem;
+        text-decoration: none;
+        color: var(--color-text-primary);
+        border-radius: 0;
+
+        &:hover { color: var(--color-primary-text, var(--color-primary)); }
+    }
+}
+
+// ---- cards inside cards ----------------------------------------------------
+//
+// An accordion is a stack of .card inside a .card-body. The chrome section
+// gives every card a 12px radius, a border and a shadow, so a stack of them
+// became a column of floating rounded boxes with gaps between -- three
+// competing edges where there should be one list.
+//
+// Nested cards are rows, not cards.
+.card .card-body .card,
+.accordion .card {
+    border: 0;
+    border-bottom: 1px solid var(--border-card, rgba(127, 143, 148, .16));
+    border-radius: 0;
+    box-shadow: none !important;
+    margin-bottom: 0;
+
+    &:last-child { border-bottom: 0; }
+}
+
+// ---- the topbar search -----------------------------------------------------
+//
+// `.form-control.bg-light.border-0` -- upstream removes the border and paints
+// it with --bg-light, which in dark mode is the card-header teal. On the
+// topbar, which is nearly the same colour, the field disappeared: a search box
+// you cannot see is a search box nobody uses.
+.topbar .search-input,
+.topbar .user-search {
+    background: var(--bg-body) !important;
+    border: 1px solid var(--border-card, rgba(127, 143, 148, .22)) !important;
+    border-radius: 9px;
+    padding-left: .8rem;
+    min-width: 16rem;
+
+    &::placeholder { color: var(--color-text-muted); opacity: 1; }
+
+    &:focus {
+        border-color: var(--color-primary) !important;
+        box-shadow: 0 0 0 3px rgba(1, 151, 176, .18);
+    }
+}
+
+.topbar .input-group .btn {
+    border-radius: 0 9px 9px 0;
+}
+
+// ---- stacked alerts --------------------------------------------------------
+//
+// Bootstrap gives .alert a bottom margin and upstream's dashboard puts two
+// straight after one another, so the green "you must join the division" sat
+// flush against the blue "how do I join" -- reading as one two-tone block
+// rather than a statement and its answer.
+.alert + .alert {
+    margin-top: .75rem;
+}
+
+// The card body that holds them needs room at the bottom for the same reason:
+// the last alert was touching the card edge.
+.card-body > .alert:last-child {
+    margin-bottom: 0;
+}
+
+
+// ---- selects in a flex header ----------------------------------------------
+//
+// `.form-select` is width:100% by default, so inside a `d-flex` card header it
+// shrinks to whatever is left. The chrome section widened the padding, which
+// pushed it past the point where the text still fits -- "All categories" came
+// out as "All categori" with the arrow sitting on top of it.
+//
+// Sized to content with a floor, and told not to shrink.
+.card-header,
+.fixed-table-toolbar {
+    .form-select,
+    .form-control {
+        width: auto;
+        min-width: 9.5rem;
+        flex: 0 0 auto;
+    }
+
+    // The chevron is a background image; without room for it the last
+    // character sits underneath.
+    .form-select {
+        padding-right: 2rem;
+    }
+}
+
+// Buttons never wrap mid-label. A "Clear filters" that breaks over two lines
+// makes a toolbar twice as tall for one word.
+.btn {
+    white-space: nowrap;
+}
