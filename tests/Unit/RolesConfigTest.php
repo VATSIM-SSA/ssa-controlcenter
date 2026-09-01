@@ -21,6 +21,17 @@ class RolesConfigTest extends TestCase
         $matrix = new PermissionMatrix;
 
         foreach (array_keys(config('roles.matrix')) as $role) {
+            // VATSSA: a retired role grants nothing, on purpose. `moderator`
+            // and `director` are kept in the catalogue only so existing
+            // assignments and RoleAssignment's validator still recognise them;
+            // they are 'grantable' => false and hold an empty permission set.
+            //
+            // The invariant is still worth asserting for every role somebody
+            // can actually be given -- a live role that grants nothing is a bug.
+            if (config("roles.roles.{$role}.grantable", true) === false) {
+                continue;
+            }
+
             $this->assertNotEmpty($matrix->permissionsFor($role), "Role '{$role}' grants no permissions.");
         }
     }
@@ -50,7 +61,14 @@ class RolesConfigTest extends TestCase
     public function test_role_management_permissions_are_registered_and_granted(): void
     {
         $matrix = new PermissionMatrix;
-        $grantableRoles = array_keys(array_diff_key(config('roles.roles'), ['admin' => true]));
+        // VATSSA: 'grantable' => false rather than a hard-coded exclusion of
+        // admin. Upstream excludes admin because it is CLI-only; here the same
+        // is true of the two retired roles, and a flag says which is which
+        // without this list needing to be kept in step by hand.
+        $grantableRoles = array_keys(array_filter(
+            config('roles.roles'),
+            fn ($role) => ($role['grantable'] ?? true) !== false,
+        ));
 
         foreach ($grantableRoles as $role) {
             $permission = "roles.{$role}.manage";

@@ -23,25 +23,29 @@ class Combobox extends Component
     #[Modelable]
     public string $value = '';
 
-    /** FQCN of a ComboboxOptionProvider. Locked so a tampered request cannot swap it. */
-    #[Locked]
     /*
-    | VATSSA: #[Locked].
+    | FQCN of a ComboboxOptionProvider.
     |
-    | `options()` does `app($this->provider)` -- it resolves a class name out of
-    | the container. Livewire rehydrates public properties from the request
-    | payload, so without this the class name comes from the browser.
+    | #[Locked] IS UPSTREAM'S, and adding a second one is a fatal error --
+    | "Attribute must not be repeated" at render, which took out 41 view tests.
+    | It was added here on the belief that the lock was missing, from reading
+    | this file rather than the base commit. Check before you protect: a guard
+    | that is already there does not need a second one, and PHP treats the
+    | duplicate as an error rather than a no-op.
     |
-    | The `instanceof ComboboxOptionProvider` check below stops the RESULT of a
-    | wrong class being returned. It does not stop the class being built:
-    | `app()` instantiates before anything is checked, so any constructor the
-    | container can satisfy runs first. That is a real primitive to hand a
-    | member, for no benefit -- the provider is set once by the blade that
-    | mounts this and is never something a person chooses.
+    | Why it matters, since the reason is worth keeping: `options()` does
+    | `app($this->provider)`, resolving a class name out of the container.
+    | Livewire rehydrates public properties from the request payload, so without
+    | the lock the class name would come from the browser. The
+    | `instanceof ComboboxOptionProvider` check stops the RESULT of a wrong
+    | class being returned, not the class being BUILT -- `app()` instantiates
+    | before anything is checked.
     |
-    | `$context` is locked for the same reason: it is passed straight to
-    | `options()`, and every provider treats it as trusted (`['area' => 5]`),
-    | which is exactly what a filter that decides what rows come back must not be.
+    | `$context` below carries our own #[Locked], and that one IS ours -- upstream
+    | leaves it #[Reactive] alone. It is belt and braces rather than a fix: its
+    | only consumer applies the caller's scope before letting context narrow, so
+    | a tampered value can only shrink an already-scoped result. Locking it means
+    | the next provider cannot get that wrong.
     */
     #[Locked]
     public string $provider;

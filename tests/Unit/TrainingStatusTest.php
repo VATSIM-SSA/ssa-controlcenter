@@ -11,7 +11,11 @@ class TrainingStatusTest extends TestCase
     #[Test]
     public function label_returns_human_readable_text(): void
     {
-        $this->assertSame('In queue', TrainingStatus::IN_QUEUE->label());
+        // VATSSA: renamed. "In queue" said nothing about WHICH queue, and
+        // there are two -- intake, and the mentor waiting list after theory.
+        // A student reading "in queue" while sitting a Moodle course had no way
+        // to tell which one they were in.
+        $this->assertSame('Awaiting theory', TrainingStatus::IN_QUEUE->label());
         $this->assertSame('Active training', TrainingStatus::ACTIVE_TRAINING->label());
         $this->assertSame('Closed by system', TrainingStatus::CLOSED_BY_SYSTEM->label());
         $this->assertSame('Awaiting exam', TrainingStatus::AWAITING_EXAM->label());
@@ -44,7 +48,21 @@ class TrainingStatusTest extends TestCase
     public function is_assignable_by_staff_returns_true_for_staff_assignable_statuses(): void
     {
         $this->assertTrue(TrainingStatus::CLOSED_BY_STAFF->isAssignableByStaff());
-        $this->assertTrue(TrainingStatus::IN_QUEUE->isAssignableByStaff());
-        $this->assertTrue(TrainingStatus::ACTIVE_TRAINING->isAssignableByStaff());
+
+        // VATSSA: the pipeline owns these outright, so staff cannot hand-set
+        // them. Awaiting theory, theory phase and awaiting mentor follow from
+        // facts the bot holds -- a Moodle enrolment, a theory pass, a mentor
+        // being assigned -- and setting one by hand asserts something that is
+        // not true, which the next cycle then undoes. That looks like a bug
+        // rather than a rule, which is why it is a rule.
+        //
+        // `isAssignableFrom()` grants the two moves that ARE wanted: back to
+        // awaiting-mentor when a mentor is lost, and back to active training
+        // from awaiting-exam. See TrainingStatusAssignabilityTest.
+        $this->assertFalse(TrainingStatus::IN_QUEUE->isAssignableByStaff());
+        $this->assertFalse(TrainingStatus::ACTIVE_TRAINING->isAssignableByStaff());
+
+        $this->assertTrue(TrainingStatus::ACTIVE_TRAINING->isAssignableFrom(TrainingStatus::AWAITING_EXAM));
+        $this->assertTrue(TrainingStatus::AWAITING_MENTOR->isAssignableFrom(TrainingStatus::ACTIVE_TRAINING));
     }
 }

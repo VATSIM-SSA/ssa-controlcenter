@@ -72,7 +72,16 @@
         @if($platforms->checked_at)
             <small class="{{ $platforms->isStale() ? 'text-warning' : 'text-muted' }} d-block mt-1">
                 <i class="fas fa-rotate"></i>
-                Last updated {{ $platforms->checked_at->diffForHumans() }}@if($platforms->isStale()) — the daily check has not run recently@endif
+                {{-- The @endif goes on its own line. Glued to a word --
+                     `recently@endif` -- Blade does not see a directive at all,
+                     leaves it as literal text, and the compiled view ends with
+                     an unclosed if: "syntax error, unexpected end of file".
+                     It took out 41 view tests and never showed up in
+                     `view:cache`, which compiled the broken file quite happily. --}}
+                Last updated {{ $platforms->checked_at->diffForHumans() }}
+                @if($platforms->isStale())
+                    &mdash; the daily check has not run recently
+                @endif
             </small>
         @endif
     @endif

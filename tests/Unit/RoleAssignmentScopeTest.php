@@ -8,10 +8,12 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
+use Tests\Vatssa\UpstreamRoleModel;
 
 class RoleAssignmentScopeTest extends TestCase
 {
     use RefreshDatabase;
+    use UpstreamRoleModel;
 
     private User $user;
 
@@ -27,6 +29,8 @@ class RoleAssignmentScopeTest extends TestCase
     #[Test]
     public function area_role_requires_an_area()
     {
+        $this->skipPerAreaRoles('a role that requires an area');
+
         $this->expectException(\InvalidArgumentException::class);
         $this->expectExceptionMessage("Role 'nav-editor' requires an area assignment.");
 
@@ -44,6 +48,8 @@ class RoleAssignmentScopeTest extends TestCase
     #[Test]
     public function mentor_role_requires_an_area()
     {
+        $this->skipPerAreaRoles('an area-scoped mentor');
+
         $this->expectException(\InvalidArgumentException::class);
         $this->expectExceptionMessage("Role 'mentor' requires an area assignment.");
 
@@ -53,6 +59,8 @@ class RoleAssignmentScopeTest extends TestCase
     #[Test]
     public function buddy_role_requires_an_area()
     {
+        $this->skipPerAreaRoles('the buddy role, which VATSSA does not have');
+
         $this->expectException(\InvalidArgumentException::class);
         $this->expectExceptionMessage("Role 'buddy' requires an area assignment.");
 
@@ -87,6 +95,8 @@ class RoleAssignmentScopeTest extends TestCase
     #[Test]
     public function director_can_be_assigned_to_a_specific_area()
     {
+        $this->skipPerAreaRoles('an area-scoped director');
+
         $this->user->roleAssignments()->create(['role' => 'director', 'area_id' => $this->area->id]);
 
         $this->assertDatabaseHas('role_user', ['role' => 'director', 'area_id' => $this->area->id]);
@@ -140,6 +150,8 @@ class RoleAssignmentScopeTest extends TestCase
     #[Test]
     public function updating_area_role_to_null_area_throws()
     {
+        $this->skipPerAreaRoles('moving an area role to global');
+
         $assignment = RoleAssignment::create([
             'user_id' => $this->user->id,
             'role' => 'nav-editor',

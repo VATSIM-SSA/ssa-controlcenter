@@ -11,10 +11,12 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Foundation\Testing\WithFaker;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
+use Tests\Vatssa\UpstreamRoleModel;
 
 class UserUnitTest extends TestCase
 {
     use RefreshDatabase, WithFaker;
+    use UpstreamRoleModel;
 
     private $user;
 
@@ -130,6 +132,8 @@ class UserUnitTest extends TestCase
     #[Test]
     public function accessible_areas_returns_single_area_for_single_area_assignment(): void
     {
+        $this->skipPerAreaRoles('an area-scoped assignment');
+
         $area = Area::factory()->create();
         $this->user->roleAssignments()->create(['role' => 'moderator', 'area_id' => $area->id]);
 
@@ -144,6 +148,8 @@ class UserUnitTest extends TestCase
     #[Test]
     public function accessible_areas_returns_all_areas_for_multiple_area_assignments(): void
     {
+        $this->skipPerAreaRoles('multiple area assignments');
+
         $area1 = Area::factory()->create();
         $area2 = Area::factory()->create();
         $this->user->roleAssignments()->create(['role' => 'moderator', 'area_id' => $area1->id]);
