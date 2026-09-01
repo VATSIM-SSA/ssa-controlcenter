@@ -225,6 +225,20 @@ class AvailabilityGrid extends Component
             ->reject(fn ($slot) => in_array(substr($slot, 0, 10), $days, true))
             ->values()
             ->all());
+
+        // TELL THE BROWSER, or the cells stay painted.
+        //
+        // The grid's authority is an Alpine Set built once at x-data, because
+        // painting has to be instant and a Livewire round trip per cell would
+        // feel broken on a slow connection. That means the server clearing
+        // slots is invisible to it: the row vanished from the database and the
+        // cells stayed blue until somebody reloaded, which reads as the button
+        // not working -- so people pressed it again, and again.
+        //
+        // Whoever writes the next server-side mutation here has the same
+        // problem. There is one source of truth for what is painted and it
+        // lives in the browser; anything the server changes has to be sent back.
+        $this->dispatch('availability-cleared', slots: $this->selected);
     }
 
     /**

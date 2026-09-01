@@ -17,7 +17,11 @@
      x-data="availabilityGrid(@js($selected), $wire)"
      @pointerup.window="finish()"
      @pointercancel.window="finish()"
-     @pointermove.window="track($event)">
+     @pointermove.window="track($event)"
+     {{-- The server clearing slots has to reach the Set, which is the only
+          thing that decides what a cell looks like. Without this the cells
+          stayed painted after "Clear this week" until a reload. --}}
+     @availability-cleared.window="resync($event.detail.slots)">
 
     {{-- Week navigation. The month is the question; the week is what fits. --}}
     <div class="card-header bg-primary py-3 d-flex flex-wrap align-items-center justify-content-between gap-2">
@@ -173,6 +177,14 @@
 
             apply(slot) {
                 this.mode === 'fill' ? this.slots.add(slot) : this.slots.delete(slot);
+            },
+
+            // Replace the whole Set from a server-authoritative list.
+            //
+            // Replace, not merge. A merge would resurrect exactly what the
+            // server just removed, which is the failure this exists to fix.
+            resync(slots) {
+                this.slots = new Set(slots || []);
             },
 
             finish() {
