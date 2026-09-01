@@ -134,6 +134,12 @@ return [
 
         // Examinations
         'examinations.manage',
+        // VATSSA: clearing the calendar for a practical exam, and publishing it
+        // afterwards. SEPARATE FROM examinations.manage, which examiners also
+        // hold -- the events team clearing times and an examiner taking one are
+        // two different jobs, and a workflow where the same person can do both
+        // steps is a status field with extra clicking.
+        'events.exams.manage',
         'examinations.create',
 
         // Endorsements
@@ -246,6 +252,7 @@ return [
             'files.**',
             'bookings.**',
             'roles.mentor.manage',              // the only role ATM may grant
+            'events.exams.manage',              // the fallback when events are short
         ],
 
         // Day-to-day pipeline.
@@ -305,6 +312,7 @@ return [
         'events-team' => [
             'bookings.**',
             'examinations.manage',
+            'events.exams.manage',      // clear the calendar, then publish
         ],
 
         'nav-editor' => [

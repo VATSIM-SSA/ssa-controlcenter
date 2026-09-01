@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Vatssa\ActionLogController;
 use App\Http\Controllers\Vatssa\AvailabilityController;
+use App\Http\Controllers\Vatssa\ExamController;
 use App\Http\Controllers\Vatssa\InternalNoteController;
 use App\Http\Controllers\Vatssa\PreviewController;
 use App\Http\Controllers\Vatssa\RequestActionController;
@@ -100,6 +101,33 @@ Route::middleware(['web', 'auth', 'activity', 'suspended', 'can:fir.management.r
         // upstream's own controller, validation, policy and observer -- so a
         // request raised here is byte-for-byte one raised from the real page.
         Route::get('/request', [PreviewController::class, 'newRequest'])->name('request');
+    });
+
+/*
+| Practical exams.
+|
+| One route per HANDOFF, not per field. Each moves the stage exactly one step
+| and each is gated on the party whose turn it is -- the events team cannot
+| confirm an examiner's slot, an examiner cannot clear the calendar, and the
+| training manager does not pick the date. See ExamPolicy.
+|
+| The seven-day rule lives in the model rather than here: slots inside the
+| window are never offered, so it cannot be broken by somebody being helpful.
+*/
+Route::middleware(['web', 'auth', 'activity', 'suspended'])
+    ->prefix('vatssa/exams')
+    ->name('vatssa.exams.')
+    ->group(function () {
+        Route::get('/', [ExamController::class, 'index'])->name('index');
+        Route::get('/{exam}', [ExamController::class, 'show'])->name('show');
+
+        Route::post('/training/{training}', [ExamController::class, 'store'])->name('store');
+        Route::post('/{exam}/authorise', [ExamController::class, 'authorise'])->name('authorise');
+        Route::post('/{exam}/submit', [ExamController::class, 'submitAvailability'])->name('submit');
+        Route::post('/{exam}/clear', [ExamController::class, 'clear'])->name('clear');
+        Route::post('/{exam}/confirm', [ExamController::class, 'confirm'])->name('confirm');
+        Route::post('/{exam}/publish', [ExamController::class, 'publish'])->name('publish');
+        Route::post('/{exam}/cancel', [ExamController::class, 'cancel'])->name('cancel');
     });
 
 /*

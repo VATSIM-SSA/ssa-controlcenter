@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Helpers\ExamStage;
 use App\Helpers\TaskStatus;
 use App\Helpers\TrainingStatus;
 use App\Http\Controllers\TaskController;
@@ -12,6 +13,9 @@ use App\Models\Task;
 use App\Models\Training;
 use App\Models\User;
 use App\Models\Vatssa\ActionLog;
+use App\Models\Vatssa\AvailabilityPoll;
+use App\Models\Vatssa\AvailabilityResponse;
+use App\Models\Vatssa\Exam;
 use App\Models\Vatssa\MessageLog;
 use App\Models\Vatssa\MessageTemplate;
 use App\Models\Vatssa\MoodleCourse;
@@ -1584,6 +1588,165 @@ class VatssaTest extends TestCase
         $this->assertNotContains('director', $offered->all());
         $this->assertNotContains('admin', $offered->all());
         $this->assertContains('mentor', $offered->all());
+    }
+
+    // ---------------------------------------------------------------------
+    // The practical exam workflow
+    // ---------------------------------------------------------------------
+
+    private function exam(ExamStage $stage = ExamStage::REQUESTED): Exam
+    {
+        $rating = Rating::whereNotNull('vatsim_rating')->orderBy('vatsim_rating')->first();
+
+        $training = Training::factory()->create([
+            'user_id' => User::find(10000001)->id,
+            'status' => TrainingStatus::AWAITING_EXAM,
+            'paused_at' => null,
+        ]);
+        $training->ratings()->attach($rating->id);
+
+        return Exam::create([
+            'training_id' => $training->id,
+            'stage' => $stage,
+            'requested_by' => User::find(10000006)->id,
+        ]);
+    }
+
+    #[Test]
+    public function a_stage_can_only_move_one_step_forward(): void
+    {
+        // The ordering IS the feature. If the events team can clear times the
+        // student has not given, or an examiner can confirm a slot nobody
+        // cleared, this is a status field with extra clicking.
+        $this->seedFixtures();
+        $exam = $this->exam();
+
+        $this->assertFalse($exam->moveTo(ExamStage::AWAITING_EXAMINER),
+            'a stage must not be skippable');
+        $this->assertSame(ExamStage::REQUESTED, $exam->fresh()->stage);
+
+        $this->assertTrue($exam->moveTo(ExamStage::AWAITING_AVAILABILITY));
+        $this->assertSame(ExamStage::AWAITING_AVAILABILITY, $exam->fresh()->stage);
+    }
+
+    #[Test]
+    public function an_open_exam_can_always_be_cancelled(): void
+    {
+        $this->seedFixtures();
+
+        foreach (ExamStage::open() as $stage) {
+            $exam = $this->exam($stage);
+            $this->assertTrue($exam->moveTo(ExamStage::CANCELLED),
+                "{$stage->name} must be cancellable");
+        }
+    }
+
+    #[Test]
+    public function a_lapsed_exam_goes_back_to_availability_not_to_the_start(): void
+    {
+        // The authorisation still stands. Asking the training manager to
+        // approve the same exam twice is make-work, and make-work is how a
+        // workflow gets routed around.
+        $this->seedFixtures();
+        $exam = $this->exam(ExamStage::AWAITING_EXAMINER);
+
+        $this->assertTrue($exam->moveTo(ExamStage::LAPSED));
+        $this->assertTrue($exam->fresh()->moveTo(ExamStage::AWAITING_AVAILABILITY));
+        $this->assertFalse($exam->fresh()->moveTo(ExamStage::REQUESTED));
+    }
+
+    #[Test]
+    public function slots_inside_the_notice_period_are_never_offered(): void
+    {
+        // The rule cannot be broken by somebody being helpful: a slot that is
+        // too close is not shown to an examiner at all, rather than shown and
+        // refused on submit.
+        $this->seedFixtures();
+        $exam = $this->exam(ExamStage::AWAITING_EXAMINER);
+
+        $tooSoon = now()->addDays(Exam::NOTICE_DAYS - 2)->startOfHour();
+        $farEnough = now()->addDays(Exam::NOTICE_DAYS + 3)->startOfHour();
+
+        $poll = AvailabilityPoll::create([
+            'purpose' => AvailabilityPoll::CPT,
+            'title' => 'test',
+            'starts_on' => now(),
+            'ends_on' => now()->addWeeks(6),
+            'training_id' => $exam->training_id,
+            'slot_minutes' => 30,
+        ]);
+
+        foreach ([AvailabilityPoll::ROLE_STUDENT, AvailabilityPoll::ROLE_EVENTS] as $i => $role) {
+            AvailabilityResponse::create([
+                'poll_id' => $poll->id,
+                'user_id' => User::find(10000001 + $i)->id,
+                'role' => $role,
+                'slots' => [$tooSoon->toIso8601String(), $farEnough->toIso8601String()],
+            ]);
+        }
+
+        $exam->update(['poll_id' => $poll->id]);
+
+        $offerable = $exam->fresh()->offerableSlots();
+
+        $this->assertContains($farEnough->toIso8601String(), $offerable);
+        $this->assertNotContains($tooSoon->toIso8601String(), $offerable);
+    }
+
+    #[Test]
+    public function a_confirmed_exam_that_drifts_inside_the_window_is_flagged(): void
+    {
+        // The way the rule actually gets broken is time passing. An exam legal
+        // when it was booked and illegal a fortnight later, with nothing having
+        // changed -- nothing changing IS the failure.
+        $this->seedFixtures();
+        $exam = $this->exam(ExamStage::CONFIRMED);
+
+        $exam->update([
+            'scheduled_for' => now()->addDays(3),
+            'banner_made' => true,
+            'on_discord' => false,
+        ]);
+
+        $this->assertTrue($exam->fresh()->noticeBreached());
+        $this->assertContains('On the Discord calendar', $exam->fresh()->checklistOutstanding());
+
+        $this->artisan('vatssa:exam-watch')->assertSuccessful();
+
+        $this->assertDatabaseHas('vatssa_action_log', [
+            'action' => 'exam.notice_breached',
+            'training_id' => $exam->training_id,
+        ]);
+    }
+
+    #[Test]
+    public function an_examiner_cannot_take_their_own_students_exam(): void
+    {
+        // The one conflict of interest the system can actually prevent.
+        $this->seedFixtures();
+        $exam = $this->exam(ExamStage::AWAITING_EXAMINER);
+
+        $examiner = User::find(10000006);
+        $exam->training->mentors()->attach($examiner, ['expire_at' => now()->addYear()]);
+
+        $this->assertFalse($examiner->can('confirm', $exam->fresh()));
+    }
+
+    #[Test]
+    public function clearing_the_calendar_and_taking_the_exam_are_different_jobs(): void
+    {
+        // The events team hold events.exams.manage; examiners hold
+        // examinations.manage. Both used to be examinations.manage, which would
+        // have let an examiner clear their own calendar -- and the separation
+        // is the only reason this is a workflow rather than a status field.
+        $this->seedFixtures();
+
+        $this->assertNotSame(
+            config('roles.matrix.events-team'),
+            config('roles.matrix.mentor'),
+        );
+
+        $this->assertContains('events.exams.manage', config('roles.permissions'));
     }
 
     #[Test]

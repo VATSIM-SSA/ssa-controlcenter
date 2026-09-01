@@ -68,6 +68,14 @@ class VatssaServiceProvider extends ServiceProvider
             // Diffs against vatssa_training_mentors, so it also catches a SWAP,
             // where the training is never mentorless and the old mentor would
             // otherwise never be told.
+            // The seven-day exam rule. Checked at confirmation too, but the
+            // way it actually gets broken is time passing: an exam legal when
+            // it was booked and illegal a fortnight later, with nothing having
+            // changed. Nothing changing IS the failure.
+            $schedule->command('vatssa:exam-watch')
+                ->dailyAt('06:30')
+                ->withoutOverlapping();
+
             $schedule->command('vatssa:mentor-watch')
                 ->dailyAt('06:15')
                 ->withoutOverlapping();

@@ -50,6 +50,13 @@
 
         @can('view', \App\Models\Booking::class)
             <x-sidebar.item :href="route('booking')" icon="fa-calendar" title="Booking" :active="Route::is('booking*')" />
+
+            {{-- VATSSA: the practical exam workflow. Not gated: a student finds
+                 their own exam here, an examiner finds work, and the events team
+                 finds what is waiting on them. The LIST is filtered per person;
+                 the page is not a secret. --}}
+            <x-sidebar.item :href="route('vatssa.exams.index')" icon="fa-user-graduate"
+                title="Practical Exams" :active="Route::is('vatssa.exams.*')" />
         @endcan
 
         @if(Setting::get('linkMoodle') && Setting::get('linkMoodle') != "")

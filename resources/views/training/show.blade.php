@@ -670,6 +670,13 @@
      notes all hold tables or a text box and need the room. --}}
 <div class="row">
     <div class="col-xl-8 col-lg-12 col-md-12">
+        {{-- VATSSA: the practical exam being arranged, if there is one.
+             A coordinator opening a training asks "where is this person up
+             to", and an exam in flight is most of that answer. Summary and a
+             link only -- every action lives on the exam page, because two
+             places to do the same thing is one place that goes stale. --}}
+        @include('vatssa.parts.exam-box', ['training' => $training])
+
         @include('vatssa.parts.theory', [
             'user' => $training->user,
             'onlyRatings' => $training->ratings->pluck('name')->all(),
