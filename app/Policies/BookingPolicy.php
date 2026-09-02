@@ -84,10 +84,23 @@ class BookingPolicy
 
     /**
      * Determine whether the user can add the event tag
+     *
+     * VATSSA: the rule, not the division.
+     *
+     * Upstream required `isMember() || isVisiting()`, so a controller from
+     * another division could not tag an event booking here even when they were
+     * plainly qualified to make it. Division membership is not what makes
+     * somebody able to staff an event; the rating is, and the permission is the
+     * override for the cases the rating cannot express.
+     *
+     * There was also no permission escape hatch at all, which meant the events
+     * team could not tag an event on `bookings.manage` alone -- the one
+     * permission that exists for exactly this.
      */
     public function bookEventTag(User $user): bool
     {
-        return ($user->isMember() || $user->isVisiting()) && $user->rating->isGreaterThanOrEqual(VatsimRating::S1);
+        return $user->hasPermission('bookings.manage')
+            || $user->rating->isGreaterThanOrEqual(VatsimRating::S1);
     }
 
     /**
@@ -97,8 +110,12 @@ class BookingPolicy
      */
     public function bookExamTag(User $user): bool
     {
-
-        return $user->isMember() && ($user->rating->isGreaterThanOrEqual(VatsimRating::C1) || $user->hasPermission('bookings.manage'));
+        // VATSSA: same reasoning as bookEventTag(). `isMember()` is dropped;
+        // what is left is the rule that actually matters -- C1 or above, or the
+        // booking permission. Somebody outside the division who holds the
+        // rating can book an exam slot, which is the case that was blocked.
+        return $user->rating->isGreaterThanOrEqual(VatsimRating::C1)
+            || $user->hasPermission('bookings.manage');
     }
 
     /**

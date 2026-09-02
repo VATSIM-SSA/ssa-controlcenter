@@ -36,7 +36,11 @@ return [
     |
     */
 
-    'tagline' => env('APP_TAGLINE') ?: 'Training Administration',
+    // VATSSA: "Divisional Administration". Control Center stopped being only
+    // about training here -- it carries membership, endorsements, transfers and
+    // visits -- and the tagline was the first thing on the login page telling
+    // everybody otherwise.
+    'tagline' => env('APP_TAGLINE') ?: 'Divisional Administration',
 
     /*
     |--------------------------------------------------------------------------

@@ -107,6 +107,13 @@
              are set in different places on purpose. --}}
         @include('vatssa.parts.desks', ['user' => $user])
 
+        {{-- VATSSA: only for somebody who actually mentors.
+             This card said "No registered students" on every profile in the
+             division, including students and members who have never mentored
+             anybody. An empty answer to a question nobody asked is still
+             clutter, and on a page that already has eight cards it is the kind
+             that makes the real ones harder to find. --}}
+        @if($user->hasRole('mentor'))
         <div class="card shadow mb-4">
             <div class="card-header bg-primary py-3 d-flex flex-row align-items-center justify-content-between">
                 <h6 class="m-0 fw-bold text-white">
@@ -141,6 +148,7 @@
 
             </div>
         </div>
+        @endif
     </div>
 
     <div class="col-xl-9 col-md-8 col-sm-12 mb-12">

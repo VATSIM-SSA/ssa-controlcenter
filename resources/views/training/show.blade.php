@@ -318,8 +318,20 @@
                                         <i class="fas fa-graduation-cap"></i>
                                     @endif
 
+                                    {{-- VATSSA: say SYSTEM out loud.
+
+                                         A null actor is how the pipeline signs its work --
+                                         BridgeController::comment() and close() both pass null
+                                         deliberately, so a reader in a year can tell the bot moved
+                                         somebody rather than a person.
+
+                                         But this printed a name only when there WAS one, so those
+                                         rows rendered with no author at all: just a date. The
+                                         distinction the null carries never reached the page. --}}
                                     @isset($activity->triggered_by_id)
-                                        {{ \App\Models\User::find($activity->triggered_by_id)->name }} —
+                                        {{ \App\Models\User::find($activity->triggered_by_id)?->name ?? "Deleted account" }} —
+                                    @else
+                                        <span class="badge bg-secondary">System</span> —
                                     @endisset
 
                                     {{ $activity->created_at->toEuropeanDateTime() }}

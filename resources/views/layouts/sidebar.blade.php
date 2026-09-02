@@ -64,15 +64,8 @@
         <x-sidebar.item :href="route('feedback')" icon="fa-comment-dots" title="Give feedback"
                         :active="Route::is('feedback')" />
 
-        @if(Setting::get('linkMoodle') && Setting::get('linkMoodle') != "")
-            <li class="nav-item">
-            <a class="nav-link" href="{{ Setting::get('linkMoodle') }}" target="_blank">
-                <i class="fas fa-graduation-cap"></i>
-                <span>Moodle</span></a>
-            </li>
-        @endif
 
-        @canany(['training.mentor-dashboard.view', 'bookings.sweatbox.use', 'fir.management.reports.view'])
+        @canany(['training.mentor-dashboard.view', 'bookings.sweatbox.use', 'fir.management.reports.view', 'endorsements.rosters.view'])
 
             {{-- Divider --}}
             <div class="sidebar-divider"></div>
@@ -102,8 +95,34 @@
             <x-sidebar.item :href="route('vatssa.availability')" icon="fa-calendar-check"
                 title="Availability Tool" :active="Route::is('vatssa.availability*')" />
 
+            {{-- VATSSA: Moodle sits under Training, where the theory it holds
+                 belongs. It was above the Training heading, in the personal
+                 group with Dashboard and Booking, which is where you look for
+                 things about you rather than things about your training. --}}
+            @if(Setting::get('linkMoodle') && Setting::get('linkMoodle') != "")
+                <li class="nav-item">
+                    <a class="nav-link" href="{{ Setting::get('linkMoodle') }}" target="_blank">
+                        <i class="fas fa-graduation-cap"></i>
+                        <span>Moodle</span>
+                    </a>
+                </li>
+            @endif
+
             @can('training.mentor-dashboard.view')
                 <x-sidebar.item :href="route('mentor')" icon="fa-chalkboard-teacher" title="My students" :active="Route::is('mentor')" />
+            @endcan
+
+            {{-- VATSSA: mentor capacity and ceilings, under Training rather
+                 than buried in admin. It decides who can teach what and how
+                 many, which is a training question read by the same person who
+                 reads My students.
+
+                 Still `system.settings.manage`, so ATC training manager and
+                 admin only -- the move changes where it lives, not who sees
+                 it. --}}
+            @can('system.settings.manage')
+                <x-sidebar.item :href="route('vatssa.admin.mentorship')" icon="fa-user-gear"
+                                title="Mentor Admin" :active="Route::is('vatssa.admin.mentorship')" />
             @endcan
 
             @can('bookings.sweatbox.use')
@@ -124,6 +143,31 @@
                 </x-sidebar.section>
             @endcan
 
+            {{-- VATSSA: endorsements live under Training, not Members.
+
+                 A solo, a facility rating and an examiner endorsement are all
+                 outcomes of training, and the people who read these lists are
+                 the same people working the pipeline. Under Members they sat
+                 beside the user directory, which is a different job done by
+                 different people. --}}
+        {{-- VATSSA: the endorsement rosters are staff tools, not a member menu.
+
+             Solo and visiting endorsements belong on the PUBLIC roster at
+             vatssa.com, where members actually look, rather than behind a login
+             here. Examiners are not published at all.
+
+             The pages still exist for the staff who work from them --
+             pipeline coordinator, ATC training manager and admin -- and are now
+             gated on `endorsements.rosters.view`, which upstream does not have:
+             its three index methods carry no authorize() call whatsoever. --}}
+        @can('endorsements.rosters.view')
+            <x-sidebar.section icon="fa-check-square" title="Endorsements" :active="Route::is('endorsements.*')" id="collapseEndorsements">
+                <x-sidebar.item :href="route('endorsements.solos')" title="Solo" collapse />
+                <x-sidebar.item :href="route('endorsements.examiners')" title="Examiner" collapse />
+                <x-sidebar.item :href="route('endorsements.visiting')" title="Visiting" collapse />
+            </x-sidebar.section>
+        @endcan
+
         @endcanany
 
         {{-- VATSSA: the heading only appears if something sits under it.
@@ -134,7 +178,9 @@
              are now gated too -- the roster came out of the nav, and the
              endorsement rosters became staff-only -- which made an existing
              oversight visible on every account. --}}
-        @canany(['users.manage', 'endorsements.rosters.view'])
+        {{-- `users.manage` alone now: endorsements moved to Training, so the
+             roster permission no longer has anything under this heading. --}}
+        @can('users.manage')
 
         {{-- Divider --}}
         <div class="sidebar-divider"></div>
@@ -167,25 +213,7 @@
              longer advertised. The roster people actually read is the public
              one on vatssa.com, served by `/api/vatssa/roster`. --}}
 
-        {{-- VATSSA: the endorsement rosters are staff tools, not a member menu.
-
-             Solo and visiting endorsements belong on the PUBLIC roster at
-             vatssa.com, where members actually look, rather than behind a login
-             here. Examiners are not published at all.
-
-             The pages still exist for the staff who work from them --
-             pipeline coordinator, ATC training manager and admin -- and are now
-             gated on `endorsements.rosters.view`, which upstream does not have:
-             its three index methods carry no authorize() call whatsoever. --}}
-        @can('endorsements.rosters.view')
-            <x-sidebar.section icon="fa-check-square" title="Endorsements" :active="Route::is('endorsements.*')" id="collapseEndorsements">
-                <x-sidebar.item :href="route('endorsements.solos')" title="Solo" collapse />
-                <x-sidebar.item :href="route('endorsements.examiners')" title="Examiner" collapse />
-                <x-sidebar.item :href="route('endorsements.visiting')" title="Visiting" collapse />
-            </x-sidebar.section>
         @endcan
-
-        @endcanany
 
 
 
@@ -203,13 +231,28 @@
                     <x-sidebar.item :href="route('reports.activities')" title="Training Activities" collapse />
                 @endcan
 
-                <x-sidebar.item :href="route('reports.mentors')" title="Mentors" collapse />
+                {{-- VATSSA: gated on the same abilities the controllers check.
+
+                     Mentors and Feedback were listed unconditionally inside a
+                     section gated on `fir.management.reports.view`, but neither
+                     report is granted by that permission. A pipeline
+                     coordinator holds it, saw both links, and got a 403 from
+                     each -- which reads as a broken application rather than as
+                     a permission they do not have.
+
+                     `feedback.correlated.view` is admin and feedback-team only;
+                     see tools/matrix-table.md. --}}
+                @can('viewMentors', \App\Models\ManagementReport::class)
+                    <x-sidebar.item :href="route('reports.mentors')" title="Mentors" collapse />
+                @endcan
 
                 @can('viewAccessReport', \App\Models\ManagementReport::class)
                     <x-sidebar.item :href="route('reports.access')" title="Access" collapse />
                 @endcan
 
-                <x-sidebar.item :href="route('reports.feedback')" title="Feedback" collapse />
+                @can('viewFeedback', \App\Models\ManagementReport::class)
+                    <x-sidebar.item :href="route('reports.feedback')" title="Feedback" collapse />
+                @endcan
 
                 {{-- VATSSA: what the automation did, and what it noticed and
                      left alone. A report rather than an admin page: the
@@ -244,7 +287,6 @@
                          that answers "how do I add a new endorsement". --}}
                     <x-sidebar.item :href="route('vatssa.admin.setup')" title="Training setup" collapse />
                     <x-sidebar.item :href="route('vatssa.admin.routing')" title="Request routing" collapse />
-                    <x-sidebar.item :href="route('vatssa.admin.mentorship')" title="Mentorship" collapse />
                     <x-sidebar.item :href="route('vatssa.admin.templates')" title="Pipeline templates" collapse />
                     <x-sidebar.item :href="route('vatssa.admin.courses')" title="Moodle courses" collapse />
                 @endcan

@@ -38,7 +38,6 @@
                   wire:key="g-{{ $a->role }}">
                 <span>
                     {{ $displayName($a->role) }}
-                    @if ($a->role === 'mentor')<em class="ms-1 text-white-50">via Division API</em>@endif
                 </span>
                 @if ($manageable)
                     <button type="button" class="btn-close btn-close-white"
@@ -74,9 +73,6 @@
                            the "Global" tick box. --}}
                       <div class="mb-3">
                           <label class="form-label fw-semibold mb-0">Select a role</label>
-                          <p class="text-muted small mb-2">
-                              Granted across the whole division. VATSSA has no area-scoped roles.
-                          </p>
                           @foreach ($this->grantableRoles() as $key => $name)
                               <div class="form-check" wire:key="role-{{ $key }}">
                                   <input class="form-check-input" type="radio" name="selectedRole"
@@ -114,12 +110,21 @@
                     </div>
                     <div class="modal-body">
                         @if ($isMentor)
-                            <div class="alert alert-danger mb-0">
-                                This will notify the Division API.
-                                @if ($this->removalWillDetach() && $this->removalTrainingCount() > 0)
-                                    This will also detach this user's {{ $this->removalTrainingCount() }} training(s) in this area.
-                                @endif
-                            </div>
+                            {{-- VATSSA: no mention of a Division API.
+
+                                 VATSIM_DIVISION_API_DRIVER is unset here, so
+                                 DivisionApiServiceProvider resolves NoOpAdapter
+                                 and every DivisionApi:: call does nothing at
+                                 all. Telling somebody an API will be notified
+                                 when none exists is worse than saying nothing:
+                                 it invents a consequence they cannot check.
+
+                                 What IS true is the detach, so say only that. --}}
+                            @if ($this->removalWillDetach() && $this->removalTrainingCount() > 0)
+                                <div class="alert alert-danger mb-0">
+                                    This will also detach this user's {{ $this->removalTrainingCount() }} training(s).
+                                </div>
+                            @endif
                         @else
                             <p class="mb-0">This will revoke the role immediately.</p>
                         @endif

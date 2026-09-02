@@ -967,7 +967,26 @@ time,
 .topbar .search.input-group {
     background: var(--bg-body);
     border: 1px solid var(--border-card, rgba(127, 143, 148, .22));
-    border-radius: 50rem;
+
+    // !important, and it is not laziness.
+    //
+    // The markup nests this .search.input-group INSIDE an outer .input-group,
+    // with the spinner and the results dropdown as its siblings. So Bootstrap's
+    //
+    //   .input-group:not(.has-validation) > :not(:last-child):not(...)...
+    //
+    // matches it -- it is not the outer group's last child -- and squares the
+    // right-hand corners. That selector carries five classes worth of
+    // specificity through its :not() chain and beats anything sane written
+    // here, which is why the first fix looked right and changed nothing.
+    //
+    // The alternative was dropping `input-group` from the outer div, but that
+    // is what makes it a flex row, and the spinner overlay is positioned
+    // against it.
+    border-radius: 50rem !important;
+
+    // With the group clipping, the children need no radius of their own --
+    // which is just as well, since Bootstrap squares those too.
     overflow: hidden;
 
     &:focus-within {
