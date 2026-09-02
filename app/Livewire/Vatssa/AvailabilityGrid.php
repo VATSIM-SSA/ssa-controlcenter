@@ -182,7 +182,13 @@ class AvailabilityGrid extends Component
      */
     public function paint(array $slots): void
     {
-        if ($this->readOnly) {
+        // `readOnly` is #[Locked], which stops the BROWSER changing it -- not
+        // time. It was set at mount, and a grid left open while somebody
+        // confirms the exam would still write into a settled poll. Re-read the
+        // poll on every write, the same reason visibility is re-checked below.
+        if ($this->readOnly || ! $this->poll->isOpen()) {
+            $this->readOnly = true;
+
             return;
         }
 

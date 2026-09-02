@@ -194,6 +194,10 @@ return [
     |
     */
 
-    'same_site' => null,
+    // VATSSA: 'lax'. Upstream leaves this null, which sends the session cookie
+    // on cross-site requests. CSRF tokens are enforced everywhere, so this is
+    // defence in depth rather than a fix -- but it is one word, and browsers
+    // that have not adopted the Lax default are the ones that need it.
+    'same_site' => 'lax',
 
 ];

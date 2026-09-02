@@ -92,20 +92,62 @@
                         <div class="row">
                             <div class="col-md-6 mb-3">
                                 <label class="form-label" for="purpose">What is it for</label>
+                                {{-- From the model, so adding a purpose is one
+                                     line there and appears here on its own. --}}
                                 <select class="form-select" id="purpose" name="purpose" required>
-                                    <option value="mentoring">Mentoring session</option>
-                                    <option value="cpt">Practical exam</option>
-                                    <option value="meeting">Meeting</option>
+                                    @foreach(\App\Models\Vatssa\AvailabilityPoll::PURPOSES as $value => $label)
+                                        <option value="{{ $value }}">{{ $label }}</option>
+                                    @endforeach
                                 </select>
                             </div>
 
                             <div class="col-md-6 mb-3">
                                 <label class="form-label" for="weeks">How far ahead</label>
                                 <select class="form-select" id="weeks" name="weeks" required>
-                                    <option value="2">2 weeks</option>
-                                    <option value="4" selected>4 weeks</option>
-                                    <option value="8">8 weeks</option>
+                                    @foreach([1, 2, 4, 6, 8] as $w)
+                                        @continue($w > config('vatssa.availability.max_weeks', 8))
+                                        <option value="{{ $w }}" @selected($w === 4)>
+                                            {{ $w }} {{ \Illuminate\Support\Str::plural('week', $w) }}
+                                        </option>
+                                    @endforeach
                                 </select>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label" for="visibility">Who can open it</label>
+                            <select class="form-select" id="visibility" name="visibility" required>
+                                @foreach(\App\Models\Vatssa\AvailabilityPoll::VISIBILITIES as $value => $label)
+                                    <option value="{{ $value }}">{{ $label }}</option>
+                                @endforeach
+                            </select>
+                            <div class="form-text">
+                                A poll is a list of when named people are free. "Only the people I
+                                invite" is the default for that reason &mdash; you can add more at
+                                any time from the poll's own page.
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label" for="participants">
+                                Who to ask <span class="text-muted">(optional &mdash; add more later)</span>
+                            </label>
+                            {{-- A plain multi-select over members. Not a
+                                 combobox: this list is a few hundred names at
+                                 most, and a picker that needs JavaScript to
+                                 work is a picker that fails silently when the
+                                 JavaScript does. --}}
+                            <select class="form-select" id="participants" name="participants[]"
+                                    multiple size="6">
+                                @foreach($members as $member)
+                                    <option value="{{ $member->id }}">
+                                        {{ $member->name }} ({{ $member->id }})
+                                    </option>
+                                @endforeach
+                            </select>
+                            <div class="form-text">
+                                Hold Ctrl (or Cmd) to pick several. Everybody picked can open the
+                                poll straight away, whichever visibility you chose.
                             </div>
                         </div>
 
@@ -113,7 +155,7 @@
                             <label class="form-label" for="title">Title</label>
                             <input type="text" class="form-control" id="title" name="title"
                                    required maxlength="120"
-                                   placeholder="S2 practical exam &mdash; Web One">
+                                   placeholder="S2 mentoring &mdash; Web One">
                         </div>
 
                         <div class="mb-3">

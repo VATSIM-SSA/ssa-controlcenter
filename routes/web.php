@@ -90,7 +90,15 @@ Route::middleware(['auth', 'activity', 'suspended'])->group(function () {
         // Internal user search
         Route::get('/user/search/find', 'search')->name('user.search');
         Route::get('/user/search/vatsimhours', 'fetchVatsimHours')->name('user.vatsimhours');
-        Route::get('/user/{user}/statistics/sessions', 'fetchStatisticsSessions')->name('user.statistics.sessions');
+        // VATSSA: throttled. This endpoint is deliberately open to every
+        // authenticated member for every CID -- the data is public upstream --
+        // but each call is an outbound request to StatSim, and the `web` group
+        // carries no rate limit at all. Without this, one logged-in member can
+        // walk the whole membership and spend somebody else's API quota doing
+        // it.
+        Route::get('/user/{user}/statistics/sessions', 'fetchStatisticsSessions')
+            ->middleware('throttle:30,1')
+            ->name('user.statistics.sessions');
     });
 
     // Reports

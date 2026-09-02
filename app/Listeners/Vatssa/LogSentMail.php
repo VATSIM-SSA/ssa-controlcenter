@@ -59,10 +59,27 @@ class LogSentMail
                 return;
             }
 
-            // Laravel's own message id, so a resend of the same mail does not
+            // The Message-ID header, so a resend of the same mail does not
             // become a second row. The bot deduplicates its Brevo poll on the
             // same column.
-            $messageId = trim((string) $message->getId(), '<>') ?: null;
+            //
+            // THIS LINE WAS `$message->getId()`, WHICH DOES NOT EXIST.
+            //
+            // `$event->message` is a Symfony\Component\Mime\Email, and Email
+            // has no getId(). So every send threw an Error here, the catch
+            // below swallowed it exactly as designed, and NOTHING was ever
+            // logged -- not one row in vatssa_action_log, not one in
+            // vatssa_message_logs. The feature whose whole point is that "what
+            // was this student told" always has an answer had never once
+            // recorded an answer, and it failed silently by construction.
+            //
+            // That is the cost of a catch-all that reports and carries on: it
+            // is right for the mail path, and it hid a broken feature for as
+            // long as the feature has existed. The two tests that would have
+            // caught it were failing for an unrelated reason -- phpunit.xml set
+            // MAIL_DRIVER instead of MAIL_MAILER, so they died on a real SMTP
+            // connection before they ever reached this.
+            $messageId = $this->messageId($event);
 
             foreach ($to as $address) {
                 $this->record($address, $subject, $messageId);
@@ -72,6 +89,33 @@ class LogSentMail
             // the send it describes turns observability into an outage, and
             // this one sits in the mail path of the whole application.
             report($e);
+        }
+    }
+
+    /**
+     * The Message-ID, from wherever this Symfony version keeps it.
+     *
+     * Header first, because that is the value the receiving mail server and
+     * Brevo both see, and Brevo's is what the bot deduplicates against. The
+     * SentMessage is the fallback: it is populated by the transport, so it is
+     * absent for anything that did not actually go out.
+     */
+    private function messageId(MessageSent $event): ?string
+    {
+        $header = $event->message->getHeaders()->get('Message-ID');
+
+        if ($header !== null) {
+            $id = trim($header->getBodyAsString(), '<>');
+
+            if ($id !== '') {
+                return $id;
+            }
+        }
+
+        try {
+            return trim((string) $event->sent->getMessageId(), '<>') ?: null;
+        } catch (\Throwable) {
+            return null;
         }
     }
 
@@ -89,12 +133,25 @@ class LogSentMail
             ->orWhere('setting_workmail_address', $address)
             ->first();
 
+        // The address is kept ONLY when nobody matched it.
+        //
+        // A matched row already carries `user_id`, which names the person
+        // exactly, so repeating their email address adds nothing and puts
+        // personal data into a log every coordinator can read. An UNMATCHED row
+        // has no other handle -- the address is the whole finding, and the row
+        // exists so somebody can go and work out whose it is.
+        $meta = ['subject' => $subject, 'message_id' => $messageId];
+
+        if ($user === null) {
+            $meta['to'] = $address;
+        }
+
         ActionLog::did(
             'mail.sent',
             ($user?->name ?? $address) . ' was emailed: ' . $subject,
             null,
             $user?->id,
-            ['subject' => $subject, 'to' => $address, 'message_id' => $messageId],
+            $meta,
             ActionLog::ACTOR_SYSTEM,
             // The per-training timeline gets it through MessageLog below, which
             // knows which training it belongs to. Mirroring here as well would

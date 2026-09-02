@@ -2,11 +2,11 @@
 
 use App\Http\Controllers\Vatssa\ActionLogController;
 use App\Http\Controllers\Vatssa\AvailabilityController;
-use App\Http\Controllers\Vatssa\ExamController;
 use App\Http\Controllers\Vatssa\InternalNoteController;
 use App\Http\Controllers\Vatssa\RequestActionController;
 use App\Http\Controllers\Vatssa\SettingsController;
 use App\Http\Controllers\Vatssa\TaskEditController;
+use App\Http\Controllers\Vatssa\TrainingSetupController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -42,31 +42,20 @@ Route::middleware(['web', 'auth', 'activity', 'suspended'])
     });
 
 /*
-| Practical exams.
+| Practical exams: REMOVED 2026-09-02.
 |
-| One route per HANDOFF, not per field. Each moves the stage exactly one step
-| and each is gated on the party whose turn it is -- the events team cannot
-| confirm an examiner's slot, an examiner cannot clear the calendar, and the
-| training manager does not pick the date. See ExamPolicy.
+| The nine-stage CPT workflow is gone. It was half a workflow -- authorise,
+| collect availability, clear it against plans that are not public, take it,
+| publish it -- and half of it lived in people's heads anyway, so the page
+| told a story the division was not actually following.
 |
-| The seven-day rule lives in the model rather than here: slots inside the
-| window are never offered, so it cannot be broken by somebody being helpful.
+| What it was really providing was the availability grid, and that is now a
+| tool in its own right rather than a stage of an exam. See vatssa/availability
+| below.
+|
+| The `vatssa_exams` table is left in place by its migration. Dropping it is a
+| separate decision about data, not about code.
 */
-Route::middleware(['web', 'auth', 'activity', 'suspended'])
-    ->prefix('vatssa/exams')
-    ->name('vatssa.exams.')
-    ->group(function () {
-        Route::get('/', [ExamController::class, 'index'])->name('index');
-        Route::get('/{exam}', [ExamController::class, 'show'])->name('show');
-
-        Route::post('/training/{training}', [ExamController::class, 'store'])->name('store');
-        Route::post('/{exam}/authorise', [ExamController::class, 'authorise'])->name('authorise');
-        Route::post('/{exam}/submit', [ExamController::class, 'submitAvailability'])->name('submit');
-        Route::post('/{exam}/clear', [ExamController::class, 'clear'])->name('clear');
-        Route::post('/{exam}/confirm', [ExamController::class, 'confirm'])->name('confirm');
-        Route::post('/{exam}/publish', [ExamController::class, 'publish'])->name('publish');
-        Route::post('/{exam}/cancel', [ExamController::class, 'cancel'])->name('cancel');
-    });
 
 /*
 | Availability.
@@ -98,6 +87,13 @@ Route::middleware(['web', 'auth', 'activity', 'suspended'])
             ->middleware(['can:availability.polls.create', 'throttle:10,1'])
             ->name('vatssa.availability.store');
         Route::get('/{poll}', [AvailabilityController::class, 'show'])->name('vatssa.availability.show');
+
+        // Adding people afterwards. Ungated by permission on purpose: the
+        // controller checks that this is YOUR poll (or that you work the
+        // queue), which is a narrower question than any permission could ask.
+        Route::post('/{poll}/participants', [AvailabilityController::class, 'addParticipants'])
+            ->middleware('throttle:20,1')
+            ->name('vatssa.availability.participants');
     });
 
 /*
@@ -137,5 +133,21 @@ Route::middleware(['web', 'auth', 'activity', 'suspended'])
         Route::post('/routing', [SettingsController::class, 'updateRouting'])->name('routing.update');
 
         Route::get('/moodle-courses', [SettingsController::class, 'courses'])->name('courses');
+
+        /*
+        | Training setup: ratings, endorsements, training types, request desks.
+        |
+        | The three lists that used to be a database table with no interface, a
+        | static array in an upstream controller, and a class constant. All of
+        | them describe how VATSSA runs training this year, and none of them
+        | should have needed a developer to change.
+        */
+        Route::get('/training-setup', [TrainingSetupController::class, 'index'])->name('setup');
+        Route::post('/training-setup/ratings', [TrainingSetupController::class, 'storeRating'])->name('setup.ratings.store');
+        Route::patch('/training-setup/ratings/{rating}', [TrainingSetupController::class, 'updateRating'])->name('setup.ratings.update');
+        Route::post('/training-setup/types', [TrainingSetupController::class, 'storeType'])->name('setup.types.store');
+        Route::patch('/training-setup/types/{type}', [TrainingSetupController::class, 'updateType'])->name('setup.types.update');
+        Route::post('/training-setup/desks', [TrainingSetupController::class, 'storeDesk'])->name('setup.desks.store');
+        Route::patch('/training-setup/desks/{desk}', [TrainingSetupController::class, 'updateDesk'])->name('setup.desks.update');
         Route::post('/moodle-courses', [SettingsController::class, 'updateCourses'])->name('courses.update');
     });

@@ -82,11 +82,11 @@
                         unenrols, so a returning student keeps every result.
                     </small>
                 @else
+                    {{-- The badge alone. The sentence that used to sit here
+                         promised an enrolment "within the next 24 hours",
+                         which is a promise this page cannot keep and nobody
+                         asked it to make. --}}
                     <span class="badge bg-warning text-dark">{{ $platform->enrolmentLabel() }}</span>
-                    <small class="text-muted d-block mt-1">
-                        Registered on Moodle but in no course. The system will
-                        enrol them within the next 24 hours.
-                    </small>
                 @endif
             </div>
         @endif

@@ -2,10 +2,11 @@
 
 namespace Tests\Feature;
 
-use App\Helpers\ExamStage;
+use anlutro\LaravelSettings\Facade as Setting;
 use App\Helpers\TaskStatus;
 use App\Helpers\TrainingStatus;
 use App\Http\Controllers\TaskController;
+use App\Http\Controllers\TrainingActivityController;
 use App\Livewire\Vatssa\AvailabilityGrid;
 use App\Models\Area;
 use App\Models\Position;
@@ -16,14 +17,15 @@ use App\Models\User;
 use App\Models\Vatssa\ActionLog;
 use App\Models\Vatssa\AvailabilityPoll;
 use App\Models\Vatssa\AvailabilityResponse;
-use App\Models\Vatssa\Exam;
 use App\Models\Vatssa\MessageLog;
 use App\Models\Vatssa\MessageTemplate;
 use App\Models\Vatssa\MoodleCourse;
 use App\Models\Vatssa\PlatformRequirement;
+use App\Models\Vatssa\RequestDesk;
 use App\Models\Vatssa\RequestTarget;
 use App\Models\Vatssa\TheoryAttempt;
 use App\Models\Vatssa\TrainingMentorSnapshot;
+use App\Models\Vatssa\TrainingType;
 use App\Models\Vatssa\UserPlatform;
 use App\Notifications\Vatssa\MentorLostNotification;
 use App\Notifications\Vatssa\StudentRemovedFromMentorNotification;
@@ -430,10 +432,19 @@ class VatssaTest extends TestCase
         // not something VATSSA publishes.
         $matrix = app(PermissionMatrix::class);
 
+        // membership-manager was added after this test was written, and it
+        // belongs: visiting endorsements and member standing are that role's
+        // whole job, so the visiting roster is the list they work from.
         $this->assertSame(
-            ['admin', 'atc-training-manager', 'pipeline-coordinator'],
+            ['admin', 'atc-training-manager', 'pipeline-coordinator', 'membership-manager'],
             $matrix->rolesFor('endorsements.rosters.view')
         );
+
+        // The half that matters and must not drift: it is staff, not everybody.
+        // A mentor sees their own students; who examines is not published.
+        $this->assertNotContains('mentor', $matrix->rolesFor('endorsements.rosters.view'));
+        $this->assertNotContains('events-team', $matrix->rolesFor('endorsements.rosters.view'));
+        $this->assertNotContains('feedback-team', $matrix->rolesFor('endorsements.rosters.view'));
     }
 
     #[Test]
@@ -1067,8 +1078,39 @@ class VatssaTest extends TestCase
         // Seeded by migration, not by a seeder, because they are real content
         // rather than fixtures -- both admin pages are empty without them, in
         // production too.
-        $this->assertSame(17, MessageTemplate::count());
+        // 15, not the 17 originally seeded. The repair migration deletes T8 and
+        // T9 -- duplicates of TrainingMentorNotification and
+        // TrainingInterestNotification that the bot never wired -- and the
+        // 'thread' row, dead since student threads were dropped on 2026-08-27,
+        // then adds T16 and T17, which are the keys the bot actually sends.
+        // A later migration drops S1, the staff digest, which digest.py builds
+        // in code and has never read from a template, and another adds V1-V3,
+        // the fork's own three emails, which used to be PHP arrays nobody could
+        // edit. 17 - 3 + 2 - 1 + 3 = 18.
+        $this->assertSame(18, MessageTemplate::count());
         $this->assertNotNull(MessageTemplate::find('T7'));
+
+        // The two the repair migration exists for. Control Center used to
+        // describe these keys as a staff digest and a mentor index; the bot
+        // sends "you are not on our Discord" and "your training closes in 7
+        // days" under them, and the bot is the authority.
+        $this->assertNotNull(MessageTemplate::find('T16'));
+        $this->assertNotNull(MessageTemplate::find('T17'));
+
+        // Deleted, and they must stay deleted. Every one of these was a row
+        // somebody could edit and nothing would send.
+        $this->assertNull(MessageTemplate::find('T8'));
+        $this->assertNull(MessageTemplate::find('T9'));
+        $this->assertNull(MessageTemplate::find('S1'));
+
+        // Control Center's own three, now editable rather than compiled in.
+        foreach (['V1', 'V2', 'V3'] as $key) {
+            $this->assertNotNull(MessageTemplate::find($key), "{$key} should be editable");
+        }
+
+        // And the fallback that makes it safe: no row, no missing email.
+        $this->assertNull(MessageTemplate::compose('V9', []));
+        $this->assertSame(0, MessageTemplate::where('channel', 'thread')->count());
 
         $this->assertSame(4, MoodleCourse::count());
     }
@@ -1596,162 +1638,159 @@ class VatssaTest extends TestCase
     }
 
     // ---------------------------------------------------------------------
-    // The practical exam workflow
+    // The practical exam workflow: REMOVED 2026-09-02
+    //
+    // The nine-stage CPT workflow was taken out of the application, and its
+    // tests with it. What survived is the availability grid, which is now a
+    // tool in its own right rather than a stage of an exam -- its tests live
+    // under "Availability" below.
+    //
+    // If the workflow ever comes back, these tests are in the history at the
+    // commit that removed them, and they were good tests: the stage ordering,
+    // the atomic confirm, and the separation between clearing a calendar and
+    // taking an exam were all worth asserting.
     // ---------------------------------------------------------------------
 
-    private function exam(ExamStage $stage = ExamStage::REQUESTED): Exam
+    // ---------------------------------------------------------------------
+    // What a training manager can change without a developer
+    // ---------------------------------------------------------------------
+
+    #[Test]
+    public function a_dead_scheduler_is_visible_outside_production(): void
     {
-        $rating = Rating::whereNotNull('vatsim_rating')->orderBy('vatsim_rating')->first();
+        // The third of the three bugs, and the reason the other half of it went
+        // unnoticed for so long.
+        //
+        // `control-center-tasks.service` ran `docker exec ... control-center`,
+        // and no container has that name -- ours are cc-prod, cc-staging and
+        // cc-dev. So the scheduler failed every minute since it was installed.
+        //
+        // Control Center HAS a detector for exactly this: a heartbeat setting
+        // written every minute, and a dashboard banner when it goes stale. But
+        // upstream gates that banner on `App::environment('production')`, so on
+        // dev and staging -- the two places somebody is actually looking while
+        // setting the box up -- it never appeared.
+        //
+        // A detector switched off everywhere it could fire is not a detector.
+        $this->seedFixtures();
+
+        Setting::set('_lastCronRun', now()->subHour());
+        Setting::save();
+
+        // Staff see it. Note this test does NOT run as production.
+        $this->actingAs(User::find(10000010))
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('The task scheduler is not running');
+
+        // A member never does -- it is still gated on system.health.view.
+        $this->actingAs(User::find(10000001))
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertDontSee('The task scheduler is not running');
+
+        // And a healthy scheduler says nothing at all.
+        Setting::set('_lastCronRun', now());
+        Setting::save();
+
+        $this->actingAs(User::find(10000010))
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertDontSee('The task scheduler is not running');
+    }
+
+    #[Test]
+    public function a_training_comment_cannot_carry_script(): void
+    {
+        // SEC-001. The training page and the division-wide activities report
+        // both rendered `{!! nl2br($activity->comment) !!}` -- unescaped. A
+        // mentor, the least-trusted staff role, could write into it; the bot
+        // could too, through the bridge; and an administrator read it. That is
+        // a working escalation from mentor to admin, and it costs one e().
+        $this->seedFixtures();
 
         $training = Training::factory()->create([
             'user_id' => User::find(10000001)->id,
-            'status' => TrainingStatus::AWAITING_EXAM,
+            'status' => TrainingStatus::ACTIVE_TRAINING,
             'paused_at' => null,
         ]);
-        $training->ratings()->attach($rating->id);
 
-        return Exam::create([
-            'training_id' => $training->id,
-            'stage' => $stage,
-            'requested_by' => User::find(10000006)->id,
-        ]);
-    }
-
-    #[Test]
-    public function a_stage_can_only_move_one_step_forward(): void
-    {
-        // The ordering IS the feature. If the events team can clear times the
-        // student has not given, or an examiner can confirm a slot nobody
-        // cleared, this is a status field with extra clicking.
-        $this->seedFixtures();
-        $exam = $this->exam();
-
-        $this->assertFalse($exam->moveTo(ExamStage::AWAITING_EXAMINER),
-            'a stage must not be skippable');
-        $this->assertSame(ExamStage::REQUESTED, $exam->fresh()->stage);
-
-        $this->assertTrue($exam->moveTo(ExamStage::AWAITING_AVAILABILITY));
-        $this->assertSame(ExamStage::AWAITING_AVAILABILITY, $exam->fresh()->stage);
-    }
-
-    #[Test]
-    public function an_open_exam_can_always_be_cancelled(): void
-    {
-        $this->seedFixtures();
-
-        foreach (ExamStage::open() as $stage) {
-            $exam = $this->exam($stage);
-            $this->assertTrue($exam->moveTo(ExamStage::CANCELLED),
-                "{$stage->name} must be cancellable");
-        }
-    }
-
-    #[Test]
-    public function a_lapsed_exam_goes_back_to_availability_not_to_the_start(): void
-    {
-        // The authorisation still stands. Asking the training manager to
-        // approve the same exam twice is make-work, and make-work is how a
-        // workflow gets routed around.
-        $this->seedFixtures();
-        $exam = $this->exam(ExamStage::AWAITING_EXAMINER);
-
-        $this->assertTrue($exam->moveTo(ExamStage::LAPSED));
-        $this->assertTrue($exam->fresh()->moveTo(ExamStage::AWAITING_AVAILABILITY));
-        $this->assertFalse($exam->fresh()->moveTo(ExamStage::REQUESTED));
-    }
-
-    #[Test]
-    public function slots_inside_the_notice_period_are_never_offered(): void
-    {
-        // The rule cannot be broken by somebody being helpful: a slot that is
-        // too close is not shown to an examiner at all, rather than shown and
-        // refused on submit.
-        $this->seedFixtures();
-        $exam = $this->exam(ExamStage::AWAITING_EXAMINER);
-
-        $tooSoon = now()->addDays(Exam::NOTICE_DAYS - 2)->startOfHour();
-        $farEnough = now()->addDays(Exam::NOTICE_DAYS + 3)->startOfHour();
-
-        $poll = AvailabilityPoll::create([
-            'purpose' => AvailabilityPoll::CPT,
-            'title' => 'test',
-            'starts_on' => now(),
-            'ends_on' => now()->addWeeks(6),
-            'training_id' => $exam->training_id,
-            'slot_minutes' => 30,
-        ]);
-
-        foreach ([AvailabilityPoll::ROLE_STUDENT, AvailabilityPoll::ROLE_EVENTS] as $i => $role) {
-            AvailabilityResponse::create([
-                'poll_id' => $poll->id,
-                'user_id' => User::find(10000001 + $i)->id,
-                'role' => $role,
-                'slots' => [$tooSoon->toIso8601String(), $farEnough->toIso8601String()],
-            ]);
-        }
-
-        $exam->update(['poll_id' => $poll->id]);
-
-        $offerable = $exam->fresh()->offerableSlots();
-
-        $this->assertContains($farEnough->toIso8601String(), $offerable);
-        $this->assertNotContains($tooSoon->toIso8601String(), $offerable);
-    }
-
-    #[Test]
-    public function a_confirmed_exam_that_drifts_inside_the_window_is_flagged(): void
-    {
-        // The way the rule actually gets broken is time passing. An exam legal
-        // when it was booked and illegal a fortnight later, with nothing having
-        // changed -- nothing changing IS the failure.
-        $this->seedFixtures();
-        $exam = $this->exam(ExamStage::CONFIRMED);
-
-        $exam->update([
-            'scheduled_for' => now()->addDays(3),
-            'banner_made' => true,
-            'on_discord' => false,
-        ]);
-
-        $this->assertTrue($exam->fresh()->noticeBreached());
-        $this->assertContains('On the Discord calendar', $exam->fresh()->checklistOutstanding());
-
-        $this->artisan('vatssa:exam-watch')->assertSuccessful();
-
-        $this->assertDatabaseHas('vatssa_action_log', [
-            'action' => 'exam.notice_breached',
-            'training_id' => $exam->training_id,
-        ]);
-    }
-
-    #[Test]
-    public function an_examiner_cannot_take_their_own_students_exam(): void
-    {
-        // The one conflict of interest the system can actually prevent.
-        $this->seedFixtures();
-        $exam = $this->exam(ExamStage::AWAITING_EXAMINER);
-
-        $examiner = User::find(10000006);
-        $exam->training->mentors()->attach($examiner, ['expire_at' => now()->addYear()]);
-
-        $this->assertFalse($examiner->can('confirm', $exam->fresh()));
-    }
-
-    #[Test]
-    public function clearing_the_calendar_and_taking_the_exam_are_different_jobs(): void
-    {
-        // The events team hold events.exams.manage; examiners hold
-        // examinations.manage. Both used to be examinations.manage, which would
-        // have let an examiner clear their own calendar -- and the separation
-        // is the only reason this is a workflow rather than a status field.
-        $this->seedFixtures();
-
-        $this->assertNotSame(
-            config('roles.matrix.events-team'),
-            config('roles.matrix.mentor'),
+        TrainingActivityController::create(
+            $training->id, 'COMMENT', null, null, null, '<img src=x onerror=alert(1)>'
         );
 
-        $this->assertContains('events.exams.manage', config('roles.permissions'));
+        $response = $this->actingAs(User::find(10000010))
+            ->get(route('training.show', $training))
+            ->assertOk();
+
+        // Visible as text, inert as markup.
+        $response->assertDontSee('<img src=x onerror=alert(1)>', false);
+        $response->assertSee('&lt;img src=x onerror=alert(1)&gt;', false);
+    }
+
+    #[Test]
+    public function training_types_and_desks_come_from_the_database(): void
+    {
+        // What this replaced: TrainingController::$types was a static array in
+        // an UPSTREAM controller, and RequestTarget::TIERS a class constant.
+        // Adding an endorsement course or a new desk meant a developer, a merge
+        // conflict on the next release, and a deploy.
+        $this->seedFixtures();
+
+        // Seeded from what the constants held, so the day the migration runs
+        // nothing changes.
+        $this->assertSame('Standard', TrainingType::map()[1]['text']);
+        $this->assertArrayHasKey('coordinator', RequestTarget::tiers());
+
+        $id = TrainingType::nextId();
+        TrainingType::create([
+            'id' => $id,
+            'name' => 'Endorsement training',
+            'icon' => 'fas fa-certificate',
+            'sort_order' => 10,
+            'active' => true,
+        ]);
+
+        $this->assertSame('Endorsement training', TrainingType::map()[$id]['text']);
+        $this->assertContains($id, TrainingType::activeIds());
+
+        // Retired means "not offered", never "gone": the trainings that used it
+        // still have to render.
+        TrainingType::find($id)->update(['active' => false]);
+        $this->assertArrayHasKey($id, TrainingType::map(), 'history must still render');
+        $this->assertNotContains($id, TrainingType::activeIds(), 'but it must not be offered');
+
+        // Same for a desk.
+        RequestDesk::create([
+            'key' => 'events',
+            'label' => 'Events team',
+            'per_rating' => false,
+            'sort_order' => 5,
+            'active' => true,
+        ]);
+
+        $this->assertArrayHasKey('events', RequestTarget::tiers(true));
+        $this->assertTrue(RequestTarget::isTier('events'));
+
+        RequestDesk::find('events')->update(['active' => false]);
+        $this->assertArrayNotHasKey('events', RequestTarget::tiers(true));
+        $this->assertArrayHasKey('events', RequestTarget::tiers(), 'still labels the requests on it');
+    }
+
+    #[Test]
+    public function the_training_setup_page_is_staff_only(): void
+    {
+        $this->seedFixtures();
+
+        $this->actingAs(User::find(10000010))
+            ->get(route('vatssa.admin.setup'))
+            ->assertOk()
+            ->assertSee('Ratings and endorsements')
+            ->assertSee('Request desks');
+
+        $this->actingAs(User::find(10000001))
+            ->get(route('vatssa.admin.setup'))
+            ->assertForbidden();
     }
 
     // ---------------------------------------------------------------------
@@ -1851,14 +1890,14 @@ class VatssaTest extends TestCase
         // role to 'events' in the payload, and paint again -- claiming the
         // events team had cleared those slots.
         //
-        // Exam::offerableSlots() intersects the student role with the events
+        // agreedSlots() intersects the participant role with the events
         // role, so the exam would then reach examiners offering times the
         // events team never saw: a student booking their own CPT around the
         // division calendar.
         $this->seedFixtures();
 
         $poll = AvailabilityPoll::create([
-            'purpose' => AvailabilityPoll::CPT,
+            'purpose' => AvailabilityPoll::MENTORING,
             'title' => 'test',
             'starts_on' => now()->addDays(10),
             'ends_on' => now()->addDays(40),
@@ -1870,6 +1909,18 @@ class VatssaTest extends TestCase
             'this test is meaningless if the student can already clear');
 
         $slot = $poll->slots()->first()->toIso8601String();
+
+        // The invitation. `isVisibleTo` was added after this test was written
+        // and a poll nobody has been asked to answer is now a 403 -- so without
+        // this row the grid never mounts, nothing is written, and the test
+        // fails on the assertion that their OWN times still record rather than
+        // on the escalation it exists to catch.
+        AvailabilityResponse::create([
+            'poll_id' => $poll->id,
+            'user_id' => $student->id,
+            'slots' => [],
+            'role' => AvailabilityPoll::ROLE_PARTICIPANT,
+        ]);
 
         Livewire::actingAs($student)
             ->test(AvailabilityGrid::class, [
@@ -1901,7 +1952,7 @@ class VatssaTest extends TestCase
         }
 
         $poll = AvailabilityPoll::create([
-            'purpose' => AvailabilityPoll::CPT,
+            'purpose' => AvailabilityPoll::MENTORING,
             'title' => 'test',
             'starts_on' => now()->addDays(10),
             'ends_on' => now()->addDays(40),

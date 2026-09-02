@@ -22,7 +22,10 @@ class AuthTest extends TestCase
 
     public function test_v1_booking_create_rejects_read_only_key(): void
     {
-        ApiKey::create(['id' => 'ro-key', 'name' => 't', 'read_only' => true, 'created_at' => now()]);
+        // VATSSA: the token is hashed at rest, so the row is keyed on the
+        // hash rather than on the token itself. What this test asserts --
+        // that a read-only key cannot write -- is unchanged.
+        ApiKey::create(['id' => 'ro-key', 'token_hash' => ApiKey::hashToken('ro-key'), 'name' => 't', 'read_only' => true, 'created_at' => now()]);
 
         $this->withToken('ro-key')->postJson('/api/v1/bookings/create', [])->assertUnauthorized();
     }

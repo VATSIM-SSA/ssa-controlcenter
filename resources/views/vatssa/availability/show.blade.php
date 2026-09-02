@@ -45,11 +45,25 @@
                 @else
                     <p class="mb-0 text-muted">
                         {{ $poll->starts_on->format('j M Y') }}
-                        &ndash; {{ $poll->ends_on->format('j M Y') }},
+                        &ndash; {{ $poll->ends_on->format('j M Y') }}
+                        &mdash; <strong>{{ $poll->weekCount() }} {{ \Illuminate\Support\Str::plural('week', $poll->weekCount()) }}</strong>,
                         in {{ $poll->slot_minutes }}-minute slots.
                         All times {{ \App\Models\Vatssa\AvailabilityPoll::timezoneLabel() }}.
                     </p>
                 @endif
+
+                {{-- Who can open it, on the page rather than only in the form
+                     that created it. Somebody pasting the link needs to know
+                     whether it will work for the person they are pasting it
+                     to, and that is not a question they should have to guess
+                     the answer to. --}}
+                <p class="mb-0 mt-2 small text-muted">
+                    <i class="fas fa-user-lock"></i>
+                    {{ $poll->visibilityLabel() }}.
+                    @if($poll->visibility === \App\Models\Vatssa\AvailabilityPoll::VISIBILITY_INVITED)
+                        Anybody else opening the link is refused.
+                    @endif
+                </p>
             </div>
         </div>
     </div>
@@ -106,8 +120,45 @@
                 <input type="text" class="form-control form-control-sm font-monospace"
                        value="{{ route('vatssa.availability.show', $poll) }}"
                        readonly onclick="this.select()">
+
+                @if($poll->visibility === \App\Models\Vatssa\AvailabilityPoll::VISIBILITY_INVITED)
+                    <p class="form-text mb-0">
+                        Only invited people can open this. Add them below, or the link
+                        will not work for them.
+                    </p>
+                @endif
             </div>
         </div>
+
+        {{-- Adding people afterwards.
+
+             The usual way a poll goes wrong is somebody being left off it, and
+             having to delete and recreate to fix that is exactly why people go
+             back to asking in the group chat instead. --}}
+        @if($poll->isManageableBy(auth()->user()) && $poll->isOpen())
+            <div class="card shadow mb-4">
+                <div class="card-header bg-primary py-3">
+                    <h6 class="m-0 fw-bold text-white">
+                        <i class="fas fa-user-plus"></i>&nbsp;Ask somebody else
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="{{ route('vatssa.availability.participants', $poll) }}">
+                        @csrf
+                        <select class="form-select form-select-sm mb-2" name="participants[]"
+                                multiple size="6" required>
+                            @foreach($members as $member)
+                                @continue($poll->responses->contains('user_id', $member->id))
+                                <option value="{{ $member->id }}">
+                                    {{ $member->name }} ({{ $member->id }})
+                                </option>
+                            @endforeach
+                        </select>
+                        <button type="submit" class="btn btn-sm btn-primary">Add them</button>
+                    </form>
+                </div>
+            </div>
+        @endif
     </div>
 </div>
 

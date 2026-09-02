@@ -17,6 +17,7 @@
                 &middot; {{ $poll->training->user->name }}
             @endif
             &middot; {{ $poll->starts_on->format('j M') }}&ndash;{{ $poll->ends_on->format('j M') }}
+            &middot; {{ $poll->weekCount() }} {{ \Illuminate\Support\Str::plural('week', $poll->weekCount()) }}
         </small>
     </div>
 

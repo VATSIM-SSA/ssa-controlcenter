@@ -78,6 +78,11 @@ class UserRoles extends Component
     public function openAddModal(): void
     {
         $this->reset(['selectedRole', 'selectedAreaIds', 'selectedGlobal']);
+
+        // VATSSA: global is the only target, so it is the state rather than a
+        // choice. The picker no longer asks; if this were left false the Grant
+        // button would build an empty target list and do nothing at all.
+        $this->selectedGlobal = true;
         $this->showAddModal = true;
     }
 
@@ -89,7 +94,9 @@ class UserRoles extends Component
     public function updatedSelectedRole(): void
     {
         $this->selectedAreaIds = [];
-        $this->selectedGlobal = false;
+
+        // Stays true. See openAddModal().
+        $this->selectedGlobal = true;
     }
 
     /**

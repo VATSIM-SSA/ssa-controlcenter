@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use anlutro\LaravelSettings\Facade as Setting;
-use App;
 use App\Helpers\InterestStatus;
 use App\Helpers\VatsimRating;
 use App\Models\TrainingInterest;
@@ -78,7 +77,24 @@ class DashboardController extends Controller
 
         $studentTrainings = \Auth::user()->mentoringTrainings();
 
-        $cronJobError = (($user->hasPermission('system.health.view') && App::environment('production')) && (Carbon::parse(Setting::get('_lastCronRun', '2000-01-01')) <= Carbon::now()->subMinutes(5)));
+        // VATSSA: the production-only gate is gone.
+        //
+        // Upstream shows this warning only when APP_ENV is exactly
+        // 'production'. So on dev and staging -- the two places somebody is
+        // actually looking at the dashboard while setting the box up -- a dead
+        // scheduler is invisible.
+        //
+        // That is not hypothetical. `control-center-tasks.service` ran
+        // `docker exec ... control-center`, and no container has that name;
+        // ours are cc-prod, cc-staging and cc-dev. So the scheduler failed
+        // every minute since it was installed and NOTHING scheduled ever ran --
+        // no roster warnings, no mentor watch, no member sync, no endorsement
+        // cleanup. This banner is the detector for exactly that, and it was
+        // switched off in every environment where it could have been seen.
+        //
+        // It is still gated on system.health.view, so a member never sees it.
+        $cronJobError = $user->hasPermission('system.health.view')
+            && Carbon::parse(Setting::get('_lastCronRun', '2000-01-01')) <= Carbon::now()->subMinutes(5);
 
         $oudatedVersionWarning = $user->hasPermission('system.health.view') && Setting::get('_updateAvailable');
 

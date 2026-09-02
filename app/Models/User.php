@@ -46,6 +46,20 @@ class User extends Authenticatable
      */
     protected $hidden = [
         'remember_token',
+
+        // VATSSA: the VATSIM OAuth pair.
+        //
+        // `$hidden` only affects serialisation -- every caller reads these as
+        // properties, so nothing breaks -- but serialisation is exactly how
+        // they escape. An Ignition error page renders the authenticated user as
+        // JSON, so any fatal on a box with APP_DEBUG on printed a live access
+        // token and its refresh token in full, to the screen and into whatever
+        // the reader pasted them into. Seen on cc-dev on 2026-09-01.
+        //
+        // Same reasoning for logs, `dd($user)`, and any API response that ever
+        // returns a user model.
+        'access_token',
+        'refresh_token',
     ];
 
     public function roleAssignments()

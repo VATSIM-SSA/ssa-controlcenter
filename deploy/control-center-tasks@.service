@@ -1,0 +1,48 @@
+[Unit]
+# Control Center's task scheduler, one instance per environment.
+#
+# TEMPLATE UNIT. The bit after the @ is the environment:
+#
+#   systemctl enable --now control-center-tasks@prod.timer
+#   systemctl enable --now control-center-tasks@dev.timer
+#
+# ## Why this replaced control-center-tasks.service
+#
+# The old unit ran:
+#
+#   docker exec --user www-data -i control-center php artisan schedule:run
+#
+# There is no container called `control-center`. Compose names them cc-prod,
+# cc-staging and cc-dev -- see deploy/docker-compose.*.yml, `container_name`.
+# So every firing failed with "No such container", once a minute, and NOTHING
+# scheduled has ever run: not the roster expiry warning, not the mentor watch,
+# not upstream's member-data sync, endorsement cleanup, activity update or task
+# notifications.
+#
+# The symptom is silence, which is exactly what a broken scheduler looks like
+# from the outside, so check it deliberately rather than waiting to notice:
+#
+#   systemctl list-timers 'control-center-tasks@*'
+#   journalctl -u control-center-tasks@prod.service --since '1 hour ago'
+#   docker exec -u www-data cc-prod php artisan schedule:list
+#
+# WorkingDirectory is gone too. `docker exec` needs no working directory, and
+# /opt/controlcenter is not where anything lives -- the compose projects are
+# under /srv/apps/cc/<env>.
+
+Description=Control Center scheduled tasks (%i)
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+
+# --user www-data: artisan writes to storage/, which is owned by www-data
+# inside the image. Running as root leaves root-owned log and cache files that
+# the application then cannot write to, and the failure surfaces hours later as
+# a 500 nobody can explain.
+ExecStart=/usr/bin/docker exec --user www-data -i cc-%i php artisan schedule:run
+
+# A minute is the whole budget: the timer fires again at the next one, and an
+# overlapping run is how a queue of duplicate emails starts.
+TimeoutStartSec=55

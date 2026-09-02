@@ -22,6 +22,7 @@ class AvailabilityPoll extends Model
     protected $fillable = [
         'purpose', 'title', 'description', 'starts_on', 'ends_on', 'slot_minutes',
         'training_id', 'created_by', 'submitted_at', 'confirmed_at', 'confirmed_slot',
+        'visibility',
         'confirmed_by',
     ];
 
@@ -33,11 +34,55 @@ class AvailabilityPoll extends Model
         'confirmed_slot' => 'datetime',
     ];
 
-    public const CPT = 'cpt';
-
+    /*
+    | What the poll is FOR.
+    |
+    | These are labels, not workflow. There used to be a `cpt` purpose that the
+    | nine-stage exam workflow keyed off, and the tool inherited a lot of
+    | machinery from it -- a notice rule, examiner visibility, a role that meant
+    | "the events team has cleared this". None of that is a property of asking
+    | a group when they are free, and all of it made the tool feel like a
+    | workflow you were halfway through rather than something you could just
+    | use.
+    |
+    | Adding a purpose is one line here and one option in the form. It changes
+    | the label and nothing else, which is the point.
+    */
     public const MENTORING = 'mentoring';
 
     public const MEETING = 'meeting';
+
+    public const SESSION = 'session';
+
+    public const OTHER = 'other';
+
+    /*
+    | WHO may open it.
+    |
+    | `INVITED` is the default and the safe one: a response row is the
+    | invitation, so "only this person" and "only these few people" are the same
+    | setting with a different number of names.
+    |
+    | `LINK` is anybody signed in who has the URL. Still behind authentication
+    | on purpose -- a poll is a list of when named members are at home, and
+    | publishing that to the open internet is not a convenience setting.
+    */
+    public const VISIBILITY_INVITED = 'invited';
+
+    public const VISIBILITY_LINK = 'link';
+
+    public const VISIBILITIES = [
+        self::VISIBILITY_INVITED => 'Only the people I invite',
+        self::VISIBILITY_LINK => 'Anybody with the link',
+    ];
+
+    /** Purpose => label, in the order the form offers them. */
+    public const PURPOSES = [
+        self::MENTORING => 'Mentoring session',
+        self::SESSION => 'Training or group session',
+        self::MEETING => 'Meeting',
+        self::OTHER => 'Something else',
+    ];
 
     /** The student fills this in; the mentor is only ever kept in the loop. */
     public const ROLE_STUDENT = 'student';
@@ -68,11 +113,7 @@ class AvailabilityPoll extends Model
 
     public function purposeLabel(): string
     {
-        return match ($this->purpose) {
-            self::CPT => 'Practical exam',
-            self::MEETING => 'Meeting',
-            default => 'Mentoring session',
-        };
+        return self::PURPOSES[$this->purpose] ?? self::PURPOSES[self::OTHER];
     }
 
     /**
@@ -131,6 +172,36 @@ class AvailabilityPoll extends Model
     }
 
     /** What the grid calls the times. A label, never a conversion -- see config. */
+    /**
+     * How many weeks this poll covers.
+     *
+     * Asked for because the grid shows one week at a time, so a poll can look
+     * like a question about next week when it is a question about the next
+     * five. Somebody who marks one week and stops has answered a fifth of it,
+     * and nothing on the page told them so.
+     *
+     * Counted in calendar weeks from Monday, the same boundary the grid pages
+     * on, so "week 2 of 5" always agrees with what the arrows do.
+     */
+    public function weekCount(): int
+    {
+        $first = CarbonImmutable::parse($this->starts_on)->startOfWeek();
+        $last = CarbonImmutable::parse($this->ends_on)->startOfWeek();
+
+        return (int) $first->diffInWeeks($last) + 1;
+    }
+
+    /**
+     * Which week of the poll a given Monday is, 1-based.
+     */
+    public function weekIndex(CarbonImmutable|string $weekStart): int
+    {
+        $first = CarbonImmutable::parse($this->starts_on)->startOfWeek();
+        $week = CarbonImmutable::parse($weekStart)->startOfWeek();
+
+        return (int) $first->diffInWeeks($week) + 1;
+    }
+
     public static function timezoneLabel(): string
     {
         return (string) config('vatssa.availability.timezone_label', 'Zulu (UTC+0)');
@@ -167,7 +238,7 @@ class AvailabilityPoll extends Model
      *
      * ## Why this is an intersection and not a vote
      *
-     * A meeting can go ahead with most people. A CPT cannot: the student, the
+     * A meeting can go ahead with most people. Some things cannot: the person the
      * examiner and a clear calendar are all required, and "three out of four"
      * is not a time anybody can sit an exam.
      *
@@ -214,10 +285,10 @@ class AvailabilityPoll extends Model
      *
      * ## Who qualifies
      *
-     * The person who asked, the student it is about, anybody already invited
-     * (they have a response row, even an empty one), and staff who work the
-     * queue. A CPT poll is also visible to examiners, because being offered
-     * the times is the entire point of the step.
+     * The person who asked, the student it is about (when it is attached to a
+     * training), anybody already invited -- they have a response row, even an
+     * empty one -- and staff who work the queue. Plus, if the poll was created
+     * as "anybody with the link", anybody signed in who has it.
      */
     public function isVisibleTo(User $user): bool
     {
@@ -239,33 +310,33 @@ class AvailabilityPoll extends Model
             return true;
         }
 
-        return $this->purpose === self::CPT
-            && $user->hasPermission('examinations.manage');
+        // "Anybody with the link" means exactly that, for somebody signed in.
+        // The URL carries a sequential id, so this is not a secret -- it is a
+        // deliberate choice by whoever asked the question, and the default is
+        // the other one.
+        return $this->visibility === self::VISIBILITY_LINK;
+    }
+
+    /**
+     * May this person invite others, close the poll, or change it?
+     *
+     * The person who asked owns it. Staff who work the queue can act on one
+     * that has been abandoned, which is the case that otherwise needs a
+     * developer and a database console.
+     */
+    public function isManageableBy(User $user): bool
+    {
+        return $this->created_by === $user->id
+            || $user->hasPermission('fir.management.reports.view');
+    }
+
+    public function visibilityLabel(): string
+    {
+        return self::VISIBILITIES[$this->visibility] ?? self::VISIBILITIES[self::VISIBILITY_INVITED];
     }
 
     public function isOpen(): bool
     {
         return $this->confirmed_at === null;
     }
-
-    /**
-     * Is the confirmation late enough to be legal?
-     *
-     * VATSSA's rule: everything settled at least seven days before the exam --
-     * the examiner confirmed, the events team told, and myVATSIM uploaded.
-     * Miss it and the CPT postpones. A single deadline, so there is one date to
-     * argue about rather than three.
-     */
-    public function meetsNotice(CarbonImmutable|string $slot): bool
-    {
-        if ($this->purpose !== self::CPT) {
-            return true;
-        }
-
-        return CarbonImmutable::parse($slot)->greaterThanOrEqualTo(
-            CarbonImmutable::now()->addDays(self::CPT_NOTICE_DAYS)
-        );
-    }
-
-    public const CPT_NOTICE_DAYS = 7;
 }

@@ -52,6 +52,18 @@
             <x-sidebar.item :href="route('booking')" icon="fa-calendar" title="Booking" :active="Route::is('booking*')" />
         @endcan
 
+        {{-- VATSSA: giving feedback, not reading it.
+
+             The submit page has always existed at /feedback and has never been
+             linked from anywhere -- the only "Feedback" in this menu is the
+             staff report, under Reports, which members cannot open. A form
+             nobody can find collects nothing, and the whole point of the
+             feedback system is the controller who has something to say.
+
+             Ungated on purpose: every member may leave feedback. --}}
+        <x-sidebar.item :href="route('feedback')" icon="fa-comment-dots" title="Give feedback"
+                        :active="Route::is('feedback')" />
+
         @if(Setting::get('linkMoodle') && Setting::get('linkMoodle') != "")
             <li class="nav-item">
             <a class="nav-link" href="{{ Setting::get('linkMoodle') }}" target="_blank">
@@ -79,11 +91,16 @@
                  their own availability, and they hold no training permission
                  at all. Gating these on the mentor dashboard would hide them
                  from the people the pages exist for. --}}
-            <x-sidebar.item :href="route('vatssa.availability')" icon="fa-calendar-check"
-                title="My Availability" :active="Route::is('vatssa.availability*')" />
+            {{-- VATSSA: ordered by how often somebody opens it, not by when it
+                 was added. Availability first because everybody in training
+                 answers one; Requests last because it is a staff queue.
 
-            <x-sidebar.item :href="route('vatssa.exams.index')" icon="fa-user-graduate"
-                title="Practical Exams" :active="Route::is('vatssa.exams.*')" />
+                 "Availability Tool" rather than "My Availability": it is not
+                 only yours -- a mentor, an examiner and the events team all
+                 answer the same grid -- and calling it a tool says it is
+                 something you use rather than a page about you. --}}
+            <x-sidebar.item :href="route('vatssa.availability')" icon="fa-calendar-check"
+                title="Availability Tool" :active="Route::is('vatssa.availability*')" />
 
             @can('training.mentor-dashboard.view')
                 <x-sidebar.item :href="route('mentor')" icon="fa-chalkboard-teacher" title="My students" :active="Route::is('mentor')" />
@@ -92,6 +109,7 @@
             @can('bookings.sweatbox.use')
                 <x-sidebar.item :href="route('sweatbook')" icon="fa-calendar-alt" title="Sweatbox Calendar" :active="Route::is('sweatbook')" />
             @endcan
+
 
             @can('fir.management.reports.view')
 
@@ -204,27 +222,45 @@
         @if(auth()->user()->canAny(['system.health.view', 'users.manage']) || auth()->user()->can('viewAny', App\Models\Position::class))
 
             {{-- Nav Item - Utilities Collapse Menu --}}
-            <x-sidebar.section icon="fa-cogs" title="Administration" :active="Route::is('admin.*') || Route::is('positions.*') || Route::is('vote.overview')" id="collapseUtilities">
-                @can('system.health.view')
-                    <x-sidebar.item :href="route('admin.settings')" title="Settings" collapse />
-                    <x-sidebar.item :href="route('vote.overview')" title="Votes" collapse />
-                    <x-sidebar.item :href="route('admin.logs')" title="Logs" collapse />
-                @endcan
+            {{-- VATSSA: two groups, because Administration was two things.
 
-                @can('users.manage')
-                    <x-sidebar.item :href="route('admin.templates')" title="Notification templates" collapse />
-                @endcan
-                @can('viewAny', App\Models\Position::class)
-                    <x-sidebar.item :href="route('positions.index')" title="Positions" collapse />
-                @endcan
-                {{-- VATSSA: what the training pipeline says, and which Moodle
-                     course each rating sits. Both change more often than the
-                     code does, so neither should need a deploy. --}}
+                 It mixed what the training pipeline SAYS -- request routing,
+                 mentorship, the email wording, which Moodle course each rating
+                 sits -- with how the application RUNS: settings, logs, votes,
+                 the position list. A training manager opening it to reword an
+                 email scrolled past the log viewer to get there, and the two
+                 halves are not even edited by the same people.
+
+                 Logs sit under System, not Reports. They are Laravel's
+                 application log -- exceptions and stack traces -- and the thing
+                 a coordinator actually wants, "what did the automation do", is
+                 the Automation log under Reports. Two different questions that
+                 happen to share a word. --}}
+            <x-sidebar.section icon="fa-sliders" title="Training Admin" :active="Route::is('vatssa.admin.*') || Route::is('admin.templates')" id="collapseTrainingAdmin">
                 @can('system.settings.manage')
+                    {{-- The three lists that decide what training looks like
+                         here: ratings and endorsements, training types, and the
+                         desks a request can go to. First, because it is the one
+                         that answers "how do I add a new endorsement". --}}
+                    <x-sidebar.item :href="route('vatssa.admin.setup')" title="Training setup" collapse />
                     <x-sidebar.item :href="route('vatssa.admin.routing')" title="Request routing" collapse />
                     <x-sidebar.item :href="route('vatssa.admin.mentorship')" title="Mentorship" collapse />
                     <x-sidebar.item :href="route('vatssa.admin.templates')" title="Pipeline templates" collapse />
                     <x-sidebar.item :href="route('vatssa.admin.courses')" title="Moodle courses" collapse />
+                @endcan
+                @can('users.manage')
+                    <x-sidebar.item :href="route('admin.templates')" title="Notification templates" collapse />
+                @endcan
+            </x-sidebar.section>
+
+            <x-sidebar.section icon="fa-cogs" title="System Admin" :active="Route::is('admin.settings') || Route::is('admin.logs') || Route::is('positions.*') || Route::is('vote.overview')" id="collapseUtilities">
+                @can('system.health.view')
+                    <x-sidebar.item :href="route('admin.settings')" title="Settings" collapse />
+                    <x-sidebar.item :href="route('admin.logs')" title="Logs" collapse />
+                    <x-sidebar.item :href="route('vote.overview')" title="Votes" collapse />
+                @endcan
+                @can('viewAny', App\Models\Position::class)
+                    <x-sidebar.item :href="route('positions.index')" title="Positions" collapse />
                 @endcan
             </x-sidebar.section>
 

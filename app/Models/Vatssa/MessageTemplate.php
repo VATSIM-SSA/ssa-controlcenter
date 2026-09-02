@@ -33,6 +33,58 @@ class MessageTemplate extends Model
     }
 
     /**
+     * Control Center's own three emails, as editable rows.
+     *
+     * `MentorLostNotification`, `StudentRemovedFromMentorNotification` and
+     * `RosterExpiringNotification` are ours rather than upstream's and were
+     * written in PHP, so rewording one meant a developer and a deploy while
+     * every other message in the pipeline could be edited on a page. Same
+     * table, same editor, same audit trail.
+     */
+    public const MENTOR_LOST = 'V1';
+
+    public const STUDENT_REMOVED = 'V2';
+
+    public const ROSTER_EXPIRING = 'V3';
+
+    /**
+     * Subject and body for one of ours, with the placeholders filled in.
+     *
+     * Returns null when the row is missing, and the caller then sends the text
+     * it was compiled with. That fallback is the whole reason this is safe: a
+     * deleted row, a database that has not been migrated, a typo in a key --
+     * none of them may turn into a member receiving nothing. A worse-worded
+     * email beats a missing one, every time.
+     *
+     * @param  array<string, string|null>  $values
+     * @return array{subject: string, lines: array<int, string>}|null
+     */
+    public static function compose(string $key, array $values): ?array
+    {
+        $template = static::find($key);
+
+        if ($template === null || trim((string) $template->body) === '') {
+            return null;
+        }
+
+        $replace = [];
+        foreach ($values as $name => $value) {
+            $replace['{' . $name . '}'] = (string) ($value ?? '');
+        }
+
+        $body = strtr($template->body, $replace);
+
+        // A blank line is a paragraph, because that is what somebody typing
+        // into a textarea means by one. TrainingMail takes an array of them.
+        $lines = preg_split('/\R{2,}/', trim($body)) ?: [];
+
+        return [
+            'subject' => trim(strtr((string) $template->subject, $replace)),
+            'lines' => array_values(array_filter(array_map('trim', $lines), fn ($line) => $line !== '')),
+        ];
+    }
+
+    /**
      * The placeholders this template uses, such as {name} or {days_left}.
      *
      * The bot raises at render time rather than emailing a raw brace when a

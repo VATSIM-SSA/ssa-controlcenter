@@ -4,6 +4,7 @@ namespace App\Notifications\Vatssa;
 
 use App\Mail\TrainingMail;
 use App\Models\Training;
+use App\Models\Vatssa\MessageTemplate;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Notification;
@@ -62,8 +63,23 @@ class MentorLostNotification extends Notification implements ShouldQueue
                 . 'chasing it is welcome, not a nuisance.',
         ];
 
+        // Editable if somebody has edited it, compiled text if not. See
+        // MessageTemplate::compose() for why the fallback is the point.
+        $subject = 'You are back on the waiting list';
+
+        $composed = MessageTemplate::compose(MessageTemplate::MENTOR_LOST, [
+            'name' => $notifiable->name,
+            'mentor' => $this->mentorName,
+            'rating' => $rating,
+        ]);
+
+        if ($composed !== null) {
+            $subject = $composed['subject'] ?: $subject;
+            $textLines = $composed['lines'];
+        }
+
         return (new TrainingMail(
-            'You are back on the waiting list',
+            $subject,
             $this->training,
             $textLines,
             null,

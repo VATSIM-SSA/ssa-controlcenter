@@ -13,7 +13,8 @@ class RouteMirrorTest extends TestCase
 
     private function editKey(): string
     {
-        ApiKey::create(['id' => 'v1-edit-key', 'name' => 't', 'read_only' => false, 'created_at' => now()]);
+        // VATSSA: hashed at rest; see AuthTest.
+        ApiKey::create(['id' => 'v1-edit-key', 'token_hash' => ApiKey::hashToken('v1-edit-key'), 'name' => 't', 'read_only' => false, 'created_at' => now()]);
 
         return 'v1-edit-key';
     }

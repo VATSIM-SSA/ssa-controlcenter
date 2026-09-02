@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Helpers\LogName;
+use App\Helpers\VatsimRating;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\OAuthController;
 use App\Models\User;
@@ -10,6 +11,7 @@ use App\Services\ActivityLogService;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use League\OAuth2\Client\Provider\Exception\IdentityProviderException;
 
 /**
@@ -86,6 +88,28 @@ class LoginController extends Controller
             return redirect()->route('front')->withError('Missing data from sign-in request. You need to grant all permissions.');
         }
 
+        // VATSSA: a rating we do not recognise must not be a fatal.
+        //
+        // `users.rating` is cast to the VatsimRating enum, so an unrecognised
+        // value throws a ValueError inside updateOrCreate and the member simply
+        // cannot log in -- which is what C2 (6) and I2 (9) were doing until
+        // they were added to the enum. VATSIM will introduce another one
+        // eventually, and the failure mode should not be a 500 on the login
+        // callback for whoever holds it first.
+        //
+        // Fall back to OBS: the lowest privilege in the system, so nothing is
+        // granted by the guess, and log it loudly so somebody adds the case.
+        if (VatsimRating::tryFrom((int) $data['rating']) === null) {
+            Log::error('Unknown VATSIM rating at login', [
+                'cid' => $data['id'],
+                'rating' => $data['rating'],
+                'rating_short' => $data['rating_short'] ?? null,
+                'rating_long' => $data['rating_long'] ?? null,
+            ]);
+
+            $data['rating'] = VatsimRating::OBS->value;
+        }
+
         $account = $this->completeLogin($data, $accessToken);
 
         // Login the user and don't remember the session forever
@@ -140,10 +164,19 @@ class LoginController extends Controller
      *
      * @return RedirectResponse
      */
-    public function logout()
+    public function logout(Request $request)
     {
         ActivityLogService::info(LogName::Access, 'Logged out.');
         auth()->logout();
+
+        // VATSSA: the session itself, not just the user on it.
+        //
+        // `auth()->logout()` forgets who you were and leaves the session id
+        // alive -- for the seven days SESSION_LIFETIME allows. On a shared
+        // machine, or with an id captured earlier, that is a live session
+        // somebody has already been told is closed.
+        $request->session()->invalidate();
+        $request->session()->regenerateToken();
 
         return redirect(route('front'))->withSuccess('You have been successfully logged out');
     }

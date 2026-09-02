@@ -12,6 +12,19 @@
     <server name="APP_ENV" value="testing"/>
     <server name="BCRYPT_ROUNDS" value="4"/>
     <server name="CACHE_DRIVER" value="array"/>
+    <!--
+      MAIL_MAILER, not MAIL_DRIVER. Laravel renamed it in 7.x and config/mail.php
+      reads `env('MAIL_MAILER', 'smtp')`, so MAIL_DRIVER overrode nothing: the
+      suite fell through to smtp and tests that send mail opened a real SMTP
+      connection. Several of them error on "530 Authentication required", which
+      is the harmless outcome.
+
+      The harmful one is a machine whose .env holds working Brevo credentials.
+      There, `php artisan test` would have SENT the seeded fixtures' mail to
+      whatever addresses they carry. MAIL_DRIVER is kept only so an older tool
+      reading it is not surprised.
+    -->
+    <server name="MAIL_MAILER" value="array"/>
     <server name="MAIL_DRIVER" value="array"/>
     <server name="QUEUE_CONNECTION" value="sync"/>
     <server name="SESSION_DRIVER" value="array"/>

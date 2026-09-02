@@ -3,6 +3,7 @@
 namespace App\Notifications\Vatssa;
 
 use App\Mail\WarningMail;
+use App\Models\Vatssa\MessageTemplate;
 use Carbon\Carbon;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -59,7 +60,22 @@ class RosterExpiringNotification extends Notification implements ShouldQueue
                 . 'a refresher.',
         ];
 
-        return (new WarningMail('Your roster place lapses in a week', $notifiable, $textLines))
+        $subject = 'Your roster place lapses in a week';
+
+        $composed = MessageTemplate::compose(MessageTemplate::ROSTER_EXPIRING, [
+            'name' => $notifiable->name,
+            'date' => $this->expiresOn->toEuropeanDate(),
+            'days_left' => (string) $days,
+            'hours' => sprintf('%.1f', $this->hours),
+            'requirement' => (string) $this->requirement,
+        ]);
+
+        if ($composed !== null) {
+            $subject = $composed['subject'] ?: $subject;
+            $textLines = $composed['lines'];
+        }
+
+        return (new WarningMail($subject, $notifiable, $textLines))
             ->to($notifiable->personalNotificationEmail, $notifiable->name);
     }
 

@@ -386,7 +386,7 @@
                                             @endempty
                                         @endif
                                     @elseif($activity->type == "COMMENT")
-                                        {!! nl2br($activity->comment) !!}
+                                        {!! nl2br(e($activity->comment)) !!}
 
                                         @if($activity->created_at != $activity->updated_at)
                                             <span class="text-muted">(edited)</span>
@@ -638,7 +638,7 @@
              to", and an exam in flight is most of that answer. Summary and a
              link only -- every action lives on the exam page, because two
              places to do the same thing is one place that goes stale. --}}
-        @include('vatssa.parts.exam-box', ['training' => $training])
+
 
         @include('vatssa.parts.theory', [
             'user' => $training->user,

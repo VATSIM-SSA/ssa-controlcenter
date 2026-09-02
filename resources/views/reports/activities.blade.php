@@ -146,7 +146,7 @@
                                                     @endempty
                                                 @endif
                                             @elseif($activity->type == "COMMENT")
-                                                {!! nl2br($activity->comment) !!}
+                                                {!! nl2br(e($activity->comment)) !!}
 
                                                 @if($activity->created_at != $activity->updated_at)
                                                     <span class="text-muted">(edited)</span>

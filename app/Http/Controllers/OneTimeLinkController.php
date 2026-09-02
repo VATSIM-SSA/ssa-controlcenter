@@ -31,7 +31,14 @@ class OneTimeLinkController extends Controller
 
         $this->authorize('create', [OneTimeLink::class, $training, $data['type']]);
 
-        $key = sha1($training->id . now());
+        // VATSSA: random, not derived.
+        //
+        // This was sha1($training->id . now()) -- a training id somebody can
+        // read off the page and a timestamp to the second. A day is 86 400
+        // guesses and an approximate creation time is a few hundred. The
+        // policy behind the link is what stopped that being a hole; a token
+        // should not need a second control to be safe.
+        $key = bin2hex(random_bytes(32));
 
         OneTimeLink::create([
             'training_id' => $training->id,

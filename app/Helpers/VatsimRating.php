@@ -8,7 +8,14 @@ use App\Traits\ComparableIntEnum;
  * The VATSIM ATC ratings.
  *
  * The case name is the short code (e.g. `OBS`, `S3`) and the backing value is the numeric
- * VATSIM rating id. Note that `C2` (6) and `I2` (9) exist in VATSIM but are unused here.
+ * VATSIM rating id.
+ *
+ * VATSSA: `C2` (6) and `I2` (9) are here even though VATSIM stopped issuing
+ * them. Upstream leaves them out as "unused", but the rating comes off the
+ * VATSIM member record at login and is cast straight into this enum -- so an
+ * account that still carries one hits `ValueError: 9 is not a valid backing
+ * value` in `LoginController::completeLogin()` and CANNOT LOG IN AT ALL. A
+ * rating nobody is granted any more is still a rating somebody holds.
  */
 enum VatsimRating: int
 {
@@ -35,11 +42,17 @@ enum VatsimRating: int
     /** Enroute Controller. */
     case C1 = 5;
 
+    /** Enroute Controller (retired grade, still held by older accounts). */
+    case C2 = 6;
+
     /** Senior Controller. */
     case C3 = 7;
 
     /** Instructor. */
     case I1 = 8;
+
+    /** Instructor (retired grade, still held by older accounts). */
+    case I2 = 9;
 
     /** Senior Instructor. */
     case I3 = 10;
@@ -65,11 +78,14 @@ enum VatsimRating: int
         self::S2,
         self::S3,
         self::C1,
+        self::C2,
         self::C3,
         self::I1,
+        self::I2,
         self::I3,
     ];
 
+    // C2 and I2 are deliberately absent: they are recognised, not trained for.
     public const TRAINABLE_RATINGS = [
         self::S1,
         self::S2,

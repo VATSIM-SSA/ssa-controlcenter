@@ -1,0 +1,25 @@
+[Unit]
+# Fires control-center-tasks@<env>.service once a minute.
+#
+#   systemctl enable --now control-center-tasks@prod.timer
+#
+# Laravel's scheduler is built to be invoked every minute and to decide for
+# itself what is due, so the timer is dumb on purpose. Anything less frequent
+# silently changes what `->everyMinute()` means, and several upstream jobs use
+# it: clean:endorsements and clean:votes both run that way.
+Description=Run Control Center's task scheduler every minute (%i)
+
+[Timer]
+OnCalendar=*-*-* *:*:00
+
+# Persistent=false, deliberately.
+#
+# `true` makes systemd fire a missed run as soon as the box comes back. For a
+# once-a-minute scheduler that is never useful -- the next tick is at most 60
+# seconds away -- and after a long outage it means one immediate catch-up run
+# racing the normal one.
+Persistent=false
+AccuracySec=1s
+
+[Install]
+WantedBy=timers.target

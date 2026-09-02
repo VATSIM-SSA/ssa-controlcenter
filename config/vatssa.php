@@ -187,6 +187,25 @@ return [
         'max_weeks' => (int) env('VATSSA_AVAILABILITY_MAX_WEEKS', 8),
     ],
 
+    /*
+    | The CPT deadline, and how far ahead the poll asks.
+    |
+    | Configurable because it is a division rule rather than a fact about the
+    | software, and it was hard-coded in two places -- Exam and
+    | AvailabilityPoll -- which is one place too many for a number that decides
+    | whether a booking is legal. One source now, read through
+    | Exam::noticeDays().
+    */
+    'exams' => [
+        // Everything settled this long before the exam: examiner confirmed,
+        // events told, myVATSIM uploaded. One deadline, not three.
+        'notice_days' => (int) env('VATSSA_EXAM_NOTICE_DAYS', 7),
+
+        // How many weeks of availability a new CPT poll asks about, starting
+        // at the notice deadline.
+        'poll_weeks' => (int) env('VATSSA_EXAM_POLL_WEEKS', 6),
+    ],
+
     'default_mentor_capacity' => env('VATSSA_DEFAULT_MENTOR_CAPACITY') !== null
         ? (int) env('VATSSA_DEFAULT_MENTOR_CAPACITY')
         : null,

@@ -1,5 +1,5 @@
 # Intermediate build container for composer dependencies
-FROM docker.io/library/composer:latest AS composer
+FROM docker.io/library/composer:2 AS composer
 
 WORKDIR /app
 COPY ./ /app/
@@ -51,7 +51,7 @@ COPY --from=mlocati/php-extension-installer:2.11.12 /usr/bin/install-php-extensi
 RUN install-php-extensions pdo_mysql pdo_pgsql opcache
 
 # Install composer
-COPY --from=docker.io/library/composer:latest /usr/bin/composer /usr/bin/composer
+COPY --from=docker.io/library/composer:2 /usr/bin/composer /usr/bin/composer
 # Copy over the application, static files, plus the ones built/transpiled by Mix in the frontend stage further up
 COPY --chown=www-data:www-data ./ /app/
 COPY --from=frontend --chown=www-data:www-data /app/public/ /app/public/

@@ -37,8 +37,23 @@
 @endif
 
 @if($cronJobError)
+{{-- VATSSA: says what to check, not just that something is wrong.
+     "Are the cron jobs set up according to the manual" is true and useless at
+     three in the morning. The scheduler runs from a systemd timer per
+     environment; the two commands below are the whole diagnosis. --}}
 <div class="alert alert-danger" role="alert">
-    <i class="fas fa-exclamation-triangle"></i>&nbsp;&nbsp;<b>Configuration Error:</b> Cronjob is not running! Are the cron jobs set up according to the manual?
+    <i class="fas fa-exclamation-triangle"></i>&nbsp;&nbsp;<b>The task scheduler is not running.</b>
+    Nothing scheduled is happening &mdash; no roster expiry warnings, no mentor
+    watch, no member data sync, no endorsement cleanup, no task notifications.
+    <br>
+    <small class="d-block mt-2">
+        On the VPS:
+        <code>systemctl list-timers 'control-center-tasks@*'</code>
+        then
+        <code>journalctl -u control-center-tasks@{{ config('app.env') }}.service --since '1 hour ago'</code>.
+        Last successful run:
+        {{ \Carbon\Carbon::parse(Setting::get('_lastCronRun', '2000-01-01'))->diffForHumans() }}.
+    </small>
 </div>
 @endif
 

@@ -218,62 +218,14 @@
                 </div>
             </div>
 
+            {{-- Mentoring, where Division Exams used to be.
+
+                 That card fetched VATEUD's theory record over HTTP on every
+                 profile view, answered the same question as the Moodle theory
+                 panel two rows down, and never showed a VATSSA CPT at all --
+                 our practicals never reach VATEUD. See the partial. --}}
             <div class="col-xl-4 col-lg-12 col-md-12">
-                <div class="card shadow mb-4">
-                    <div class="card-header bg-primary py-3 d-flex flex-row align-items-center justify-content-between">
-                        <h6 class="m-0 fw-bold text-white">
-                            Division Exams
-                        </h6>
-                    </div>
-                    <div class="card-body {{ $divisionExams->count() == 0 ? '' : 'p-0' }}">
-
-                        @if($divisionExams->count() == 0)
-                            <p class="mb-0">No division exam history</p>
-                        @else
-                            <div class="table-responsive">
-                                <table class="table table-sm table-leftpadded mb-0" width="100%" cellspacing="0">
-                                    <thead class="table-light">
-                                        <tr>
-                                            <th>Exam</th>
-                                            <th>Created</th>
-                                            <th>Status</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        @foreach($divisionExams as $exam)
-                                            <tr>
-                                                <td>
-                                                    {{ $exam['rating'] }}
-                                                    @if($exam['category'] == 'reassignments')
-                                                        (Retake)
-                                                    @endif
-                                                </td>
-                                                <td>
-                                                    {{ $exam['created_at'] }}
-                                                </td>
-                                                <td>
-                                                    @if($exam['category'] == 'results')
-                                                        @if($exam['passed'])
-                                                            <i class="fas fa-circle-check text-success"></i>
-                                                            Pass {{ $exam['score'] }}%
-                                                        @else
-                                                            <i class="fas fa-circle-xmark text-danger"></i>
-                                                            Fail {{ $exam['score'] }}%
-                                                        @endif
-                                                    @else
-                                                        <i class="fas fa-circle-half-stroke text-warning"></i>
-                                                        Pending
-                                                    @endif
-                                                </td>
-                                            </tr>
-                                        @endforeach
-                                    </tbody>
-                                </table>
-                            </div>
-                        @endif
-
-                    </div>
-                </div>
+                @include('vatssa.parts.mentoring-summary', ['user' => $user])
             </div>
         </div>
 

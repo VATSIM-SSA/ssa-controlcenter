@@ -62,7 +62,7 @@ class SettingsController extends Controller
         $this->authorize('system.settings.manage');
 
         return view('vatssa.admin.routing', [
-            'tiers' => RequestTarget::TIERS,
+            'tiers' => RequestTarget::tiers(),
             'ratings' => Rating::whereNotNull('vatsim_rating')
                 ->orderBy('vatsim_rating')->get(),
             'targets' => RequestTarget::with('user')->get(),

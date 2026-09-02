@@ -118,6 +118,28 @@ fi
 echo "==> Clearing caches"
 run php artisan optimize:clear
 
+echo "==> Checking the task scheduler"
+# A dead scheduler is silent by nature, and this one WAS dead: the old unit ran
+# `docker exec ... control-center`, and no container has that name. Every
+# firing failed for as long as it was installed, so nothing scheduled ever ran
+# and nothing said so.
+#
+# Checked here because a deploy is the one moment somebody is definitely
+# watching. Non-fatal on purpose: a broken timer is not a reason to leave the
+# application in maintenance mode.
+if systemctl is-active --quiet "control-center-tasks@${ENVIRONMENT}.timer"; then
+    echo "    timer is active"
+else
+    echo "    WARNING: control-center-tasks@${ENVIRONMENT}.timer is NOT active." >&2
+    echo "    Nothing scheduled will run: no roster warnings, no mentor watch," >&2
+    echo "    no member sync, no endorsement cleanup, no task notifications." >&2
+    echo "    Install it with:" >&2
+    echo "      sudo cp deploy/control-center-tasks@.service /etc/systemd/system/" >&2
+    echo "      sudo cp deploy/control-center-tasks@.timer   /etc/systemd/system/" >&2
+    echo "      sudo systemctl daemon-reload" >&2
+    echo "      sudo systemctl enable --now control-center-tasks@${ENVIRONMENT}.timer" >&2
+fi
+
 echo "==> Maintenance mode off"
 run php artisan up
 

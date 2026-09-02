@@ -2,9 +2,11 @@
 
 namespace App\Providers;
 
+use App\Http\Controllers\TrainingController;
 use App\Http\Middleware\VatssaBridgeToken;
 use App\Listeners\Vatssa\LogSentMail;
 use App\Models\Task;
+use App\Models\Vatssa\TrainingType;
 use App\Observers\VatssaTaskObserver;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Mail\Events\MessageSent;
@@ -71,18 +73,33 @@ class VatssaServiceProvider extends ServiceProvider
             // Diffs against vatssa_training_mentors, so it also catches a SWAP,
             // where the training is never mentorless and the old mentor would
             // otherwise never be told.
-            // The seven-day exam rule. Checked at confirmation too, but the
-            // way it actually gets broken is time passing: an exam legal when
-            // it was booked and illegal a fortnight later, with nothing having
-            // changed. Nothing changing IS the failure.
-            $schedule->command('vatssa:exam-watch')
-                ->dailyAt('06:30')
-                ->withoutOverlapping();
-
             $schedule->command('vatssa:mentor-watch')
                 ->dailyAt('06:15')
                 ->withoutOverlapping();
         });
+
+        // VATSSA: training types come from the table, not from upstream's
+        // static array.
+        //
+        // Assigning the property here rather than editing every reader is the
+        // whole trick: `TrainingController::$types` is an UPSTREAM file read by
+        // a dozen controllers and blades, and changing all of them would be a
+        // dozen merge conflicts on every release. One assignment in an added
+        // file gives every one of those readers the database's answer.
+        //
+        // The FULL map, active and retired. A retired type must still render on
+        // the trainings that used it -- a closed training whose kind went blank
+        // is a history that lies. The choosers filter to active themselves.
+        //
+        // Wrapped, because this runs on every boot INCLUDING `package:discover`
+        // during the Docker build, where there is no database at all. The same
+        // trap the schedule registration above documents.
+        try {
+            TrainingController::$types = TrainingType::map();
+        } catch (\Throwable) {
+            // Leave upstream's compiled-in array in place. Yesterday's list is
+            // a better failure than an empty dropdown.
+        }
 
         // Routes tasks to the right desk as they are created. An observer,
         // because TaskController::store() calls Task::create() -- so the

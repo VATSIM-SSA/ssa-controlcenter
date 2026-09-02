@@ -116,7 +116,7 @@ class TaskController extends Controller
             // it is not told about, so without this line the tier never reaches
             // Task::create() and the observer has nothing to route on. Rule::in
             // over the tier list, so a hand-crafted POST cannot invent a desk.
-            'vatssa_tier' => ['sometimes', 'required', Rule::in(array_keys(RequestTarget::TIERS))],
+            'vatssa_tier' => ['sometimes', 'required', Rule::in(array_keys(RequestTarget::tiers(true)))],
             'vatssa_rating_id' => 'sometimes|nullable|exists:ratings,id',
         ]);
 

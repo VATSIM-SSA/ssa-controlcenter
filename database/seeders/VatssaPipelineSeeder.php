@@ -2,7 +2,6 @@
 
 namespace Database\Seeders;
 
-use App\Helpers\ExamStage;
 use App\Helpers\FactoryHelper;
 use App\Helpers\TaskStatus;
 use App\Helpers\TrainingStatus;
@@ -17,7 +16,6 @@ use App\Models\Vatssa\ActionLog;
 use App\Models\Vatssa\AvailabilityPoll;
 use App\Models\Vatssa\AvailabilityResponse;
 use App\Models\Vatssa\Confirmation;
-use App\Models\Vatssa\Exam;
 use App\Models\Vatssa\MessageLog;
 use App\Models\Vatssa\RosterWarning;
 use App\Models\Vatssa\TheoryAttempt;
@@ -227,7 +225,6 @@ class VatssaPipelineSeeder extends Seeder
         $this->seedTasks();
         $this->backfillMessageLog();
         $this->backfillTimelines();
-        $this->seedExams();
         $this->seedActionLog();
         $this->seedConfirmations();
         $this->seedStandalonePolls();
@@ -676,139 +673,13 @@ class VatssaPipelineSeeder extends Seeder
      * hides ordering bugs, which are exactly the bugs a timeline has.
      */
     /**
-     * One exam at every stage of the booking workflow.
+     * Practical exams: REMOVED 2026-09-02, with the workflow they seeded.
      *
-     * ## Why every stage rather than one realistic one
-     *
-     * The workflow has nine states and each shows a different page: the
-     * authorise button, the student's grid, the events team's grid, the
-     * examiner's slot picker, the publishing checklist. Seeding one exam
-     * exercises one of those, and the other eight are found by a person on the
-     * day they matter.
-     *
-     * The awkward states are seeded on purpose too -- an exam inside the
-     * seven-day notice period with paperwork outstanding, and one whose cleared
-     * slots have all aged out. Those are the two the daily sweep exists to
-     * catch, and neither can be produced by clicking through the happy path.
+     * `seedExams()` and `seedExamPoll()` built nine exams across the stages
+     * plus their availability polls. Both are gone with the CPT workflow.
+     * Availability polls that are not about an exam are seeded by
+     * seedAvailability() instead.
      */
-    private function seedExams(): void
-    {
-        if (Exam::query()->exists()) {
-            return;     // idempotent, like everything else here
-        }
-
-        $trainings = Training::whereIn('status', [
-            TrainingStatus::ACTIVE_TRAINING, TrainingStatus::AWAITING_EXAM,
-        ])->with('user', 'ratings')->take(6)->get();
-
-        if ($trainings->isEmpty()) {
-            return;
-        }
-
-        $examiner = User::find(self::FIRST_CID + 5) ?? User::find(10000006);
-        $manager = User::find(10000009);
-
-        $plan = [
-            [ExamStage::REQUESTED, null],
-            [ExamStage::AWAITING_AVAILABILITY, null],
-            [ExamStage::AWAITING_EVENTS, null],
-            [ExamStage::AWAITING_EXAMINER, null],
-            // Confirmed and comfortably legal.
-            [ExamStage::CONFIRMED, 21],
-            // Confirmed, inside the notice period, paperwork unfinished. The
-            // one row vatssa:exam-watch should shout about.
-            [ExamStage::CONFIRMED, 3],
-        ];
-
-        foreach ($trainings as $i => $training) {
-            [$stage, $daysOut] = $plan[$i] ?? $plan[0];
-
-            $exam = new Exam([
-                'training_id' => $training->id,
-                'requested_by' => $training->mentors->first()?->id,
-                'authorised_by' => $stage->value > ExamStage::REQUESTED->value ? $manager?->id : null,
-                'authorised_at' => $stage->value > ExamStage::REQUESTED->value ? now()->subDays(9) : null,
-            ]);
-            $exam->stage = $stage;
-            $exam->save();
-
-            if ($stage->value >= ExamStage::AWAITING_AVAILABILITY->value) {
-                $exam->update(['poll_id' => $this->seedExamPoll($exam, $stage)->id]);
-            }
-
-            if ($daysOut !== null) {
-                $exam->update([
-                    'examiner_id' => $examiner?->id,
-                    'confirmed_at' => now()->subDays(2),
-                    'scheduled_for' => now()->addDays($daysOut)->setTime(18, 0),
-                    // Deliberately incomplete on the close one, complete enough
-                    // on the far one to look like work in progress.
-                    'banner_made' => true,
-                    'on_discord' => $daysOut > 7,
-                    'on_myvatsim' => $daysOut > 7,
-                ]);
-            }
-        }
-
-        $this->command?->info('VatssaPipelineSeeder: ' . Exam::count() . ' exams across the workflow.');
-    }
-
-    /**
-     * The availability behind a seeded exam.
-     *
-     * The student answers from the moment they are asked; the events team only
-     * once it has reached them. Seeding the events response earlier would make
-     * every exam look cleared, which is exactly the state the page is for
-     * distinguishing.
-     */
-    private function seedExamPoll(Exam $exam, ExamStage $stage): AvailabilityPoll
-    {
-        $from = CarbonImmutable::now()->addDays(Exam::NOTICE_DAYS);
-
-        $poll = AvailabilityPoll::create([
-            'purpose' => AvailabilityPoll::CPT,
-            'title' => ($exam->training?->user?->name ?? 'Student') . ' — practical exam',
-            'starts_on' => $from,
-            'ends_on' => $from->addWeeks(6),
-            'training_id' => $exam->training_id,
-            'created_by' => $exam->authorised_by,
-            'slot_minutes' => 30,
-        ]);
-
-        $evenings = $poll->slots()
-            ->filter(fn ($slot) => (int) $slot->format('H') >= 17)
-            ->take(24)
-            ->map(fn ($slot) => $slot->toIso8601String())
-            ->values();
-
-        if ($stage->value >= ExamStage::AWAITING_EVENTS->value && $exam->training?->user_id) {
-            AvailabilityResponse::create([
-                'poll_id' => $poll->id,
-                'user_id' => $exam->training->user_id,
-                'role' => AvailabilityPoll::ROLE_STUDENT,
-                'slots' => $evenings->all(),
-            ]);
-        }
-
-        if ($stage->value >= ExamStage::AWAITING_EXAMINER->value) {
-            $events = User::whereHas('roleAssignments',
-                fn ($q) => $q->where('role', 'events-team'))->first();
-
-            if ($events) {
-                AvailabilityResponse::create([
-                    'poll_id' => $poll->id,
-                    'user_id' => $events->id,
-                    'role' => AvailabilityPoll::ROLE_EVENTS,
-                    // Half of them, so the intersection is a real subset rather
-                    // than "everything the student said", which would hide a
-                    // clash that never happens in seeded data.
-                    'slots' => $evenings->take(12)->all(),
-                ]);
-            }
-        }
-
-        return $poll;
-    }
 
     /**
      * A populated automation log, both kinds of row.
@@ -929,17 +800,16 @@ class VatssaPipelineSeeder extends Seeder
     /**
      * Availability polls that belong to nobody's exam.
      *
-     * `seedExamPoll()` covers the CPT case, which is the one the workflow
-     * drives. The tool also takes a mentoring session and a meeting, and those
-     * are reached by a person clicking "ask a group" -- a path that stayed
-     * untested on dev because nothing seeded it.
+     * The availability tool is general: a mentoring session, a staff meeting,
+     * anything somebody needs a group's times for. These are what it is
+     * actually used for now that the exam workflow is gone.
      *
      * One of them is confirmed, so the settled list is not empty either.
      */
     private function seedStandalonePolls(): void
     {
-        if (AvailabilityPoll::where('purpose', '!=', AvailabilityPoll::CPT)->exists()) {
-            return;
+        if (AvailabilityPoll::query()->exists()) {
+            return;     // idempotent, like everything else here
         }
 
         $staff = User::find(10000009) ?? User::first();

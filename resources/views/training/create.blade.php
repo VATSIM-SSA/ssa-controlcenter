@@ -59,7 +59,12 @@
                         <label class="form-label my-1 me-2" for="typeSelect">Training type</label>
                         <select id="typeSelect" name="type" class="form-select my-1 me-sm-2 @error('type') is-invalid @enderror">
                             <option selected disabled>Choose training type</option>
+                            {{-- VATSSA: only types that are still offered.
+                                 $types carries retired ones too, so the
+                                 trainings that used them still render. --}}
+                            @php($offerable = \App\Models\Vatssa\TrainingType::activeIds())
                             @foreach($types as $id => $data)
+                                @continue(! in_array($id, $offerable, true))
                                 <option value="{{ $id }}">{{ $data["text"] }}</option>
                             @endforeach
                         </select>

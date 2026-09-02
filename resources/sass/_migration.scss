@@ -960,6 +960,35 @@ time,
     border-radius: 0 9px 9px 0;
 }
 
+// The icon and the field are two boxes in one input-group: upstream rounds only
+// the field, so the control came to a square stop against the magnifier on the
+// left and a rounded one on the right. Round the group itself, strip the border
+// off the children, and it reads as a single pill.
+.topbar .search.input-group {
+    background: var(--bg-body);
+    border: 1px solid var(--border-card, rgba(127, 143, 148, .22));
+    border-radius: 50rem;
+    overflow: hidden;
+
+    &:focus-within {
+        border-color: var(--color-primary);
+        box-shadow: 0 0 0 3px rgba(1, 151, 176, .18);
+    }
+
+    .search-icon {
+        background: transparent !important;
+        border: 0;
+    }
+
+    .search-input,
+    .user-search {
+        background: transparent !important;
+        border: 0 !important;
+        border-radius: 0;
+        box-shadow: none;
+    }
+}
+
 // ---- stacked alerts --------------------------------------------------------
 //
 // Bootstrap gives .alert a bottom margin and upstream's dashboard puts two
@@ -1005,6 +1034,22 @@ time,
 // makes a toolbar twice as tall for one word.
 .btn {
     white-space: nowrap;
+}
+
+// Except the dashboard's "why you cannot apply" pill, which is a .btn only for
+// its shape -- it carries a whole sentence from the policy's deny response, and
+// nowrap ran it off the edge of the card with the end of the sentence cut off.
+// A message that is clipped is worse than no message: the reader sees that
+// something is wrong and not what.
+.btn.disabled.not-allowed {
+    white-space: normal;
+}
+
+// That pill and the blue "how do I join" that answers it are a statement and
+// its answer, not one block. Bootstrap only spaces .alert from .alert, and the
+// pill is neither, so the two sat flush.
+.btn.disabled.not-allowed + .alert {
+    margin-top: 1rem;
 }
 
 // ---------------------------------------------------------------------------

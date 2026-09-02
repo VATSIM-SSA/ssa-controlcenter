@@ -86,16 +86,16 @@ class TrainingPolicy
         if (config('app.mode') == 'subdivision') {
             $allowedSubDivisions = explode(',', Setting::get('trainingSubDivisions'));
             if (! in_array($user->subdivision, $allowedSubDivisions) && $allowedSubDivisions != null) {
-                $subdiv = 'none';
-                if (isset($user->subdivision)) {
-                    $subdiv = $user->subdivision;
-                }
-
-                return Response::deny("You must join {$divisionName} to apply for training. You currently belong to " . $subdiv);
+                // VATSSA: the short form. This message is rendered inside a
+                // button-shaped pill on the dashboard, and the old sentence --
+                // which named the division the reader already belongs to --
+                // ran off the edge of the card. The reader's own subdivision
+                // is on their profile; the only actionable half is the ask.
+                return Response::deny("You must join {$divisionName} to apply.");
             }
         } else {
             if ($user->division != config('app.owner_code')) {
-                return Response::deny("You must join {$divisionName} division to apply for training. You currently belong to " . $user->division);
+                return Response::deny("You must join {$divisionName} division to apply.");
             }
         }
 

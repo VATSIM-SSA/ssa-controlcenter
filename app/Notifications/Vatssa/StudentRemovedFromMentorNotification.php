@@ -4,6 +4,7 @@ namespace App\Notifications\Vatssa;
 
 use App\Mail\MentorNoticeMail;
 use App\Models\Training;
+use App\Models\Vatssa\MessageTemplate;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Notification;
@@ -63,8 +64,22 @@ class StudentRemovedFromMentorNotification extends Notification implements Shoul
                 . 'straight in one click.',
         ];
 
+        $subject = 'A student has been taken off your list';
+
+        $composed = MessageTemplate::compose(MessageTemplate::STUDENT_REMOVED, [
+            'name' => $notifiable->name,
+            'student' => $this->studentName,
+            'rating' => $rating,
+            'reason' => $this->reason,
+        ]);
+
+        if ($composed !== null) {
+            $subject = $composed['subject'] ?: $subject;
+            $textLines = $composed['lines'];
+        }
+
         return (new MentorNoticeMail(
-            'A student has been taken off your list',
+            $subject,
             $textLines,
             $this->training->path(),
             'Open the training',

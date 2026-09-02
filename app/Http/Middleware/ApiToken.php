@@ -19,8 +19,17 @@ class ApiToken
      */
     public function handle(Request $request, Closure $next, $args = '')
     {
-        // Authenticate by searching for the key, check if middleware requires edit rights and compare to key access
-        $key = ApiKey::find($request->bearerToken());
+        // VATSSA: by hash, not by value.
+        //
+        // This was `ApiKey::find($request->bearerToken())` -- the token was the
+        // primary key, stored as issued, so the table was a list of live
+        // credentials in the clear. Now only a SHA-256 is stored; see
+        // database/migrations-vatssa/2026_09_02_100000_vatssa_hash_api_keys.php
+        // for why a fast hash is the right one for a random token.
+        //
+        // An expired key is treated as no key at all, so expiry needs no
+        // separate branch and can never be forgotten at a call site.
+        $key = ApiKey::forToken($request->bearerToken());
 
         if ($key == null || ($args == 'edit' && $key->read_only == true)) {
 

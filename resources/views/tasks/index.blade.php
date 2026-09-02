@@ -115,11 +115,6 @@
                                     Nothing open on this desk
                                 @endif
                             </p>
-                            @if($desk === 'mine' && $myDesks->isEmpty() && $state === 'pending')
-                                <p class="text-muted">
-                                    Desks are assigned under Administration &rarr; Request routing.
-                                </p>
-                            @endif
                         </div>
                     @endif
 

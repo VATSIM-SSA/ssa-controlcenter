@@ -7,7 +7,23 @@ return [
      * Login links will only work in these environments. In all
      * other environments, an exception will be thrown.
      */
-    'allowed_environments' => ['local'],
+    // VATSSA: CLOSED BY DEFAULT, everywhere.
+    //
+    // `spatie/laravel-login-link` is an upstream PRODUCTION dependency, not a
+    // dev one, so POST /laravel-login-link-login is registered on every
+    // environment including production. The controller logs in whichever user
+    // you name -- `key` is the primary key, which here is the VATSIM CID -- so
+    // the only thing between the internet and an administrator session is this
+    // array and the host list below.
+    //
+    // An empty list means `app()->environment([])` is false and the controller
+    // throws before it looks at anything else. Somebody who genuinely needs it
+    // locally sets LOGIN_LINK_ENVIRONMENTS=local in their own .env; nobody can
+    // switch it on by accident, and a box brought up with APP_ENV=local is no
+    // longer a full authentication bypass.
+    'allowed_environments' => array_values(array_filter(
+        array_map('trim', explode(',', (string) env('LOGIN_LINK_ENVIRONMENTS', '')))
+    )),
 
     /*
      * Login links will only work in these hosts. In all
@@ -24,7 +40,9 @@ return [
      * The package will automatically create a user model when trying
      * to log in a user that doesn't exist.
      */
-    'automatically_create_missing_users' => true,
+    // VATSSA: false. If this ever does run it must not be able to CREATE the
+    // account it then logs in as.
+    'automatically_create_missing_users' => false,
 
     /*
      * The user model that should be logged in. If this is set to `null`

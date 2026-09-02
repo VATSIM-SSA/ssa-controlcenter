@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 
 use anlutro\LaravelSettings\Facade as Setting;
 use App\Exceptions\StatisticsApiException;
-use App\Facades\DivisionApi;
 use App\Helpers\Vatsim;
 use App\Http\Requests\StatisticsSessionsRequest;
 use App\Models\Area;
@@ -176,23 +175,14 @@ class UserController extends Controller
             }
         }
 
-        // Fetch division exams
-        $divisionExams = collect();
-        $userExams = DivisionApi::getUserExams($user);
-        if ($userExams && $userExams->successful()) {
-
-            foreach ($userExams->json()['data'] as $category => $categories) {
-                foreach ($categories as $exam) {
-                    $exam['category'] = $category;
-                    $exam['rating'] = DivisionApi::getUserExamRating((int) $exam['flag_exam_type']);
-                    $exam['created_at'] = Carbon::parse($exam['created_at'])->toEuropeanDate();
-                    $divisionExams->push($exam);
-                }
-            }
-
-            // Sort all entries by created_at
-            $divisionExams = $divisionExams->sortByDesc('created_at');
-        }
+        // VATSSA: the division exam fetch is gone, and with it an outbound
+        // HTTP call on every profile view.
+        //
+        // It read VATEUD's theory record, which answers the same question as
+        // the Moodle theory panel further down the page and answers it worse:
+        // a VATSSA CPT never reaches VATEUD, so a member with a full VATSSA
+        // history read as somebody who had never sat anything. The card is
+        // replaced by `vatssa.parts.mentoring-summary`.
 
         // Fetch recent ATC sessions from StatSim via the StatisticsService.
         // Use the same general window as the activity chart (last 12 months)
@@ -208,7 +198,7 @@ class UserController extends Controller
             )
         );
 
-        return view('user.show', compact('user', 'roles', 'areas', 'trainings', 'types', 'endorsements', 'areas', 'divisionExams', 'atcActivityHours', 'totalHours', 'recentAtcSessions'));
+        return view('user.show', compact('user', 'roles', 'areas', 'trainings', 'types', 'endorsements', 'areas', 'atcActivityHours', 'totalHours', 'recentAtcSessions'));
     }
 
     /**

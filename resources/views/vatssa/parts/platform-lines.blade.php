@@ -17,14 +17,16 @@
 
     ## The dates
 
-    Nullable, and shown as "?" rather than blank or "unknown". Every row that
-    exists before this shipped has no date and never will -- the timestamps come
-    off the Discord guild member object and the Moodle user record, so they are
-    only knowable from the sweep that first asks for them.
+    Nullable, and the line is OMITTED when there is no date rather than printed
+    with a "?" after it. Every row that existed before this shipped has no date
+    and never will -- the timestamps come off the Discord guild member object
+    and the Moodle user record, so they are only knowable from the sweep that
+    first asks for them.
 
-    A blank cell reads as "did not join". A question mark reads as "we did not
-    ask", which is what is true, and stops somebody treating an old row as a
-    finding.
+    "joined ?" was meant to say "we did not ask", and read as a rendering fault
+    on a line that is otherwise two badges. The badge already carries the fact
+    that matters -- on Discord or not -- and the "last updated" line below says
+    how old that answer is, which is the thing a "?" was reaching for.
 
     Expects: $user
 --}}
@@ -47,10 +49,9 @@
             @else
                 <span class="badge bg-danger"><i class="fas fa-xmark"></i> Discord</span>
             @endif
-            <small class="text-muted">
-                joined
-                {{ $platforms->discord_joined_at?->toEuropeanDate() ?? '?' }}
-            </small>
+            @if($platforms->discord_joined_at)
+                <small class="text-muted">joined {{ $platforms->discord_joined_at->toEuropeanDate() }}</small>
+            @endif
         </div>
 
         <div class="mt-1">
@@ -59,10 +60,9 @@
             @else
                 <span class="badge bg-danger"><i class="fas fa-xmark"></i> Moodle</span>
             @endif
-            <small class="text-muted">
-                registered
-                {{ $platforms->moodle_registered_at?->toEuropeanDate() ?? '?' }}
-            </small>
+            @if($platforms->moodle_registered_at)
+                <small class="text-muted">registered {{ $platforms->moodle_registered_at->toEuropeanDate() }}</small>
+            @endif
         </div>
 
         {{-- The age of the check, kept.

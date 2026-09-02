@@ -51,6 +51,25 @@ class RequestTarget extends Model
      * leadership last, because escalating past the training staff should feel
      * like a deliberate choice rather than the top of a list.
      */
+    /**
+     * The desks, from the table.
+     *
+     * VATSSA: this was a `const TIERS`. Desks describe how the division is
+     * organised this year, which changes more often than the code, so they now
+     * live in `vatssa_request_desks` and are edited under Training Admin.
+     *
+     * The constant below is kept as the FALLBACK, not as the source: an
+     * unmigrated database must still offer a request form somebody can use.
+     *
+     * @param  bool  $onlyActive  true when offering a choice, false when labelling
+     * @return array<string, array{label: string, hint: ?string, per_rating: bool}>
+     */
+    public static function tiers(bool $onlyActive = false): array
+    {
+        return RequestDesk::map($onlyActive);
+    }
+
+    /** @deprecated Use tiers(). Kept because upstream-shaped code reads it. */
     public const TIERS = [
         self::COORDINATOR => [
             'label' => 'Pipeline coordinator',
@@ -89,7 +108,7 @@ class RequestTarget extends Model
 
     public static function isTier(?string $tier): bool
     {
-        return $tier !== null && array_key_exists($tier, self::TIERS);
+        return $tier !== null && array_key_exists($tier, self::tiers());
     }
 
     public static function isPerRating(string $tier): bool

@@ -68,7 +68,7 @@ class TaskEditController extends Controller
 
         $data = $request->validate([
             'message' => 'nullable|string|max:256',
-            'vatssa_tier' => ['nullable', Rule::in(array_keys(RequestTarget::TIERS))],
+            'vatssa_tier' => ['nullable', Rule::in(array_keys(RequestTarget::tiers(true)))],
             'vatssa_rating_id' => 'nullable|exists:ratings,id',
         ]);
 

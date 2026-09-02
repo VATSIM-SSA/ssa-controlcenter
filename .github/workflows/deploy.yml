@@ -104,16 +104,25 @@ jobs:
           # app and the workflow still went green.
           script: ${{ steps.vars.outputs.target }}
 
+      # Everything that is not ours goes through `env:` and is read as a shell
+      # variable, never pasted into the script.
+      #
+      # `${{ }}` substitutes text BEFORE the shell sees the line, so a branch
+      # name containing a quote closes the JSON string and whatever follows it
+      # runs as a command. Git allows a quote in a ref name. Only somebody with
+      # push access can create one here, which makes this small rather than
+      # absent, and the safe version costs nothing.
+      #
+      # jq builds the JSON, so quoting is its problem rather than the shell's.
       - name: Notify Discord on failure
         if: failure()
+        env:
+          WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          TARGET: ${{ steps.vars.outputs.target }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          BRANCH: ${{ github.ref_name }}
+          COMMIT: ${{ github.sha }}
+          ACTOR: ${{ github.actor }}
         run: |
-          curl -sS -H "Content-Type: application/json" -X POST "${{ secrets.DISCORD_WEBHOOK }}" -d '{
-            "username": "SSA Deploy",
-            "embeds": [{
-              "title": "❌ ControlCentre deploy failed — ${{ steps.vars.outputs.target }}",
-              "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
-              "color": 15158332,
-              "description": "Branch **${{ github.ref_name }}** · commit `${{ github.sha }}` by **${{ github.actor }}**\nClick the title for the failed run logs.",
-              "footer": { "text": "ssa-controlcenter CI" }
-            }]
-          }'
+          jq -n --arg target "$TARGET" --arg url "$RUN_URL" --arg branch "$BRANCH" --arg commit "$COMMIT" --arg actor "$ACTOR" '{username: "SSA Deploy", embeds: [{title: ("❌ ControlCentre deploy failed — " + $target), url: $url, color: 15158332, description: ("Branch **" + $branch + "** · commit " + $commit + " by **" + $actor + "** — open the title for the failed run logs."), footer: {text: "ssa-controlcenter CI"}}]}' > discord-payload.json
+          curl -sS -H "Content-Type: application/json" -X POST "$WEBHOOK" -d @discord-payload.json

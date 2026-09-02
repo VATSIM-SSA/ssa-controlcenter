@@ -32,6 +32,13 @@
             </button>
             <span class="fw-bold text-white text-center availability-grid__range">
                 {{ $days->first()?->format('j M') }} &ndash; {{ $days->last()?->format('j M Y') }}
+                {{-- How far through the poll this week is. One week on screen
+                     reads as the whole question; a student who marks it and
+                     stops has answered a fifth of a five-week poll and had
+                     nothing on the page to tell them so. --}}
+                <small class="d-block fw-normal opacity-75">
+                    week {{ $poll->weekIndex($weekStart) }} of {{ $poll->weekCount() }}
+                </small>
             </span>
             <button type="button" wire:click="nextWeek"
                     class="btn btn-sm btn-outline-light border-0" aria-label="Next week">
@@ -40,9 +47,6 @@
         </span>
 
         <span class="d-flex align-items-center gap-2">
-            {{-- All times Zulu, said out loud. VATSSA spans four hours of time
-                 zones and the worst bug in this workflow is a CPT confirmed for
-                 the wrong hour. --}}
             {{-- The timezone, said out loud, from config.
                  VATSSA spans four hours of time zones and the worst bug this
                  workflow has is a CPT confirmed for the wrong hour. "Zulu"

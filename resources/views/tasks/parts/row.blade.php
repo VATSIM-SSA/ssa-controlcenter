@@ -182,7 +182,7 @@
                             </label>
                             <select class="form-select" id="moveDeskTier{{ $task->id }}"
                                     name="vatssa_tier" required>
-                                @foreach(\App\Models\Vatssa\RequestTarget::TIERS as $tierKey => $tier)
+                                @foreach(\App\Models\Vatssa\RequestTarget::tiers(true) as $tierKey => $tier)
                                     <option value="{{ $tierKey }}"
                                         @selected($task->vatssa_tier === $tierKey)>
                                         {{ $tier['label'] }}

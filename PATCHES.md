@@ -562,6 +562,40 @@ upstream's side wholesale, then delete the local branch and this entry.**
 
 ---
 
+## Personal data leaving the application (2026-09-01)
+
+Three places, recorded here because none of them is a bug and all three are
+things a privacy policy has to account for.
+
+**`/api/vatssa/roster` is unauthenticated.** It returns CID, name, rating, the
+areas somebody is active in, their live endorsements and the date they were last
+online, for every active controller. Deliberate: it is the list the public
+website already shows, and it matches upstream's own open `/api/bookings` and
+`/api/positions`. Throttled at 30/minute, cached for five minutes.
+
+It is still personal data served to anybody who asks, so it belongs in the
+privacy policy by name — what is published, why, and how somebody asks for it to
+stop. `last_online` is the one field that is a behavioural signal rather than a
+credential; if anything comes off this list, that is the candidate.
+
+**The automation log no longer records email addresses.** `LogSentMail` used to
+write `meta.to` on every send, which put members' addresses in front of everyone
+holding `fir.management.reports.view`. A matched row carries `user_id`, which
+already names the person; the address is now kept only on an UNMATCHED row,
+where it is the only handle anybody has.
+
+**`access_token` and `refresh_token` are `$hidden` on `User`.** They were not,
+so Ignition rendered the authenticated user as JSON on any error page and
+printed a live VATSIM OAuth pair in full. Seen on cc-dev, where `APP_DEBUG` is
+on. Production is guarded by `deploy-cc.sh`, which refuses to deploy unless
+`APP_DEBUG=false` and `APP_ENV=production` — but a dev box on a public hostname
+is still a dev box on a public hostname.
+
+**Detector:** if upstream adds a field to `RosterController::build()` or a
+serialised user response, re-read this section.
+
+---
+
 ## Deliberately not carried across
 
 From the retired `ssa-controlcenter-custom` overlay, so nobody re-adds them.

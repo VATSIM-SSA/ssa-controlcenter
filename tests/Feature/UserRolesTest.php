@@ -12,10 +12,12 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
+use Tests\Vatssa\UpstreamRoleModel;
 
 class UserRolesTest extends TestCase
 {
     use RefreshDatabase;
+    use UpstreamRoleModel;
 
     private function admin(): User
     {
@@ -200,6 +202,8 @@ class UserRolesTest extends TestCase
     #[Test]
     public function add_modal_shows_the_reason_when_global_is_not_available_for_the_selected_role(): void
     {
+        $this->skipPerAreaRoles('the "global is not available" reason on the add-role modal');
+
         $target = User::factory()->create();
 
         Livewire::actingAs($this->admin())
@@ -212,6 +216,8 @@ class UserRolesTest extends TestCase
     #[Test]
     public function add_modal_presents_two_labelled_steps_with_global_kept_distinct_from_areas(): void
     {
+        $this->skipPerAreaRoles("the add-role modal's second step, which asked which areas a role applies to");
+
         Area::factory()->create();
         $target = User::factory()->create();
 
