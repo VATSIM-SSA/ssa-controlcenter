@@ -75,17 +75,6 @@
                     <textarea class="form-control" name="body" rows="3" maxlength="5000" required
                               placeholder="What happened, and when. Write it as if it will be read back to you."></textarea>
                 </div>
-                {{-- The full sentence, here and only here.
-
-                     This is the moment it matters: somebody is about to write
-                     something they cannot unsay, and a note written in the
-                     belief it was admin-only but readable by a training
-                     manager is worse than no note at all. Above every existing
-                     note it was wallpaper; below the box you are typing in, it
-                     is a warning. --}}
-                <small class="text-muted d-block mb-2">
-                    <i class="fas fa-eye"></i>&nbsp;{{ $meta['audience'] }}
-                </small>
                 <button type="submit" class="btn btn-sm btn-outline-secondary">Add note</button>
             </form>
         </div>

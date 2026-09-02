@@ -143,6 +143,15 @@ return [
         // does not need to know they got 62%.
         'training.results.view',
         'training.results.grades',
+        // VATSSA: the WHOLE theory record on somebody else's profile, every
+        // rating they have ever sat. A third tier, and a narrow one.
+        //
+        // On a training the panel is filtered to that training's rating, which
+        // is the question you actually have open. Unfiltered on a profile it is
+        // a person's entire examination history, including ratings nobody
+        // working their current training has any business reading. Your own
+        // profile is always yours; this permission is about other people's.
+        'training.results.history.view',
         // VATSSA: internal notes, at two scopes with two audiences.
         // Disciplinary history, why somebody was removed or refused, complaints
         // -- things that must be recorded and must not be visible to the person
@@ -204,6 +213,11 @@ return [
 
         // Users
         'users.manage',
+        // VATSSA: open a member's page, read-only. Split out of users.manage
+        // because reading a record and editing one are different jobs: a
+        // pipeline coordinator needs the page to reach somebody's trainings,
+        // and has no business changing their rating or their roles.
+        'users.profile.view',
         'users.access.view',
         // Admin only. Deliberately NOT inside users.** for anybody else --
         // see the denies on the ATC training manager below.
@@ -298,6 +312,8 @@ return [
             // pointless if the people who see
             // it every day can wave it through
             '!training.results.grades',         // ATM + admin only; pass/fail is enough
+            '!training.results.history.view',   // ATM + admin only; the filtered panel on the
+            // training itself is what the queue needs
             'examinations.manage',
             'endorsements.solo.*',
             'endorsements.rosters.view',        // the three roster pages
@@ -308,6 +324,7 @@ return [
             // holding something their own manager does not is backwards, and
             // the superset check in tools/expand.py refuses it outright --
             // which is exactly what caught this.
+            'users.profile.view',               // reach a member's trainings from their page
             'users.workmail.use',
             'tasks.**',
             'files.**',
@@ -335,6 +352,7 @@ return [
         // training one.
         'membership-manager' => [
             'users.manage',
+            'users.profile.view',
             'endorsements.visiting.*',
             'endorsements.rosters.view',
             'tasks.**',                         // includes the overview

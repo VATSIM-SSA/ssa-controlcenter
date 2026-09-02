@@ -119,7 +119,16 @@ Route::middleware(['auth', 'activity', 'suspended'])->group(function () {
     Route::get('/admin/templates/{id}', [NotificationController::class, 'index'])->name('admin.templates.area');
     Route::post('/admin/templates/update', [NotificationController::class, 'update'])->name('admin.templates.update');
     Route::get('/admin/log', [ActivityLogController::class, 'index'])->name('admin.logs');
-    Route::resource('/admin/positions', PositionController::class)->except(['show']);
+    // VATSSA: only the four verbs the controller actually implements.
+    //
+    // `except(['show'])` registered positions.create and positions.edit as
+    // well, and Admin\PositionController has neither method. Any logged-in
+    // account could reach GET /admin/positions/create and take a 500 out of a
+    // BadMethodCallException instead of the 403 the policy would have given --
+    // a route with no authorisation on it at all, because there was no method
+    // to authorise in. The page edits inline; it has never needed either form.
+    Route::resource('/admin/positions', PositionController::class)
+        ->only(['index', 'store', 'update', 'destroy']);
     Route::get('/admin/positions/{area}', [PositionController::class, 'index'])->name('positions.index.area');
 
     // Training routes

@@ -68,7 +68,10 @@ class TaskEditController extends Controller
 
         $data = $request->validate([
             'message' => 'nullable|string|max:256',
-            'vatssa_tier' => ['nullable', Rule::in(array_keys(RequestTarget::tiers(true)))],
+            // `required`: editing a task must not be a way to take it off every
+            // desk. The field is a select of the desks, pre-set to the one it
+            // is on, so there is nothing to type and nothing to leave blank.
+            'vatssa_tier' => ['required', Rule::in(array_keys(RequestTarget::tiers(true)))],
             'vatssa_rating_id' => 'nullable|exists:ratings,id',
         ]);
 

@@ -255,11 +255,29 @@
              Theory takes the wide half because it is a table; platforms is two
              badges and sits in the narrow one, directly under Division Exams
              which is also short. --}}
+        {{-- VATSSA: the theory panel on a PROFILE is unfiltered -- every rating
+             this person has ever sat. Your own is always yours; somebody
+             else's is `training.results.history.view`, which is the ATC
+             training manager and admin.
+
+             A pipeline coordinator still sees theory where it answers the
+             question they have open: on the training itself, filtered to that
+             training's rating. What they no longer get is a person's whole
+             examination history from the member directory. --}}
+        @php
+            $showTheoryHistory = Auth::user()->is($user)
+                || Auth::user()->can('training.results.history.view');
+        @endphp
+
         <div class="row">
-            <div class="col-xl-8 col-lg-12 col-md-12">
-                @include('vatssa.parts.theory', ['user' => $user])
-            </div>
-            <div class="col-xl-4 col-lg-12 col-md-12">
+            @if($showTheoryHistory)
+                <div class="col-xl-8 col-lg-12 col-md-12">
+                    @include('vatssa.parts.theory', ['user' => $user])
+                </div>
+            @endif
+            {{-- Full width when theory is not shown, or the warning sits in a
+                 third of a row with two thirds of nothing beside it. --}}
+            <div class="{{ $showTheoryHistory ? 'col-xl-4' : 'col-xl-12' }} col-lg-12 col-md-12">
                 {{-- The card is gone; its facts are in the summary at the top.
                      The roster warning is not a fact, it is a deadline, so it
                      stays as an alert. --}}

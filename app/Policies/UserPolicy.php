@@ -27,7 +27,17 @@ class UserPolicy
      */
     public function view(User $user, User $model)
     {
-        return $user->is($model) || $user->hasPermission('users.manage') || $user->isTeaching($model);
+        // VATSSA: `users.profile.view` added. A pipeline coordinator works the
+        // training queue and could not open the page of the person whose
+        // training they were working -- the list of somebody's trainings lives
+        // there and nowhere else, so the queue sent them to a 403.
+        //
+        // Reading a record and editing one are separate: this grants the page,
+        // `users.manage` still gates every control on it.
+        return $user->is($model)
+            || $user->hasPermission('users.manage')
+            || $user->hasPermission('users.profile.view')
+            || $user->isTeaching($model);
     }
 
     /**

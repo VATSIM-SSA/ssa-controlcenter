@@ -26,27 +26,18 @@
         <x-sidebar.item :href="route('user.show', Auth::id())" icon="fa-id-card" title="My profile"
                         :active="Route::is('user.show') && request()->route('user')?->id === Auth::id()" />
 
-        @can('update', [\App\Models\Task::class])
-            @php
-                // VATSSA: what is on YOUR DESKS, not what carries your name.
-                // A request belongs to a desk; the assignee column exists only
-                // because it is NOT NULL. Counting it would tell a coordinator
-                // their queue was empty while their desk was not.
-                $myDesks = \App\Models\Vatssa\RequestTarget::desksFor(\Auth::user());
-                $pendingTaskCount = \App\Models\Task::where(function ($q) use ($myDesks) {
-                        $q->where('assignee_user_id', \Auth::id());
-                        $q->orWhere(fn ($inner) => \App\Models\Vatssa\RequestTarget::scopeToDesks($inner, $myDesks));
-                    })
-                    ->where('status', \App\Helpers\TaskStatus::PENDING)
-                    ->count();
-            @endphp
+        {{-- VATSSA: the availability tool sits in the personal group, beside
+             Booking, rather than under Training.
 
-            <x-sidebar.item :href="route('tasks')" icon="fa-list" title="Tasks" :active="Route::is('tasks')">
-                @if($pendingTaskCount)
-                    <span class="badge text-bg-danger">{{ $pendingTaskCount }}</span>
-                @endif
-            </x-sidebar.item>
-        @endcan
+             Everybody answers a poll -- a student, a mentor, an examiner, the
+             events team -- and most of them are not opening it for a training
+             reason. Under the Training heading it read as a pipeline page.
+
+             "Availability Tool" rather than "My Availability": it is not only
+             yours, and calling it a tool says it is something you use rather
+             than a page about you. --}}
+        <x-sidebar.item :href="route('vatssa.availability')" icon="fa-calendar-check"
+            title="Availability Tool" :active="Route::is('vatssa.availability*')" />
 
         @can('view', \App\Models\Booking::class)
             <x-sidebar.item :href="route('booking')" icon="fa-calendar" title="Booking" :active="Route::is('booking*')" />
@@ -65,7 +56,18 @@
                         :active="Route::is('feedback')" />
 
 
-        @canany(['training.mentor-dashboard.view', 'bookings.sweatbox.use', 'fir.management.reports.view', 'endorsements.rosters.view'])
+        {{-- VATSSA: the Training heading is NOT gated, and that is the fix for
+             a real bug.
+
+             It used to sit behind @canany(mentor-dashboard, sweatbox,
+             management-reports, rosters) -- four STAFF permissions. An ordinary
+             member holds none of them, so the whole section vanished and took
+             Moodle and the Availability Tool with it: the two things in it that
+             every member needs and neither of which is gated. A student looking
+             for their own theory course could not find the link to it.
+
+             Everything under here that IS staff-only carries its own @can, so
+             the heading is the only thing this changes. --}}
 
             {{-- Divider --}}
             <div class="sidebar-divider"></div>
@@ -84,17 +86,6 @@
                  their own availability, and they hold no training permission
                  at all. Gating these on the mentor dashboard would hide them
                  from the people the pages exist for. --}}
-            {{-- VATSSA: ordered by how often somebody opens it, not by when it
-                 was added. Availability first because everybody in training
-                 answers one; Requests last because it is a staff queue.
-
-                 "Availability Tool" rather than "My Availability": it is not
-                 only yours -- a mentor, an examiner and the events team all
-                 answer the same grid -- and calling it a tool says it is
-                 something you use rather than a page about you. --}}
-            <x-sidebar.item :href="route('vatssa.availability')" icon="fa-calendar-check"
-                title="Availability Tool" :active="Route::is('vatssa.availability*')" />
-
             {{-- VATSSA: Moodle sits under Training, where the theory it holds
                  belongs. It was above the Training heading, in the personal
                  group with Dashboard and Booking, which is where you look for
@@ -110,19 +101,6 @@
 
             @can('training.mentor-dashboard.view')
                 <x-sidebar.item :href="route('mentor')" icon="fa-chalkboard-teacher" title="My students" :active="Route::is('mentor')" />
-            @endcan
-
-            {{-- VATSSA: mentor capacity and ceilings, under Training rather
-                 than buried in admin. It decides who can teach what and how
-                 many, which is a training question read by the same person who
-                 reads My students.
-
-                 Still `system.settings.manage`, so ATC training manager and
-                 admin only -- the move changes where it lives, not who sees
-                 it. --}}
-            @can('system.settings.manage')
-                <x-sidebar.item :href="route('vatssa.admin.mentorship')" icon="fa-user-gear"
-                                title="Mentor Admin" :active="Route::is('vatssa.admin.mentorship')" />
             @endcan
 
             @can('bookings.sweatbox.use')
@@ -168,7 +146,57 @@
             </x-sidebar.section>
         @endcan
 
-        @endcanany
+            {{-- VATSSA: mentor capacity and ceilings, under Training rather
+                 than buried in admin. It decides who can teach what and how
+                 many, which is a training question read by the same person who
+                 reads My students.
+
+                 Still `system.settings.manage`, so ATC training manager and
+                 admin only -- the move changes where it lives, not who sees
+                 it. Last in the section: it is configuration, opened rarely,
+                 and only by the two people who hold that permission. --}}
+            @can('system.settings.manage')
+                <x-sidebar.item :href="route('vatssa.admin.mentorship')" icon="fa-user-gear"
+                                title="Mentor Admin" :active="Route::is('vatssa.admin.mentorship')" />
+            @endcan
+
+        {{-- VATSSA: Tasks stands on its own rather than sitting in the
+             personal group at the top.
+
+             Dashboard, My profile, Booking and Give feedback are all things
+             about YOU. Tasks is a work queue -- what is sitting on your desks
+             waiting to be actioned -- and it is opened for a different reason,
+             by the people who hold the permission. Its own heading says so. --}}
+        @can('update', [\App\Models\Task::class])
+
+            {{-- Divider --}}
+            <div class="sidebar-divider"></div>
+
+            {{-- Heading --}}
+            <div class="sidebar-heading">
+            Tasks
+            </div>
+
+            @php
+                // VATSSA: what is on YOUR DESKS, not what carries your name.
+                // A request belongs to a desk; the assignee column exists only
+                // because it is NOT NULL. Counting it would tell a coordinator
+                // their queue was empty while their desk was not.
+                $myDesks = \App\Models\Vatssa\RequestTarget::desksFor(\Auth::user());
+                $pendingTaskCount = \App\Models\Task::where(function ($q) use ($myDesks) {
+                        $q->where('assignee_user_id', \Auth::id());
+                        $q->orWhere(fn ($inner) => \App\Models\Vatssa\RequestTarget::scopeToDesks($inner, $myDesks));
+                    })
+                    ->where('status', \App\Helpers\TaskStatus::PENDING)
+                    ->count();
+            @endphp
+
+            <x-sidebar.item :href="route('tasks')" icon="fa-list" title="Tasks" :active="Route::is('tasks')">
+                @if($pendingTaskCount)
+                    <span class="badge text-bg-danger">{{ $pendingTaskCount }}</span>
+                @endif
+            </x-sidebar.item>
+        @endcan
 
         {{-- VATSSA: the heading only appears if something sits under it.
 
@@ -262,7 +290,15 @@
             </x-sidebar.section>
         @endif
 
-        @if(auth()->user()->canAny(['system.health.view', 'users.manage']) || auth()->user()->can('viewAny', App\Models\Position::class))
+        {{-- VATSSA: each section gates on ITS OWN items.
+
+             One outer @if used to wrap both, ORing three unrelated permissions
+             together. Anybody clearing any one of them saw BOTH headings, and
+             the nav editor -- who holds `fir.positions.view` and nothing else
+             here -- got a Training Admin heading with nothing whatsoever under
+             it. An empty section advertises an area of the application and then
+             withholds it, which is worse than not showing it at all. --}}
+        @canany(['system.settings.manage', 'users.manage'])
 
             {{-- Nav Item - Utilities Collapse Menu --}}
             {{-- VATSSA: two groups, because Administration was two things.
@@ -294,7 +330,9 @@
                     <x-sidebar.item :href="route('admin.templates')" title="Notification templates" collapse />
                 @endcan
             </x-sidebar.section>
+        @endcanany
 
+        @if(auth()->user()->can('system.health.view') || auth()->user()->can('viewAny', App\Models\Position::class))
             <x-sidebar.section icon="fa-cogs" title="System Admin" :active="Route::is('admin.settings') || Route::is('admin.logs') || Route::is('positions.*') || Route::is('vote.overview')" id="collapseUtilities">
                 @can('system.health.view')
                     <x-sidebar.item :href="route('admin.settings')" title="Settings" collapse />

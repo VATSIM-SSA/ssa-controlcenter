@@ -36,21 +36,41 @@ use Illuminate\Support\Facades\Log;
  * inbox cannot say what it was addressed to. `vatssa_tier` keeps it, which is
  * what lets a whole desk see its own queue rather than only the one person the
  * round-robin picked.
+ *
+ * ## EVERY task has a desk. There is no deskless task.
+ *
+ * This used to return early when the tier was missing -- upstream's own tasks,
+ * the bridge's, anything created straight from a factory. Those tasks then
+ * existed on nobody's queue: `desksFor()` matches on the tier, so a row with a
+ * null tier is invisible to every desk view and shows up only for the one
+ * person `assignee_user_id` happens to name. That is precisely the failure the
+ * desk model was built to end, reintroduced through the back door.
+ *
+ * A missing tier is now FILLED IN rather than accepted: the coordinator desk
+ * when a rating can be worked out, the ATC training manager otherwise, since
+ * that is the desk with no rating question to answer. The column is NOT NULL
+ * behind this, so a path that skips the observer cannot write a deskless row
+ * either.
  */
 class VatssaTaskObserver
 {
     public function creating(Task $task): void
     {
-        if (! RequestTarget::isTier($task->vatssa_tier)) {
-            return;     // upstream's own tasks, and anything created directly
-        }
-
         // The rating this request is about, so a coordinator request reaches
         // the coordinator for THAT pipeline. Falls back to the training's own
         // rating when the form did not say.
         $ratingId = $task->vatssa_rating_id
             ?? $task->subject_training_rating_id
             ?? $task->subjectTraining?->ratings->first()?->id;
+
+        // No desk named, or a desk that is not one of ours: pick one rather
+        // than leave the row off every queue. Coordinator when there is a
+        // rating to route on, ATC training manager when there is not.
+        if (! RequestTarget::isTier($task->vatssa_tier)) {
+            $task->vatssa_tier = $ratingId !== null
+                ? RequestTarget::COORDINATOR
+                : RequestTarget::TRAINING_MANAGER;
+        }
 
         $task->vatssa_rating_id = RequestTarget::isPerRating($task->vatssa_tier)
             ? $ratingId

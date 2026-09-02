@@ -85,6 +85,34 @@
     h6 > i, .h6 > i {
         color: var(--color-primary-text, var(--color-primary));
     }
+
+    // Everything else that assumed a solid primary bar.
+    //
+    // The h6 rule above covers card titles, which is most of them, but not the
+    // rest of what upstream parks in a header on the strength of it being dark:
+    // the zulu clock on the three booking pages, the collapse toggle on the
+    // availability page, and the week arrows on the grid. Those carry
+    // `.text-white` and `.btn-outline-light` -- white on white once the bar
+    // became cream, which is invisible in the light theme and only nearly
+    // readable in the dark one.
+    //
+    // Fixed here rather than in the five views because three of them are
+    // UNMODIFIED UPSTREAM FILES. Editing them buys five conflicts on the next
+    // absorb and catches nothing upstream adds afterwards; one rule against the
+    // header is the same fix with no merge cost.
+    .text-white {
+        color: var(--color-text-primary) !important;
+    }
+
+    .btn-outline-light {
+        color: var(--color-text-primary);
+        border-color: var(--border-card, rgba(127, 143, 148, .22));
+
+        &:hover, &:focus {
+            background: var(--bg-light);
+            color: var(--color-text-primary);
+        }
+    }
 }
 
 .card-body {

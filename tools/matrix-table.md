@@ -1,6 +1,6 @@
 # Expanded matrix — roles.php
 
-65 permissions x 10 roles.
+67 permissions x 10 roles.
 
 | Permission | admin | moderator | director | atc-training-manager | pipeline-coordinator | mentor | membership-manager | events-team | nav-editor | feedback-team |
 |---|---|---|---|---|---|---|---|---|---|---|
@@ -24,6 +24,7 @@
 | `training.notifications.receive` | O |  |  | O | O |  |  |  |  |  |
 | `training.results.view` | O |  |  | O | O |  |  |  |  |  |
 | `training.results.grades` | O |  |  | O |  |  |  |  |  |  |
+| `training.results.history.view` | O |  |  | O |  |  |  |  |  |  |
 | `training.notes.view` | O |  |  | O |  |  |  |  |  |  |
 | `examinations.manage` | O |  |  | O | O |  |  | O |  |  |
 | `events.exams.manage` | O |  |  | O |  |  |  | O |  |  |
@@ -41,6 +42,7 @@
 | `fir.management.reports.view` | O |  |  | O | O |  | O |  |  |  |
 | `fir.management.access.view` | O |  |  |  |  |  |  |  |  |  |
 | `users.manage` | O |  |  | O |  |  | O |  |  |  |
+| `users.profile.view` | O |  |  | O | O |  | O |  |  |  |
 | `users.access.view` | O |  |  |  |  |  |  |  |  |  |
 | `users.notes.view` | O |  |  |  |  |  |  |  |  |  |
 | `users.workmail.use` | O |  |  | O | O |  |  |  |  |  |
@@ -70,4 +72,4 @@
 | `roles.mentor.manage` | O |  |  | O |  |  |  |  |  |  |
 | `roles.feedback-team.manage` | O |  |  |  |  |  |  |  |  |  |
 
-**Totals:** admin **65** · moderator **0** · director **0** · atc-training-manager **43** · pipeline-coordinator **29** · mentor **9** · membership-manager **9** · events-team **7** · nav-editor **2** · feedback-team **3**
+**Totals:** admin **67** · moderator **0** · director **0** · atc-training-manager **45** · pipeline-coordinator **30** · mentor **9** · membership-manager **10** · events-team **7** · nav-editor **2** · feedback-team **3**
