@@ -8,15 +8,30 @@
           which desk   -- yours, one you sit at, every desk, or what you sent
           which state  -- pending or archived
 
-        Upstream mixed them into a single filter, which cannot express "the
+        Upstream mixes them into a single filter, which cannot express "the
         archive of the S2 desk". Both live in the query string, so any
         combination is a shareable link.
+
+        ## Absorbed from v7.1.1
+
+        The pills are now upstream's <x-filter.group> and <x-filter.item>
+        components rather than hand-rolled anchors, so this page looks like
+        every other filtered page in the application.
+
+        Their query-carrying behaviour is what makes two dimensions cheap:
+        <x-filter.item> merges the CURRENT query string into the link, so
+        switching desk keeps the state you were looking at and switching state
+        keeps the desk. The fork used to thread `state` and `desk` through every
+        single href by hand to get that, and would have kept forgetting one.
+
+        `desk` is still named explicitly on every desk pill: a param in the href
+        beats a carried one, which is the only way "Mine" can clear an inherited
+        `desk=all`.
     --}}
     <div class="d-flex flex-wrap gap-3 align-items-center">
-        <div>
-            <i class="fas fa-inbox"></i>&nbsp;Desk:&nbsp;
-            <a class="btn btn-sm {{ $desk === 'mine' ? 'btn-primary' : 'btn-outline-primary' }}"
-               href="{{ route('tasks', ['state' => $state]) }}">Mine</a>
+        <x-filter.group label="Desk" icon="fa-inbox">
+            <x-filter.item :href="route('tasks', ['desk' => 'mine'])"
+                           :active="$desk === 'mine'">Mine</x-filter.item>
 
             @foreach($myDesks as $myDesk)
                 @php
@@ -24,20 +39,19 @@
                     $name = \App\Models\Vatssa\RequestTarget::label($myDesk['tier']);
                     $rating = $myDesk['rating_id'] ? $ratings->firstWhere('id', $myDesk['rating_id']) : null;
                 @endphp
-                <a class="btn btn-sm {{ $desk === $key ? 'btn-primary' : 'btn-outline-primary' }}"
-                   href="{{ route('tasks', ['desk' => $key, 'state' => $state]) }}">
+                <x-filter.item :href="route('tasks', ['desk' => $key])" :active="$desk === $key">
                     {{ $rating ? $rating->name . ' pipeline' : $name }}
-                </a>
+                </x-filter.item>
             @endforeach
 
             @if($canSeeAll)
-                <a class="btn btn-sm {{ $desk === 'all' ? 'btn-primary' : 'btn-outline-primary' }}"
-                   href="{{ route('tasks', ['desk' => 'all', 'state' => $state]) }}">All desks</a>
+                <x-filter.item :href="route('tasks', ['desk' => 'all'])"
+                               :active="$desk === 'all'">All desks</x-filter.item>
             @endif
 
-            <a class="btn btn-sm {{ $desk === 'sent' ? 'btn-primary' : 'btn-outline-primary' }}"
-               href="{{ route('tasks', ['desk' => 'sent', 'state' => $state]) }}">Sent by you</a>
-        </div>
+            <x-filter.item :href="route('tasks', ['desk' => 'sent'])"
+                           :active="$desk === 'sent'">Sent by you</x-filter.item>
+        </x-filter.group>
 
         @can('create', \App\Models\Task::class)
             <div>
@@ -48,13 +62,12 @@
             </div>
         @endcan
 
-        <div>
-            <i class="fas fa-filter"></i>&nbsp;
-            <a class="btn btn-sm {{ $state === 'pending' ? 'btn-primary' : 'btn-outline-primary' }}"
-               href="{{ route('tasks', ['desk' => $desk, 'state' => 'pending']) }}">Pending</a>
-            <a class="btn btn-sm {{ $state === 'archived' ? 'btn-primary' : 'btn-outline-primary' }}"
-               href="{{ route('tasks', ['desk' => $desk, 'state' => 'archived']) }}">Archived</a>
-        </div>
+        <x-filter.group label="Show">
+            <x-filter.item :href="route('tasks', ['state' => 'pending'])"
+                           :active="$state === 'pending'">Pending</x-filter.item>
+            <x-filter.item :href="route('tasks', ['state' => 'archived'])"
+                           :active="$state === 'archived'">Archived</x-filter.item>
+        </x-filter.group>
     </div>
 @endsection
 

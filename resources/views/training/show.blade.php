@@ -45,14 +45,7 @@
         <div class="card shadow mb-2">
             <div class="card-header bg-primary py-3 d-flex flex-row column-gap-3 pe-0">
                 <h6 class="m-0 fw-bold text-white flex-grow-1">
-                    <i class="fas fa-flag"></i>&nbsp;{{ $training->user->first_name }}'s training for
-                    @foreach($training->ratings as $rating)
-                        @if ($loop->last)
-                            {{ $rating->name }}
-                        @else
-                            {{ $rating->name . " + " }}
-                        @endif
-                    @endforeach
+                    <i class="fas fa-flag"></i>&nbsp;{{ $training->user->first_name }}'s training for {{ $training->getInlineRatings() }}
                 </h6>
 
                 {{-- Upstream's dropdown, kept. Six request types laid out as
@@ -102,17 +95,16 @@
 
                     <dt>Level</dt>
                     <dd class="separator pb-3">
-                        @if ( is_iterable($ratings = $training->ratings->toArray()) )
-                            @for( $i = 0; $i < sizeof($ratings); $i++ )
-                                @if ( $i == (sizeof($ratings) - 1) )
-                                    {{ $ratings[$i]["name"] }}
+                        @foreach($training->ratings as $rating)
+                            <div>
+                                @if($rating->pivot->completed_at)
+                                    <i class="fas fa-check text-success"></i>&nbsp;{{ $rating->name }}
+                                    <span class="text-muted">({{ \Carbon\Carbon::parse($rating->pivot->completed_at)->toEuropeanDate() }})</span>
                                 @else
-                                    {{ $ratings[$i]["name"] . " + " }}
+                                    {{ $rating->name }}
                                 @endif
-                            @endfor
-                        @else
-                            {{ $ratings["name"] }}
-                        @endif
+                            </div>
+                        @endforeach
                     </dd>
 
                     {{-- VATSSA: can we actually reach this person.
@@ -169,9 +161,31 @@
                     </dd>
                 </dl>
 
-                @can('edit', [\App\Models\Training::class, $training])
-                    <a href="{{ route('training.edit', $training->id) }}" class="btn btn-outline-primary btn-icon"><i class="fas fa-pencil"></i>&nbsp;Edit training</a>
-                @endcan
+                <div class="btn-group" role="group" aria-label="Training actions">
+                    @can('edit', [\App\Models\Training::class, $training])
+                        <a href="{{ route('training.edit', $training->id) }}" class="btn btn-outline-primary btn-icon"><i class="fas fa-pencil"></i>&nbsp;Edit training</a>
+                    @endcan
+
+                    @if($showCompletionControl)
+                        @can('update', $training)
+                            <div class="btn-group" role="group">
+                                <button class="btn btn-outline-success btn-icon dropdown-toggle" type="button" id="completionMenuButton" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                                    <i class="fas fa-check me-1"></i>Complete training
+                                </button>
+                                <div class="dropdown-menu" aria-labelledby="completionMenuButton">
+                                    @if($canCompletePartially)
+                                        <button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#completePartialTraining">
+                                            <i class="fas fa-list-check me-1"></i>Complete partial training
+                                        </button>
+                                    @endif
+                                    <button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#completeWholeTraining">
+                                        <i class="fas fa-check me-1"></i>Mark training as completed
+                                    </button>
+                                </div>
+                            </div>
+                        @endcan
+                    @endif
+                </div>
             </div>
         </div>
 
@@ -312,6 +326,8 @@
                                         <i class="fas fa-circle-pause"></i>
                                     @elseif($activity->type == "ENDORSEMENT")
                                         <i class="fas fa-check-square"></i>
+                                    @elseif($activity->type == "RATING")
+                                        <i class="fas fa-list-check"></i>
                                     @elseif($activity->type == "COMMENT")
                                         <i class="fas fa-comment"></i>
                                     @elseif($activity->type == 'PRETRAINING')
@@ -385,6 +401,10 @@
                                                 @endforeach
                                             @endempty
                                         @endif
+                                    @elseif($activity->type == "RATING")
+                                        @isset($activity->rating)
+                                            <span class="badge text-bg-light">{{ $activity->rating->name }}</span> part completed
+                                        @endisset
                                     @elseif($activity->type == "COMMENT")
                                         {!! nl2br(e($activity->comment)) !!}
 
@@ -694,6 +714,14 @@
     @endif
 @endforeach
 
+@if($showCompletionControl)
+    @can('update', $training)
+        @if($canCompletePartially)
+            @include('training.parts.completepartmodal', ['training' => $training, 'completablePart' => $completablePart, 'otherOutstandingRatings' => $otherOutstandingRatings, 'upgradeRequestedForPart' => $upgradeRequestedForPart])
+        @endif
+        @include('training.parts.completetrainingmodal', ['training' => $training, 'outstandingRatings' => $outstandingRatings, 'outstandingEndorsementRatings' => $outstandingEndorsementRatings])
+    @endcan
+@endif
 
 @endsection
 
