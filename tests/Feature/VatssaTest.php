@@ -105,23 +105,48 @@ class VatssaTest extends TestCase
         parent::tearDown();
     }
 
+    /**
+     * The catalogue, IN ORDER, because the order is load-bearing.
+     *
+     * The roles box on a member, the grant picker and the access report all
+     * read `config('roles.roles')` and none of them sorts, so this array is the
+     * display order and a change to it is a change to three pages. Seniority,
+     * not the alphabet and not when they were added.
+     *
+     * The two retired roles are here because they ARE in the catalogue: they
+     * are kept recognised-but-ungrantable so upstream's tests still resolve.
+     * They sit last, out of the way of everything a person reads. This list
+     * omitted them, which is why it had been red since they were added.
+     */
     private const ROLES = [
         'admin',
         'atc-training-manager',
-        'pipeline-coordinator',
-        'mentor',
         'membership-manager',
         'events-team',
+        'pipeline-coordinator',
         'nav-editor',
         'feedback-team',
+        'mentor',
+        'moderator',
+        'director',
     ];
 
+    /** Recognised so upstream's tests resolve; grantable by nobody. */
+    private const RETIRED_ROLES = ['moderator', 'director'];
+
     #[Test]
-    public function the_role_list_is_exactly_the_eight_vatssa_roles(): void
+    public function the_role_catalogue_is_exactly_what_vatssa_grants_plus_the_two_retired(): void
     {
         // Catches an upstream role reappearing after a badly resolved conflict
-        // in config/roles.php, which is the most likely way this file breaks.
+        // in config/roles.php, which is the most likely way this file breaks --
+        // and, because it is assertSame, a reorder too.
         $this->assertSame(self::ROLES, array_keys(config('roles.roles')));
+
+        // The retired pair must stay ungrantable. Recognised is not the same as
+        // assignable, and the whole reason they are still listed is that
+        // RoleAssignment validates against this catalogue.
+        $this->assertFalse(config('roles.roles.moderator.grantable'));
+        $this->assertFalse(config('roles.roles.director.grantable'));
     }
 
     #[Test]
@@ -162,7 +187,9 @@ class VatssaTest extends TestCase
         $matrix = new PermissionMatrix;
 
         foreach (self::ROLES as $role) {
-            if ($role === 'admin') {
+            // Admin is granted by the CLI, and the retired pair is granted by
+            // nobody -- there is no roles.moderator.manage to find.
+            if ($role === 'admin' || in_array($role, self::RETIRED_ROLES, true)) {
                 continue;
             }
 
@@ -217,6 +244,18 @@ class VatssaTest extends TestCase
     #[Test]
     public function the_reference_migration_is_idempotent(): void
     {
+        // Clear legacy role rows first, and this is not tidying.
+        //
+        // `migrate:refresh` COMMITS, so unlike every other test here this one
+        // sees whatever the process left behind rather than a rolled-back
+        // transaction. The remap migration then meets a role_user row for a CID
+        // its STAFF_CID_MAP has never heard of and refuses outright -- which is
+        // exactly the guard doing its job, and exactly the wrong thing to be
+        // testing here. A stray fixture CID is not an unmapped staff member.
+        //
+        // What this test is about is the POSITIONS table surviving a re-run.
+        DB::table('role_user')->whereIn('role', ['moderator', 'director', 'buddy', 'staff'])->delete();
+
         $before = DB::table('positions')->orderBy('callsign')->get()->toArray();
 
         $this->artisan('migrate:refresh', ['--path' => 'database/migrations-vatssa'])
@@ -317,7 +356,18 @@ class VatssaTest extends TestCase
         $this->assertFalse(TrainingStatus::PRE_TRAINING->isAssignableByStaff());
         $this->assertFalse(TrainingStatus::AWAITING_MENTOR->isAssignableByStaff());
 
-        $this->assertTrue(TrainingStatus::ACTIVE_TRAINING->isAssignableByStaff());
+        // ACTIVE_TRAINING joined the system-owned set after this test was
+        // written, and the test was never updated -- which is why it has been
+        // red. It means "a mentor is assigned", which is a fact about the
+        // mentor table rather than an opinion: assigning the mentor is what
+        // moves somebody here. See TrainingStatus::isAssignableByStaff().
+        $this->assertFalse(TrainingStatus::ACTIVE_TRAINING->isAssignableByStaff());
+
+        // The one manual move that IS wanted, and it is expressed by
+        // isAssignableFrom() rather than by this method, which has no context:
+        // a student whose mentor has gone goes back to the queue by hand.
+        $this->assertTrue(TrainingStatus::AWAITING_MENTOR->isAssignableFrom(TrainingStatus::ACTIVE_TRAINING));
+
         $this->assertTrue(TrainingStatus::COMPLETED->isAssignableByStaff());
     }
 
@@ -691,10 +741,26 @@ class VatssaTest extends TestCase
     #[Test]
     public function a_pipeline_desk_is_always_one_ratings_desk(): void
     {
-        // No catch-all. "The pipeline coordinator" is not a thing anybody can
-        // be -- the whole point of the split is that the S2 and C1 coordinators
-        // are different people with different students, and a catch-all would
-        // quietly put somebody on every pipeline queue.
+        // ASKING with no rating is the rule this keeps. "The pipeline
+        // coordinator" is not a thing anybody can be -- the whole point of the
+        // split is that the S2 and C1 coordinators are different people with
+        // different students -- so a request that does not name a rating
+        // reaches nobody rather than everybody.
+        //
+        // ## The half of this test that was deleted, and why
+        //
+        // It used to also assert that a STORED rating-less row reaches nobody,
+        // which flatly contradicted a_catch_all_coordinator_covers_every_rating
+        // three tests up. Both were in the suite at once and one of them was
+        // always going to be red.
+        //
+        // The catch-all wins, on three pieces of evidence: RequestTarget's own
+        // docblock describes it at length, the Request desks box offers "All
+        // ratings" as a named first-class choice, and a division with one
+        // coordinator should not have to fill in four identical rows. So the
+        // rule is: asking with no rating means no desk; a row with no rating
+        // means every rating. Two different questions that happened to share a
+        // null.
         $this->seedFixtures();
 
         RequestTarget::create(['tier' => RequestTarget::COORDINATOR,
@@ -702,13 +768,19 @@ class VatssaTest extends TestCase
 
         $this->assertTrue(
             RequestTarget::peopleAt(RequestTarget::COORDINATOR, null)->isEmpty(),
-            'a rating-less coordinator row still resolved to somebody'
+            'a request naming no rating still resolved to somebody'
         );
 
+        // And the specific coordinator is preferred over the catch-all, so
+        // staffing a rating does not put the catch-all in front of them.
         $rating = Rating::whereNotNull('vatsim_rating')->first();
-        $this->assertTrue(
-            RequestTarget::peopleAt(RequestTarget::COORDINATOR, $rating->id)->isEmpty(),
-            'a rating-less coordinator row leaked into a specific rating'
+        RequestTarget::create(['tier' => RequestTarget::COORDINATOR,
+            'rating_id' => $rating->id, 'user_id' => 10000005]);
+
+        $this->assertSame(
+            10000005,
+            RequestTarget::nextAt(RequestTarget::COORDINATOR, $rating->id)?->id,
+            "the rating's own coordinator must come before the catch-all"
         );
     }
 
@@ -892,13 +964,47 @@ class VatssaTest extends TestCase
         // produce AWAITING_MENTOR (4, appended rather than inserted). Without
         // the promotion step, the one stage this fork exists to add would be
         // the only empty page on dev.
-        $this->seedFixtures();
+        //
+        // THE TRAININGS HAVE TO EXIST FIRST, and that is why this test had been
+        // red. `promoteSomeToAwaitingMentor()` promotes rows the MAIN seeder
+        // made; under RefreshDatabase there are none, and it excludes its own
+        // cohort by CID, so it had nothing at all to work on and correctly
+        // promoted nothing. The test was asserting an outcome its own fixtures
+        // could not produce.
+        putenv('VATSSA_SEED_FORCE=1');
+        $_ENV['VATSSA_SEED_FORCE'] = '1';
+        $_SERVER['VATSSA_SEED_FORCE'] = '1';
+        $this->seed(VatssaSeeder::class);
+
+        // Pre-training, no mentor, outside the named cohort's CID band: the
+        // three things the promotion step looks for. Six, because it takes
+        // every third one.
+        foreach (range(10000001, 10000006) as $cid) {
+            Training::factory()->create([
+                'user_id' => $cid,
+                'status' => TrainingStatus::PRE_TRAINING,
+                'area_id' => 1,
+                'type' => 1,
+            ]);
+        }
+
+        $this->seed(VatssaPipelineSeeder::class);
 
         $promoted = Training::where('status', TrainingStatus::AWAITING_MENTOR)
             ->whereNotBetween('user_id', [10000301, 10000400])
             ->count();
 
         $this->assertGreaterThan(0, $promoted);
+
+        // And they moved through resolveStatusChanges rather than by
+        // assignment, so started_at is set -- awaiting-mentor counts as in
+        // progress, and a row without it is inconsistent in a way no real
+        // transition can produce.
+        $this->assertNotNull(
+            Training::where('status', TrainingStatus::AWAITING_MENTOR)
+                ->whereNotBetween('user_id', [10000301, 10000400])
+                ->first()?->started_at
+        );
     }
 
     #[Test]

@@ -206,15 +206,32 @@ class RequestTarget extends Model
         $query = static::where('tier', $tier)->with('user');
 
         if (self::isPerRating($tier)) {
-            // No rating means NO desk, rather than every desk. A pipeline
-            // desk is always one rating's desk: 'the pipeline coordinator'
-            // is not a thing anybody can be, because the whole point of the
-            // split is that the S2 and C1 coordinators are different people
-            // with different students.
+            // ASKING with no rating means NO desk, rather than every desk. A
+            // pipeline desk is always one rating's desk: 'the pipeline
+            // coordinator' is not a thing anybody can be, because the whole
+            // point of the split is that the S2 and C1 coordinators are
+            // different people with different students.
             if ($ratingId === null) {
                 return (new self)->newCollection();
             }
-            $query->where('rating_id', $ratingId);
+
+            // A STORED row with no rating is the opposite: a catch-all, sitting
+            // at this desk for every rating, which is what lets a division with
+            // one coordinator avoid filling in four identical rows.
+            //
+            // This used to be a bare `where('rating_id', $ratingId)`, which
+            // excluded exactly those rows -- so the catch-all this class
+            // documents at length routed nothing at all, and a division that
+            // had staffed its desk that way had every request stay with
+            // whoever raised it.
+            $query->where(function ($q) use ($ratingId) {
+                $q->where('rating_id', $ratingId)->orWhereNull('rating_id');
+            });
+
+            // The rating's own coordinator first, the catch-all behind them.
+            // `rating_id IS NULL` sorts false (0) before true (1), so a
+            // specific row wins whenever there is one.
+            $query->orderByRaw('rating_id IS NULL');
         }
 
         return $query->get()
