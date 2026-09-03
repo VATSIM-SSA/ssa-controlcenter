@@ -1,6 +1,6 @@
 # Expanded matrix — roles.php
 
-67 permissions x 10 roles.
+68 permissions x 10 roles.
 
 | Permission | admin | atc-training-manager | membership-manager | events-team | pipeline-coordinator | nav-editor | feedback-team | mentor | moderator | director |
 |---|---|---|---|---|---|---|---|---|---|---|
@@ -54,6 +54,7 @@
 | `feedback.correlated.view` | O |  |  |  |  |  | O |  |  |  |
 | `feedback.uncorrelated.view` | O |  |  |  |  |  | O |  |  |  |
 | `feedback.update` | O |  |  |  |  |  | O |  |  |  |
+| `feedback.action` | O |  |  |  |  |  | O |  |  |  |
 | `bookings.bypass-restrictions` | O | O |  | O | O |  |  | O |  |  |
 | `bookings.manage` | O | O |  | O | O |  |  |  |  |  |
 | `bookings.sweatbox.use` | O | O |  | O | O |  |  | O |  |  |
@@ -72,4 +73,4 @@
 | `roles.mentor.manage` | O | O |  |  |  |  |  |  |  |  |
 | `roles.feedback-team.manage` | O |  |  |  |  |  |  |  |  |  |
 
-**Totals:** admin **67** · atc-training-manager **45** · membership-manager **10** · events-team **7** · pipeline-coordinator **30** · nav-editor **2** · feedback-team **3** · mentor **9** · moderator **0** · director **0**
+**Totals:** admin **68** · atc-training-manager **45** · membership-manager **10** · events-team **7** · pipeline-coordinator **30** · nav-editor **2** · feedback-team **4** · mentor **9** · moderator **0** · director **0**

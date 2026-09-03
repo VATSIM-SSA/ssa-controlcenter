@@ -224,6 +224,9 @@ Route::middleware(['auth', 'activity', 'suspended'])->group(function () {
         Route::get('/feedback', 'create')->name('feedback');
         Route::post('/feedback/store', 'store')->name('feedback.store');
         Route::patch('/feedback/{feedback}', 'update')->name('feedback.update');
+        Route::patch('/feedback/{feedback}/action', 'action')->name('feedback.action');
+        // A page about you, showing only what staff chose to forward.
+        Route::get('/feedback/received', 'received')->name('feedback.received');
     });
 
     Route::controller(TaskController::class)->group(function () {

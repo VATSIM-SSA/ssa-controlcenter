@@ -8,6 +8,8 @@ use App\Helpers\Vatsim;
 use App\Http\Requests\StatisticsSessionsRequest;
 use App\Models\Area;
 use App\Models\AtcActivity;
+use App\Models\Feedback;
+use App\Models\ManagementReport;
 use App\Models\TrainingExamination;
 use App\Models\TrainingReport;
 use App\Models\User;
@@ -198,7 +200,24 @@ class UserController extends Controller
             )
         );
 
-        return view('user.show', compact('user', 'roles', 'areas', 'trainings', 'types', 'endorsements', 'areas', 'atcActivityHours', 'totalHours', 'recentAtcSessions'));
+        // Feedback about this person, for staff who may read it.
+        //
+        // #1467: "it would greatly help to track the amount of feedback a
+        // single controller has received". Scoped through the same
+        // `visibleTo()` the report uses, so a staff member sees exactly what
+        // they would see there and the profile can never be a way around the
+        // area scope. Resolved to an empty collection for everybody else, so
+        // the view has one thing to check.
+        $feedbackReceived = auth()->user()->can('viewFeedback', ManagementReport::class)
+            ? Feedback::visibleTo(auth()->user())
+                ->where('reference_user_id', $user->id)
+                ->with('actionedBy')
+                ->latest()
+                ->limit(10)
+                ->get()
+            : collect();
+
+        return view('user.show', compact('user', 'roles', 'areas', 'trainings', 'types', 'endorsements', 'areas', 'atcActivityHours', 'totalHours', 'recentAtcSessions', 'feedbackReceived'));
     }
 
     /**

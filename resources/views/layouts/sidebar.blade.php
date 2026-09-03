@@ -43,6 +43,16 @@
             <x-sidebar.item :href="route('booking')" icon="fa-calendar" title="Booking" :active="Route::is('booking*')" />
         @endcan
 
+        {{-- Feedback about you, once staff have forwarded it.
+
+             Shown only when there is something to read. A permanently empty
+             menu entry is how somebody learns to ignore a menu entry, and
+             feedback is not something most controllers receive weekly. --}}
+        @if(\App\Models\Feedback::forwardedTo(\Auth::user())->exists())
+            <x-sidebar.item :href="route('feedback.received')" icon="fa-comment-dots"
+                title="Feedback about you" :active="Route::is('feedback.received')" />
+        @endif
+
         {{-- VATSSA: giving feedback, not reading it.
 
              The submit page has always existed at /feedback and has never been
