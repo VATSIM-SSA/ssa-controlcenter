@@ -134,13 +134,7 @@ class ReportController extends Controller
             : null;
 
         $areas = Area::all();
-        $filterName = 'All Areas';
-        if ($filterArea) {
-            $area = $areas->find($filterArea);
-            if ($area) {
-                $filterName = $area->name;
-            }
-        }
+        $currentArea = $filterArea ? $areas->find($filterArea) : null;
 
         [$newRequests, $completedRequests, $closedRequests, $passedExamRequests, $failedExamRequests, $labels] = $this->getBiAnnualRequestsStats($filterArea, $startDate, $endDate);
         $cardStats = $this->getCardStats($filterArea, $startDate, $endDate);
@@ -149,7 +143,7 @@ class ReportController extends Controller
         $sessionsPerRating = $this->getSessionsPerRatingStats($filterArea, $startDate, $endDate);
 
         return view('reports.trainings', [
-            'filterName' => $filterName,
+            'currentArea' => $currentArea,
             'areas' => $areas,
             'cardStats' => $cardStats,
             'totalRequests' => $totalRequests,
@@ -192,7 +186,7 @@ class ReportController extends Controller
 
         $this->authorize('accessActivityReports', [ManagementReport::class, $filterArea]);
 
-        $activities = TrainingActivity::with('training', 'training.ratings', 'training.user', 'user', 'endorsement')
+        $activities = TrainingActivity::with('training', 'training.ratings', 'training.user', 'user', 'endorsement', 'rating')
             ->when($filterArea, function (Builder $query, $filterArea) {
                 $query->whereHas('training', fn (Builder $q) => $q->where('area_id', $filterArea));
             })
@@ -221,17 +215,11 @@ class ReportController extends Controller
         $entries = $entries->concat($activities)->sortByDesc('activity_date');
 
         $areas = Area::all();
-        $filterName = 'All Areas';
-        if ($filterArea) {
-            $area = $areas->find($filterArea);
-            if ($area) {
-                $filterName = $area->name;
-            }
-        }
+        $currentArea = $filterArea ? $areas->find($filterArea) : null;
 
         return view('reports.activities', [
             'entries' => $entries,
-            'filterName' => $filterName,
+            'currentArea' => $currentArea,
             'areas' => $areas,
         ]);
     }
