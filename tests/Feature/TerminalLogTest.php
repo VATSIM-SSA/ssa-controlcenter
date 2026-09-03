@@ -55,6 +55,26 @@ class TerminalLogTest extends TestCase
         ], $attributes));
     }
 
+    #[Test]
+    public function an_entry_defaults_to_having_happened_now(): void
+    {
+        // The column is NOT NULL and every caller was having to remember it.
+        // "Now" is the right answer for anything that is not a backfill, and a
+        // caller who forgets should get that rather than a constraint
+        // violation.
+        $recorder = $this->member();
+
+        $entry = TerminalLogEntry::create([
+            'type' => TerminalLogType::QUERY,
+            'reason' => TerminalLogReason::TVCP_CHECK,
+            'user_id' => $this->member()->id,
+            'actor_user_id' => $recorder->id,
+            'recorded_by' => $recorder->id,
+        ]);
+
+        $this->assertNotNull($entry->performed_at);
+    }
+
     // ------------------------------------------------------------- the actor
 
     #[Test]

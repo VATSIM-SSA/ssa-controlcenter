@@ -13,6 +13,7 @@ use App\Models\ManagementReport;
 use App\Models\TrainingExamination;
 use App\Models\TrainingReport;
 use App\Models\User;
+use App\Models\Vatssa\TerminalLogEntry;
 use App\Services\StatisticsService;
 use Carbon\Carbon;
 use GuzzleHttp\Client;
@@ -217,7 +218,24 @@ class UserController extends Controller
                 ->get()
             : collect();
 
-        return view('user.show', compact('user', 'roles', 'areas', 'trainings', 'types', 'endorsements', 'areas', 'atcActivityHours', 'totalHours', 'recentAtcSessions', 'feedbackReceived'));
+        // Every Terminal action ever taken about this person.
+        //
+        // Gated on `membership.terminal.view`, which is membership and admin
+        // only -- not the ATC training manager. It carries CERT queries and
+        // disciplinary findings, the same sensitivity class as a member note,
+        // which is admin-only for exactly that reason.
+        //
+        // Resolved to an empty collection for everybody else, so the view has
+        // one thing to check rather than a permission call inside it.
+        $terminalHistory = auth()->user()->can('membership.terminal.view')
+            ? TerminalLogEntry::about($user)
+                ->with(['actor', 'recordedBy', 'ratingFrom', 'ratingTo'])
+                ->orderByDesc('performed_at')
+                ->limit(15)
+                ->get()
+            : collect();
+
+        return view('user.show', compact('user', 'roles', 'areas', 'trainings', 'types', 'endorsements', 'areas', 'atcActivityHours', 'totalHours', 'recentAtcSessions', 'feedbackReceived', 'terminalHistory'));
     }
 
     /**

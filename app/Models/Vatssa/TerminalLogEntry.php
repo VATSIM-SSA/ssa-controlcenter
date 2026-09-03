@@ -57,6 +57,13 @@ class TerminalLogEntry extends Model
                     'A Terminal log entry must say who did it: a Control Center account, or a name.'
                 );
             }
+
+            // `performed_at` is NOT NULL, and "now" is the right answer for
+            // anything not being backfilled. Defaulting it here rather than at
+            // each caller: the form, the seeder and the bridge all write these,
+            // and a caller who forgets currently gets a constraint violation
+            // rather than the obvious behaviour.
+            $entry->performed_at ??= now();
         });
     }
 

@@ -451,6 +451,58 @@
                      The submitter is named, unlike the controller-facing page:
                      this is the staff view, and knowing who said what is half
                      of deciding what to do about it. --}}
+                {{-- VATSSA: every Terminal action taken about this person.
+
+                     Membership staff and admins only. It carries CERT queries
+                     and disciplinary findings, which is the same sensitivity
+                     class as a member note -- and member notes are admin-only
+                     for exactly that reason.
+
+                     Renders nothing when there is nothing, so it does not
+                     become an empty card on every profile in the division. --}}
+                @if($terminalHistory->isNotEmpty())
+                    <div class="card shadow mb-4">
+                        <div class="card-header bg-primary py-3 d-flex flex-row align-items-center justify-content-between">
+                            <h6 class="m-0 fw-bold text-white">Terminal history</h6>
+                            <a href="{{ route('vatssa.terminal.index', ['cid' => $user->id]) }}"
+                               class="btn btn-icon btn-light btn-sm">
+                                <i class="fas fa-list"></i> All
+                            </a>
+                        </div>
+                        <div class="card-body">
+                            @foreach($terminalHistory as $entry)
+                                <div class="mb-3 pb-3 {{ ! $loop->last ? 'border-bottom' : '' }}">
+                                    <div class="d-flex justify-content-between align-items-start gap-2">
+                                        <span class="badge text-bg-{{ $entry->type->color() }}">
+                                            <i class="fas {{ $entry->type->icon() }}"></i>&nbsp;{{ $entry->type->label() }}
+                                        </span>
+                                        <span class="small text-muted">{{ $entry->performed_at->toEuropeanDate() }}</span>
+                                    </div>
+                                    <div class="fs-sm mt-1">
+                                        {{ $entry->reason->label() }}
+                                        @if($entry->ratingFrom || $entry->ratingTo)
+                                            &middot; {{ $entry->ratingFrom->name ?? '—' }} &rarr; {{ $entry->ratingTo->name ?? '—' }}
+                                        @endif
+                                    </div>
+                                    @if($entry->isDisciplinaryCheck())
+                                        <div class="fs-sm mt-1">
+                                            @if($entry->discipline_found)
+                                                <span class="badge text-bg-danger">History found</span>
+                                            @else
+                                                {{-- A clean check is a RESULT. "We looked and
+                                                     there was nothing" is what you need six
+                                                     months later. --}}
+                                                <span class="badge text-bg-success">Checked, clean</span>
+                                            @endif
+                                        </div>
+                                    @endif
+                                    <div class="fs-sm text-muted mt-1">by {{ $entry->actorLabel() }}</div>
+                                </div>
+                            @endforeach
+                        </div>
+                    </div>
+                @endif
+
                 @if($feedbackReceived->isNotEmpty())
                     <div class="card shadow mb-4">
                         <div class="card-header bg-primary py-3 d-flex flex-row align-items-center justify-content-between">

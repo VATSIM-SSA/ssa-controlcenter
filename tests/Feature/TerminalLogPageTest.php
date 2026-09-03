@@ -182,6 +182,47 @@ class TerminalLogPageTest extends TestCase
         $this->assertSame(0, TerminalLogEntry::count());
     }
 
+    // ------------------------------------------------ the per-member block
+
+    #[Test]
+    public function a_profile_shows_terminal_history_to_membership_staff(): void
+    {
+        $member = User::factory()->create();
+        $staff = $this->withRole('membership-manager');
+
+        TerminalLogEntry::create($this->payload([
+            'user_id' => $member->id,
+            'actor_user_id' => $staff->id,
+            'recorded_by' => $staff->id,
+            'performed_at' => now()->subDay(),
+        ]));
+
+        $html = $this->actingAs($staff)->get(route('user.show', $member))->assertOk()->getContent();
+
+        $this->assertStringContainsString('Terminal history', $html);
+    }
+
+    #[Test]
+    public function the_block_is_absent_for_everybody_else(): void
+    {
+        // Not even the ATC training manager, who can read a membership request.
+        // CERT queries and disciplinary findings are the same sensitivity class
+        // as a member note, which is admin-only for that reason.
+        $member = User::factory()->create();
+        $staff = $this->withRole('membership-manager');
+
+        TerminalLogEntry::create($this->payload([
+            'user_id' => $member->id,
+            'actor_user_id' => $staff->id,
+            'recorded_by' => $staff->id,
+        ]));
+
+        $html = $this->actingAs($this->withRole('atc-training-manager'))
+            ->get(route('user.show', $member))->assertOk()->getContent();
+
+        $this->assertStringNotContainsString('Terminal history', $html);
+    }
+
     // ------------------------------------------------------- the regression
 
     #[Test]
