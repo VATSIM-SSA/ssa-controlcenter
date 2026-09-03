@@ -6,6 +6,8 @@ use App\Helpers\FactoryHelper;
 use App\Helpers\TaskStatus;
 use App\Helpers\TrainingStatus;
 use App\Helpers\VatsimRating;
+use App\Helpers\Vatssa\MembershipRequestState;
+use App\Helpers\Vatssa\MembershipRequestType;
 use App\Http\Controllers\TaskController;
 use App\Models\Rating;
 use App\Models\Task;
@@ -16,6 +18,7 @@ use App\Models\Vatssa\ActionLog;
 use App\Models\Vatssa\AvailabilityPoll;
 use App\Models\Vatssa\AvailabilityResponse;
 use App\Models\Vatssa\Confirmation;
+use App\Models\Vatssa\MembershipRequest;
 use App\Models\Vatssa\MessageLog;
 use App\Models\Vatssa\RosterWarning;
 use App\Models\Vatssa\TheoryAttempt;
@@ -229,10 +232,12 @@ class VatssaPipelineSeeder extends Seeder
         $this->seedConfirmations();
         $this->seedStandalonePolls();
         $this->seedRosterWarnings();
+        $this->seedMembershipRequests();
 
         $this->command?->info(sprintf(
             'VatssaPipelineSeeder: %d platform rows, %d theory attempts, %d logged emails, '
-            . '%d open tasks, %d timeline entries, %d confirmations, %d polls. '
+            . '%d open tasks, %d timeline entries, %d confirmations, %d polls, '
+            . '%d membership requests. '
             . 'Named cohort on CIDs %d-%d.',
             UserPlatform::count(),
             TheoryAttempt::count(),
@@ -241,6 +246,7 @@ class VatssaPipelineSeeder extends Seeder
             TrainingActivity::count(),
             Confirmation::count(),
             AvailabilityPoll::count(),
+            MembershipRequest::count(),
             self::FIRST_CID,
             self::FIRST_CID + count(self::COHORT) - 1
         ));
@@ -893,6 +899,115 @@ class VatssaPipelineSeeder extends Seeder
             'expires_on' => now()->addDays(5),
             'warned_at' => now()->subDays(2),
         ]);
+    }
+
+    /**
+     * The membership desk, with something in it.
+     *
+     * Without this every membership queue on a dev box is empty, and an empty
+     * queue is indistinguishable from a broken one -- which is exactly the
+     * thing dev fixtures exist to prevent.
+     *
+     * ## What the set covers
+     *
+     * Every state of the full workflow, every one of the five types, and the
+     * three disciplinary outcomes that behave differently: never checked,
+     * checked and clean, checked and NOT clean. That last one is the case staff
+     * actually have to think about, and it is the one a hand-made fixture
+     * always forgets.
+     *
+     * ## Through the model's own API
+     *
+     * `open()` and `recordDisciplinaryCheck()` rather than raw inserts, so the
+     * seeder exercises the same paths the application does. A fixture built by
+     * writing columns directly can be in a state the code cannot produce, and
+     * then a bug looks like bad data and bad data looks like a bug.
+     */
+    private function seedMembershipRequests(): void
+    {
+        if (MembershipRequest::query()->exists()) {
+            return;
+        }
+
+        $staff = User::find(self::FIRST_CID) ?? User::first();
+
+        if ($staff === null) {
+            return;
+        }
+
+        // CID => [type, end state, disciplinary outcome, note]
+        //
+        // `null` for the disciplinary outcome means nobody has looked yet,
+        // which is NOT the same as clean and is the state every request starts
+        // in. See MembershipRequest::disciplinaryChecked().
+        $plan = [
+            [1, MembershipRequestType::TRANSFER, MembershipRequestState::PENDING_DISCIPLINARY, null,
+                'Flying here most evenings and would rather control here too.'],
+            [2, MembershipRequestType::VISITING, MembershipRequestState::PENDING_TRANSFER, true,
+                'Would like to control our TMA positions at weekends.'],
+            [3, MembershipRequestType::TRANSFER, MembershipRequestState::AWAITING_MEMBER, true,
+                'Asked them which subdivision they meant. Waiting.'],
+            [4, MembershipRequestType::VISITING, MembershipRequestState::PENDING_TRANSFER_COMPLETE, true,
+                'Terminal actioned, waiting for it to land.'],
+            [5, MembershipRequestType::TRANSFER, MembershipRequestState::PENDING_TRAINING, true,
+                'Familiarisation running. Off the desk until it closes.'],
+            [6, MembershipRequestType::VISITING, MembershipRequestState::COMPLETE, true,
+                'Done. Visiting endorsement issued on completion.'],
+            [7, MembershipRequestType::TRANSFER, MembershipRequestState::CLOSED_BY_MEMBER, null,
+                'Withdrew before we got to it.'],
+
+            // The one staff have to think about: a finding, with the context
+            // that TVCP 5.5 requires them to be able to point at.
+            [8, MembershipRequestType::TRANSFER, MembershipRequestState::PENDING_DISCIPLINARY, false,
+                'Terminal shows a 2026 suspension. Needs a decision before anything else.'],
+
+            // Terminal work. Nobody filed these; the desk recorded them.
+            [9, MembershipRequestType::RATING_UPGRADE, MembershipRequestState::OPEN, null,
+                'S2 sign-off came through, upgrade not yet actioned.'],
+            [10, MembershipRequestType::RATING_UPGRADE, MembershipRequestState::COMPLETE, null,
+                'Actioned on Terminal.'],
+            [11, MembershipRequestType::STAFF_INQUIRY, MembershipRequestState::OPEN, null,
+                'Eligibility check ahead of a mentor appointment.'],
+            [0, MembershipRequestType::OTHER, MembershipRequestState::CLOSED, null,
+                'Duplicate account query. Nothing to do.'],
+        ];
+
+        foreach ($plan as [$offset, $type, $state, $clean, $note]) {
+            $about = User::find(self::FIRST_CID + $offset);
+
+            if ($about === null) {
+                continue;
+            }
+
+            $request = MembershipRequest::open(
+                $type,
+                $about,
+                // Only the member-filed ones have somebody who filed them.
+                $type->isMemberFiled() ? $about : $staff,
+                [
+                    'note' => $note,
+                    'checks' => $type->carriesTvcpChecks() ? [
+                        'Member of ' . config('app.owner_name_short') => false,
+                        'Discord account linked' => true,
+                        'Moodle account linked' => true,
+                    ] : null,
+                ],
+            );
+
+            if ($clean !== null) {
+                $request->recordDisciplinaryCheck(
+                    $clean,
+                    $staff,
+                    // A finding without context is refused by the model, and
+                    // rightly -- so the fixture carries one.
+                    $clean ? null : 'Suspended for 30 days in March 2026. Within the twelve-month window.',
+                );
+            }
+
+            if ($request->state !== $state) {
+                $request->update(['state' => $state]);
+            }
+        }
     }
 
     private function backfillTimelines(): void

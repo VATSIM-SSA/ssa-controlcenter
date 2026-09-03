@@ -6,6 +6,8 @@ use App\Helpers\Vatssa\MembershipRequestState;
 use App\Helpers\Vatssa\MembershipRequestType;
 use App\Models\User;
 use App\Models\Vatssa\MembershipRequest;
+use Database\Seeders\VatssaPipelineSeeder;
+use Database\Seeders\VatssaSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
@@ -33,6 +35,28 @@ class MembershipRequestTest extends TestCase
     private function member(): User
     {
         return User::factory()->create();
+    }
+
+    /**
+     * VatssaSeeder first: it builds the fixed accounts the pipeline seeder
+     * checks for before it will write anything.
+     */
+    private function seedFixtures(): void
+    {
+        putenv('VATSSA_SEED_FORCE=1');
+        $_ENV['VATSSA_SEED_FORCE'] = '1';
+        $_SERVER['VATSSA_SEED_FORCE'] = '1';
+
+        $this->seed(VatssaSeeder::class);
+        $this->seed(VatssaPipelineSeeder::class);
+    }
+
+    protected function tearDown(): void
+    {
+        putenv('VATSSA_SEED_FORCE');
+        unset($_ENV['VATSSA_SEED_FORCE'], $_SERVER['VATSSA_SEED_FORCE']);
+
+        parent::tearDown();
     }
 
     // ------------------------------------------------------ types and states
@@ -250,6 +274,72 @@ class MembershipRequestTest extends TestCase
 
         MembershipRequest::open(MembershipRequestType::TRANSFER, $member, $member);
         $this->assertTrue(MembershipRequest::hasOpenFor($member, MembershipRequestType::TRANSFER));
+    }
+
+    // ------------------------------------------------------------- fixtures
+
+    #[Test]
+    public function the_seeder_fills_every_queue_and_every_disciplinary_outcome(): void
+    {
+        // An empty queue on a dev box is indistinguishable from a broken one,
+        // which is the whole reason these fixtures exist. This pins that the
+        // set actually covers what it claims to rather than happening to
+        // produce twelve rows in one state.
+        $this->seedFixtures();
+
+        $states = MembershipRequest::pluck('state')->unique();
+
+        $this->assertTrue(
+            MembershipRequest::onTheDesk()->exists(),
+            'the open queue must have something in it'
+        );
+        $this->assertTrue(
+            MembershipRequest::pendingTraining()->exists(),
+            'the pending-training queue must have something in it'
+        );
+        $this->assertTrue(
+            MembershipRequest::finished()->exists(),
+            'the closed queue must have something in it'
+        );
+
+        // Every type, so no queue filter is left untested by the fixtures.
+        foreach (MembershipRequestType::cases() as $type) {
+            $this->assertTrue(
+                MembershipRequest::where('type', $type)->exists(),
+                $type->value . ' has no fixture'
+            );
+        }
+
+        // The three disciplinary outcomes behave differently, and the third is
+        // the one a hand-made fixture always forgets.
+        $this->assertTrue(
+            MembershipRequest::whereNull('disciplinary_checked_at')->exists(),
+            'never checked'
+        );
+        $this->assertTrue(
+            MembershipRequest::where('disciplinary_clean', true)->exists(),
+            'checked and clean'
+        );
+
+        $finding = MembershipRequest::where('disciplinary_clean', false)->first();
+        $this->assertNotNull($finding, 'checked and NOT clean');
+        $this->assertNotEmpty(
+            $finding->disciplinary_context,
+            'a seeded finding must carry its context, like a real one'
+        );
+
+        $this->assertGreaterThan(1, $states->count());
+    }
+
+    #[Test]
+    public function the_seeder_is_idempotent(): void
+    {
+        $this->seedFixtures();
+        $first = MembershipRequest::count();
+
+        $this->seed(VatssaPipelineSeeder::class);
+
+        $this->assertSame($first, MembershipRequest::count(), 're-running must not duplicate');
     }
 
     #[Test]
