@@ -114,6 +114,24 @@ return [
     | verbatim. Adding a method to RatingUpgrade.php would have made it a
     | modified upstream file for one line, and a conflict on every release.
     */
+    /*
+    | Request types that are MEMBERSHIP work rather than tasks.
+    |
+    | Task type class => membership request type. TaskController raises a
+    | membership request instead of a Task for anything listed here.
+    |
+    | A rating upgrade is the clear case: it ends on VATSIM Terminal, it needs
+    | the Terminal log and the audit trail behind it, and a Task carries none of
+    | that -- it is a message with a tick box. The button on the training page
+    | does not change; what it produces does.
+    |
+    | Config rather than a check against a class name in the controller, so
+    | adding another one is a line here and the redirection stays in one place.
+    */
+    'membership_request_types' => [
+        RatingUpgrade::class => 'rating-upgrade',
+    ],
+
     'fixed_desks' => [
         RatingUpgrade::class => 'membership',
         // Capacity is the ATC training manager's call, always.

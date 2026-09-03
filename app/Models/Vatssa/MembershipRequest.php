@@ -177,6 +177,26 @@ class MembershipRequest extends Model
             && $this->disciplinary_clean === true;
     }
 
+    /**
+     * Move a request to a new state.
+     *
+     * THE ONE PLACE the state changes, because `closed_at` has to move with it.
+     * They were separated once already: `closed_at` is not fillable -- like
+     * every other field that is part of a set -- so an `update(['state' => ...,
+     * 'closed_at' => now()])` wrote the state and silently dropped the
+     * timestamp, leaving a finished request that claimed never to have closed.
+     *
+     * Reopening clears it, so a request that comes back from a failed
+     * familiarisation does not keep a closing date it no longer has.
+     */
+    public function moveTo(MembershipRequestState $state): void
+    {
+        $this->state = $state;
+        $this->closed_at = $state->isFinished() ? now() : null;
+
+        $this->save();
+    }
+
     /** Requests the membership desk has to act on. */
     public function scopeOnTheDesk(Builder $query): void
     {

@@ -137,14 +137,13 @@ class MembershipAdminController extends Controller
 
         $state = MembershipRequestState::from($data['state']);
 
-        $membershipRequest->state = $state;
-        $membershipRequest->closed_at = $state->isFinished() ? now() : null;
-
         if (array_key_exists('note', $data) && $data['note'] !== null) {
             $membershipRequest->note = $data['note'];
         }
 
-        $membershipRequest->save();
+        // moveTo(), not a state assignment: `closed_at` has to move with the
+        // state, and the model is the one place that knows it.
+        $membershipRequest->moveTo($state);
 
         return back()->with('success', 'Moved to ' . $state->label() . '.');
     }

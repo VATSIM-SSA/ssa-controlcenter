@@ -6,7 +6,9 @@ use App\Http\Controllers\TrainingController;
 use App\Http\Middleware\VatssaBridgeToken;
 use App\Listeners\Vatssa\LogSentMail;
 use App\Models\Task;
+use App\Models\Training;
 use App\Models\Vatssa\TrainingType;
+use App\Observers\VatssaMembershipTrainingObserver;
 use App\Observers\VatssaTaskObserver;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Mail\Events\MessageSent;
@@ -105,6 +107,13 @@ class VatssaServiceProvider extends ServiceProvider
         // because TaskController::store() calls Task::create() -- so the
         // controller needs no change at all.
         Task::observe(VatssaTaskObserver::class);
+
+        // The two automatic transitions between a membership request and the
+        // familiarisation training it opened. On the MODEL, because a training
+        // can close from the status dropdown, the completion control, the
+        // bridge or a scheduled command -- hooking one controller would catch
+        // whichever path somebody happened to think of.
+        Training::observe(VatssaMembershipTrainingObserver::class);
 
         // Every email this application sends, logged. An event listener rather
         // than a line at each of the nineteen notification classes: those are

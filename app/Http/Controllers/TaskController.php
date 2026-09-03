@@ -3,10 +3,12 @@
 namespace App\Http\Controllers;
 
 use App\Helpers\TaskStatus;
+use App\Helpers\Vatssa\MembershipRequestType;
 use App\Models\Area;
 use App\Models\Rating;
 use App\Models\Task;
 use App\Models\User;
+use App\Models\Vatssa\MembershipRequest;
 use App\Models\Vatssa\RequestTarget;
 use App\Rules\ValidTaskType;
 use Illuminate\Contracts\Auth\Authenticatable;
@@ -133,6 +135,37 @@ class TaskController extends Controller
         $fixed = config('vatssa.fixed_desks.' . $data['type']);
         if ($fixed !== null) {
             $data['vatssa_tier'] = $fixed;
+        }
+
+        // VATSSA: some request types are MEMBERSHIP work, not tasks.
+        //
+        // A rating upgrade is the clear case. It ends on VATSIM Terminal, it
+        // needs the Terminal log and the audit trail behind it, and a Task
+        // carries none of that -- it is a message with a tick box. Raising a
+        // membership request instead puts it on the desk that actually does the
+        // work, in the queue where the rest of that work already is.
+        //
+        // The button on the training page does not change. What it produces
+        // does.
+        //
+        // Mapped in config rather than checked against a class name here, so
+        // adding another one is a line of config and this method stays the one
+        // place the redirection happens.
+        $asMembership = config('vatssa.membership_request_types.' . $data['type']);
+        if ($asMembership !== null) {
+            $membershipType = MembershipRequestType::from($asMembership);
+            $subject = User::findOrFail($data['subject_user_id'] ?? $user->id);
+
+            $membershipRequest = MembershipRequest::open($membershipType, $subject, $user, [
+                'rating_id' => $data['subject_training_rating_id'] ?? null,
+                'training_id' => $data['subject_training_id'] ?? null,
+                'note' => $data['message'] ?? null,
+            ]);
+
+            return redirect()->back()->with(
+                'success',
+                'Raised with the membership desk as a ' . strtolower($membershipRequest->type->label()) . '.'
+            );
         }
 
         // Check if recipient is mentor or above
