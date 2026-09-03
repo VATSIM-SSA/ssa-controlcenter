@@ -3,6 +3,7 @@
 use App\Http\Controllers\Vatssa\ActionLogController;
 use App\Http\Controllers\Vatssa\AvailabilityController;
 use App\Http\Controllers\Vatssa\InternalNoteController;
+use App\Http\Controllers\Vatssa\MembershipAdminController;
 use App\Http\Controllers\Vatssa\MembershipRequestController;
 use App\Http\Controllers\Vatssa\RequestActionController;
 use App\Http\Controllers\Vatssa\SettingsController;
@@ -125,6 +126,29 @@ Route::middleware(['web', 'auth', 'activity', 'suspended'])
 // NOT 'activity': that middleware is about controlling activity in the
 // division, and somebody who is not in the division yet has none by
 // definition.
+/*
+| The membership DESK. Staff side, gated per action rather than per group:
+| `requests.view` opens the queue, `.manage` changes anything, and
+| `terminal.log` records the CERT check. The ATC training manager holds only
+| the first -- they may assign a visiting endorsement on the strength of the
+| membership team's check, so they must see whether it came back clean, without
+| being able to decide the request.
+*/
+Route::middleware(['web', 'auth', 'activity', 'suspended'])
+    ->prefix('vatssa/membership')
+    ->group(function () {
+        Route::get('/admin/{queue?}', [MembershipAdminController::class, 'index'])
+            ->name('vatssa.membership.index');
+        Route::post('/admin', [MembershipAdminController::class, 'store'])
+            ->name('vatssa.membership.admin.store');
+        Route::get('/admin/request/{membershipRequest}', [MembershipAdminController::class, 'show'])
+            ->name('vatssa.membership.show');
+        Route::post('/admin/request/{membershipRequest}/check', [MembershipAdminController::class, 'recordCheck'])
+            ->name('vatssa.membership.check');
+        Route::post('/admin/request/{membershipRequest}/state', [MembershipAdminController::class, 'transition'])
+            ->name('vatssa.membership.transition');
+    });
+
 Route::middleware(['web', 'auth', 'suspended'])
     ->prefix('vatssa/membership')
     ->group(function () {

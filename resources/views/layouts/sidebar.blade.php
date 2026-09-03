@@ -253,6 +253,41 @@
 
         @endcan
 
+        {{-- VATSSA: the membership desk.
+
+             Its own section rather than an entry under Members, because it is a
+             different job done by different people: Members is the directory,
+             this is a queue of work. The three entries are three views of one
+             list -- open is what the desk has to act on, pending training is
+             alive but somebody else's move, and closed is the record.
+
+             Gated on `membership.requests.view`, which the ATC training manager
+             also holds: they may assign a visiting endorsement on the strength
+             of the membership team's Terminal check, so they need to see
+             whether it came back clean. --}}
+        @can('membership.requests.view')
+
+            {{-- Divider --}}
+            <div class="sidebar-divider"></div>
+
+            {{-- Heading --}}
+            <div class="sidebar-heading">
+            Membership
+            </div>
+
+            <x-sidebar.item :href="route('vatssa.membership.index', ['queue' => 'open'])"
+                icon="fa-inbox" title="Open requests"
+                :active="Route::is('vatssa.membership.index') && request()->route('queue') !== 'training' && request()->route('queue') !== 'closed'" />
+
+            <x-sidebar.item :href="route('vatssa.membership.index', ['queue' => 'training'])"
+                icon="fa-hourglass-half" title="Pending training"
+                :active="request()->route('queue') === 'training'" />
+
+            <x-sidebar.item :href="route('vatssa.membership.index', ['queue' => 'closed'])"
+                icon="fa-box-archive" title="Closed requests"
+                :active="request()->route('queue') === 'closed'" />
+
+        @endcan
 
 
         @can('fir.management.reports.view')
