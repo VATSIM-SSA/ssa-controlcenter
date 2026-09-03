@@ -30,6 +30,7 @@ use App\Notifications\Vatssa\MentorAssignedNotification;
 use App\Rules\AssignableTrainingStatus;
 use App\Services\ActivityLogService;
 use App\Services\TrainingService;
+use App\Services\Vatssa\MembershipCheck;
 use App\Support\Vatssa\RequestAvailability;
 use App\Tasks\Types\RatingUpgrade;
 use Carbon\Carbon;
@@ -246,6 +247,10 @@ class TrainingController extends Controller
             'atc_hours' => $vatsimStats,
             'atcActiveRequired' => $atcActiveRequired ? 1 : 0,
             'motivation_required' => $userVatsimRating->isLessThanOrEqual(VatsimRating::S1) ? 1 : 0,
+            // VATSSA: resolved here rather than inside the blade. A view doing
+            // database work hides its cost and cannot be tested without
+            // rendering, and this list is about half a dozen queries.
+            'vatssaRequirements' => MembershipCheck::for($user),
         ]);
     }
 

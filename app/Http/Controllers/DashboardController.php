@@ -9,6 +9,7 @@ use App\Models\TrainingInterest;
 use App\Models\TrainingReport;
 use App\Models\User;
 use App\Models\Vote;
+use App\Services\Vatssa\MembershipCheck;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\View\View;
@@ -98,7 +99,15 @@ class DashboardController extends Controller
 
         $oudatedVersionWarning = $user->hasPermission('system.health.view') && Setting::get('_updateAvailable');
 
-        return view('dashboard', compact('data', 'trainings', 'types', 'dueInterestRequest', 'atcInactiveMessage', 'completedTrainingMessage', 'activeVote', 'atcHours', 'workmailRenewal', 'studentTrainings', 'cronJobError', 'oudatedVersionWarning'));
+        // VATSSA: the requirement list, resolved HERE rather than in the view.
+        //
+        // It was three separate `MembershipCheck::for()` calls inside blade
+        // files. A view doing database work hides its cost, cannot be tested
+        // without rendering, and runs again on every render -- and this one
+        // is about half a dozen queries.
+        $vatssaRequirements = MembershipCheck::for(Auth::user());
+
+        return view('dashboard', compact('data', 'trainings', 'types', 'dueInterestRequest', 'atcInactiveMessage', 'completedTrainingMessage', 'activeVote', 'atcHours', 'workmailRenewal', 'studentTrainings', 'cronJobError', 'oudatedVersionWarning', 'vatssaRequirements'));
     }
 
     /**

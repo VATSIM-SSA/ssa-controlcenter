@@ -8,6 +8,8 @@ use App\Helpers\TrainingStatus;
 use App\Helpers\VatsimRating;
 use App\Helpers\Vatssa\MembershipRequestState;
 use App\Helpers\Vatssa\MembershipRequestType;
+use App\Helpers\Vatssa\TerminalLogReason;
+use App\Helpers\Vatssa\TerminalLogType;
 use App\Http\Controllers\TaskController;
 use App\Models\Rating;
 use App\Models\Task;
@@ -21,6 +23,7 @@ use App\Models\Vatssa\Confirmation;
 use App\Models\Vatssa\MembershipRequest;
 use App\Models\Vatssa\MessageLog;
 use App\Models\Vatssa\RosterWarning;
+use App\Models\Vatssa\TerminalLogEntry;
 use App\Models\Vatssa\TheoryAttempt;
 use App\Models\Vatssa\UserPlatform;
 use Carbon\CarbonImmutable;
@@ -233,11 +236,12 @@ class VatssaPipelineSeeder extends Seeder
         $this->seedStandalonePolls();
         $this->seedRosterWarnings();
         $this->seedMembershipRequests();
+        $this->seedTerminalLog();
 
         $this->command?->info(sprintf(
             'VatssaPipelineSeeder: %d platform rows, %d theory attempts, %d logged emails, '
             . '%d open tasks, %d timeline entries, %d confirmations, %d polls, '
-            . '%d membership requests. '
+            . '%d membership requests, %d Terminal log rows. '
             . 'Named cohort on CIDs %d-%d.',
             UserPlatform::count(),
             TheoryAttempt::count(),
@@ -247,6 +251,7 @@ class VatssaPipelineSeeder extends Seeder
             Confirmation::count(),
             AvailabilityPoll::count(),
             MembershipRequest::count(),
+            TerminalLogEntry::count(),
             self::FIRST_CID,
             self::FIRST_CID + count(self::COHORT) - 1
         ));
@@ -1007,6 +1012,89 @@ class VatssaPipelineSeeder extends Seeder
             if ($request->state !== $state) {
                 $request->update(['state' => $state]);
             }
+        }
+    }
+
+    /**
+     * The Terminal log, with something in it.
+     *
+     * An empty AUDIT log is worse than an empty queue: it reads exactly like a
+     * log that is not being written, which is the one thing an audit surface
+     * must never be mistaken for. Without this the page is blank on every dev
+     * box.
+     *
+     * ## What the set has to cover
+     *
+     * All three types, because each renders differently. Both actor shapes --
+     * a Control Center account, and a typed name for somebody who was never in
+     * Control Center, which is the case the second column exists for. And all
+     * three disciplinary outcomes: not a check at all, checked and clean, and
+     * checked with a finding.
+     *
+     * `performed_at` is deliberately spread backwards. Every row landing on the
+     * same day would hide the one thing the ordering is for.
+     */
+    private function seedTerminalLog(): void
+    {
+        if (TerminalLogEntry::query()->exists()) {
+            return;
+        }
+
+        $recorder = User::find(self::FIRST_CID) ?? User::first();
+
+        if ($recorder === null) {
+            return;
+        }
+
+        $ratings = Rating::whereNotNull('vatsim_rating')->orderBy('vatsim_rating')->take(2)->get();
+        $transfer = MembershipRequest::where('type', MembershipRequestType::TRANSFER)->first();
+
+        // [offset, type, reason, days ago, actor name (null = the recorder),
+        //  discipline outcome, note]
+        $plan = [
+            [1, TerminalLogType::QUERY, TerminalLogReason::TVCP_CHECK, 21, null, false,
+                'Checked ahead of the transfer decision.'],
+            [2, TerminalLogType::QUERY, TerminalLogReason::TVCP_CHECK, 18, null, true,
+                'Finding is inside the twelve-month window.'],
+            [3, TerminalLogType::QUERY, TerminalLogReason::STAFF_CHECK, 14, 'K. Mokoena', null,
+                'Eligibility check before a staff appointment.'],
+            [4, TerminalLogType::QUERY, TerminalLogReason::DUPE_CHECK, 11, null, null,
+                'Two accounts with the same name. Not the same person.'],
+            [5, TerminalLogType::CHANGE, TerminalLogReason::RATING_UPDATE, 9, null, null, null],
+            [6, TerminalLogType::CHANGE, TerminalLogReason::RATING_UPDATE, 6, 'A. van Wyk', null,
+                'Actioned on Terminal directly, recorded here afterwards.'],
+            [7, TerminalLogType::TRANSFER_IN, TerminalLogReason::TRANSFER, 3, null, null,
+                'Transfer accepted under TVCP.'],
+        ];
+
+        foreach ($plan as [$offset, $type, $reason, $daysAgo, $actorName, $discipline, $note]) {
+            $about = User::find(self::FIRST_CID + $offset);
+
+            if ($about === null) {
+                continue;
+            }
+
+            TerminalLogEntry::create([
+                'type' => $type,
+                'reason' => $reason,
+                'user_id' => $about->id,
+                // One of the two, never both. The typed name is the case the
+                // column exists for: the action happened on Terminal, by
+                // somebody who was not in Control Center at the time.
+                'actor_user_id' => $actorName === null ? $recorder->id : null,
+                'actor_name' => $actorName,
+                'recorded_by' => $recorder->id,
+                'membership_request_id' => $type === TerminalLogType::TRANSFER_IN ? $transfer?->id : null,
+                'comment_code' => $type === TerminalLogType::CHANGE ? 'SSA-VT-001' : null,
+                'rating_from_id' => $type->carriesRatingChange() ? $ratings->first()?->id : null,
+                'rating_to_id' => $type->carriesRatingChange() ? $ratings->last()?->id : null,
+                'discipline_found' => $discipline,
+                'discipline_context' => $discipline === true
+                    ? 'Suspended for 30 days in March 2026.'
+                    : null,
+                'notes' => $note,
+                'performed_at' => now()->subDays($daysAgo),
+            ]);
         }
     }
 

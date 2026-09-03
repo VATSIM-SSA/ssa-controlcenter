@@ -17,7 +17,7 @@
         visiting                    ->  the training block returns, plus this
         member                      ->  the training block, as now
 
-    Expects: $user
+    Expects: $user, $requirements
 --}}
 @php
     use App\Helpers\Vatssa\MembershipRequestType;
@@ -72,7 +72,7 @@
              after they are refused. --}}
         <div class="mt-3">
             @include('vatssa.parts.requirements', [
-                'requirements' => \App\Services\Vatssa\MembershipCheck::for($user),
+                'requirements' => $requirements,
                 'heading' => 'What you need',
             ])
         </div>

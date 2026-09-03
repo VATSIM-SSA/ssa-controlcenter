@@ -300,7 +300,10 @@
         @php($vatssaCanTrain = Auth::user()->isMember() || Auth::user()->isVisiting())
 
         @unless($vatssaCanTrain)
-            @include('vatssa.parts.membership-boxes', ['user' => Auth::user()])
+            @include('vatssa.parts.membership-boxes', [
+                'user' => Auth::user(),
+                'requirements' => $vatssaRequirements,
+            ])
         @endunless
 
         {{-- Their own requests, when they have any. Visiting and transfer only:
@@ -361,7 +364,7 @@
                      see the rest. Same rules, listed. --}}
                 <div class="mt-3">
                     @include('vatssa.parts.requirements', [
-                        'requirements' => \App\Services\Vatssa\MembershipCheck::for(\Auth::user()),
+                        'requirements' => $vatssaRequirements,
                         'heading' => 'What you need',
                     ])
                 </div>

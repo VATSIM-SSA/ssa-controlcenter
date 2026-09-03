@@ -13,6 +13,8 @@ use App\Models\Vatssa\ActionLog;
 use App\Models\Vatssa\MembershipRequest;
 use App\Models\Vatssa\TerminalComment;
 use App\Models\Vatssa\TerminalLogEntry;
+use Database\Seeders\VatssaPipelineSeeder;
+use Database\Seeders\VatssaSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
@@ -100,6 +102,45 @@ class TerminalLogTest extends TestCase
         $clean = $this->entry(['discipline_found' => false]);
         $this->assertTrue($clean->isDisciplinaryCheck());
         $this->assertFalse($clean->discipline_found);
+    }
+
+    // ------------------------------------------------------------- fixtures
+
+    #[Test]
+    public function the_seeder_fills_the_log_across_every_shape_that_renders_differently(): void
+    {
+        // An empty AUDIT log is worse than an empty queue: it reads exactly
+        // like a log nothing is writing to, which is the one thing an audit
+        // surface must never be mistaken for.
+        putenv('VATSSA_SEED_FORCE=1');
+        $_ENV['VATSSA_SEED_FORCE'] = '1';
+        $_SERVER['VATSSA_SEED_FORCE'] = '1';
+        $this->seed(VatssaSeeder::class);
+        $this->seed(VatssaPipelineSeeder::class);
+
+        foreach (TerminalLogType::cases() as $type) {
+            $this->assertTrue(
+                TerminalLogEntry::where('type', $type)->exists(),
+                $type->value . ' has no fixture, so its row never renders on a dev box'
+            );
+        }
+
+        // Both actor shapes. The typed name is the case the second column
+        // exists for, and it is the one a hand-made fixture forgets.
+        $this->assertTrue(TerminalLogEntry::whereNotNull('actor_user_id')->exists());
+        $this->assertTrue(TerminalLogEntry::whereNotNull('actor_name')->exists());
+
+        // All three disciplinary outcomes: not a check, checked and clean,
+        // checked with a finding.
+        $this->assertTrue(TerminalLogEntry::whereNull('discipline_found')->exists());
+        $this->assertTrue(TerminalLogEntry::where('discipline_found', false)->exists());
+
+        $finding = TerminalLogEntry::where('discipline_found', true)->first();
+        $this->assertNotNull($finding);
+        $this->assertNotEmpty($finding->discipline_context, 'a finding carries its context');
+
+        putenv('VATSSA_SEED_FORCE');
+        unset($_ENV['VATSSA_SEED_FORCE'], $_SERVER['VATSSA_SEED_FORCE']);
     }
 
     // --------------------------------------------------------- the catalogue

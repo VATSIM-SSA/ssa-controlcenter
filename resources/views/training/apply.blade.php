@@ -85,7 +85,7 @@
                     </div>
                     <div class="card-body">
                         @include('vatssa.parts.requirements', [
-                            'requirements' => \App\Services\Vatssa\MembershipCheck::for(Auth::user()),
+                            'requirements' => $vatssaRequirements,
                         ])
                     </div>
                 </div>

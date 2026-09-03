@@ -56,10 +56,26 @@ class PositionsTest extends TestCase
         $this->permittedUser->roleAssignments()->create(['role' => 'nav-editor', 'area_id' => $this->permittedArea->id]);
 
         // Create Position in area 1
-        $this->existingPosition = Position::factory()->create(['area_id' => $this->permittedArea->id]);
+        // VATSSA: explicit callsigns, not faker's.
+        //
+        // `index_filters_by_area` asserts one callsign IS on the rendered page
+        // and the other is NOT. Faker produces callsigns as short as three
+        // characters, which turn up inside asset hashes, element ids and other
+        // callsigns -- so the test passed or failed on the roll of the dice. It
+        // failed once, passed on rerun, and an assertion that passes by luck
+        // has stopped being checked.
+        //
+        // Distinctive strings, and deliberately not a prefix of one another.
+        $this->existingPosition = Position::factory()->create([
+            'area_id' => $this->permittedArea->id,
+            'callsign' => 'ZZQX_1_APP',
+        ]);
 
         // Create Position in area 2
-        $this->existingPositionOther = Position::factory()->create(['area_id' => $this->area2->id]);
+        $this->existingPositionOther = Position::factory()->create([
+            'area_id' => $this->area2->id,
+            'callsign' => 'VWYB_2_CTR',
+        ]);
 
         $this->positionData = [
             'callsign' => 'TEST_APP',
