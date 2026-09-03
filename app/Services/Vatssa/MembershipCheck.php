@@ -75,18 +75,20 @@ class MembershipCheck
             ? in_array($user->subdivision, array_filter(explode(',', (string) Setting::get('trainingSubDivisions'))), true)
             : $user->division === config('app.owner_code');
 
-        // Nothing is offered while training is switched off division-wide, and
-        // that is worth SAYING rather than leaving somebody to read a greyed
-        // out button as a fact about themselves.
         return [
-            new Requirement(
-                label: 'Training is open',
-                met: (bool) Setting::get('trainingEnabled'),
-                detail: Setting::get('trainingEnabled')
-                    ? null
-                    : 'We are not accepting new training requests at the moment.',
-                blocking: true,
-            ),
+            // Only when it is SHUT. "Training is open" is not a fact about the
+            // reader -- it is true for everybody, most of the time, and a green
+            // tick that never changes teaches somebody to stop reading the list
+            // it is at the top of. When it is shut, that is the only thing that
+            // matters and it says so.
+            ...(Setting::get('trainingEnabled') ? [] : [
+                new Requirement(
+                    label: 'Training is open',
+                    met: false,
+                    detail: 'We are not accepting new training requests at the moment.',
+                    blocking: true,
+                ),
+            ]),
             new Requirement(
                 label: "Member of {$divisionName}",
                 met: $inDivision,
@@ -117,7 +119,7 @@ class MembershipCheck
 
         return [
             new Requirement(
-                label: 'Discord linked',
+                label: 'Discord account linked',
                 met: ! $discordMissing,
                 detail: $discordMissing
                     ? ($checked
@@ -128,7 +130,7 @@ class MembershipCheck
                 unknown: $discordMissing && ! $checked,
             ),
             new Requirement(
-                label: 'Moodle account',
+                label: 'Moodle account linked',
                 met: ! $moodleMissing,
                 detail: $moodleMissing
                     ? ($checked
@@ -212,29 +214,50 @@ class MembershipCheck
         // than by their hours.
         $activityApplies = ! $hasActive && $user->rating->isGreaterThan(VatsimRating::OBS);
 
+        // The 7-day wait is only a rule for somebody who HAS just finished
+        // something. Listing it against a member who has never trained here is
+        // a requirement they cannot fail and did not need explaining.
+        $waitApplies = $recentlyCompleted;
+
         return [
             new Requirement(
-                label: 'No training already open',
+                label: 'No other training open',
                 met: ! $hasActive,
                 detail: $hasActive ? 'You have a training request open. One at a time.' : null,
                 blocking: true,
             ),
-            new Requirement(
-                label: '7 days since your last completed training',
-                met: ! $recentlyCompleted,
-                detail: $recentlyCompleted
-                    ? 'Wait seven days after finishing a training before asking for the next one.'
-                    : null,
-                blocking: true,
-            ),
-            new Requirement(
-                label: "ATC rating active in {$divisionName}",
-                met: ! $activityApplies || $user->isAtcActive(),
-                detail: $activityApplies && ! $user->isAtcActive()
-                    ? 'Your rating is inactive here. Ask training staff about a refresh.'
-                    : null,
-                blocking: true,
-            ),
+            ...($waitApplies ? [
+                new Requirement(
+                    label: '7 days since your last completed training',
+                    met: false,
+                    detail: 'Wait seven days after finishing a training before asking for the next one.',
+                    blocking: true,
+                ),
+            ] : []),
+
+            // ONLY WHEN IT APPLIES, and this is the fix rather than the
+            // formatting.
+            //
+            // An OBS has no ATC rating to keep active, so telling them their
+            // rating is inactive is telling them something that is not about
+            // them -- and it was rendering as a requirement they could never
+            // satisfy and never needed to. The same is true of anybody already
+            // in training, who is measured by their training rather than by
+            // their hours, which is exactly what makes refresher training
+            // reachable at all.
+            //
+            // The rule itself is upstream's and unchanged. What changed is that
+            // a rule that does not apply to you is no longer shown to you.
+            ...($activityApplies ? [
+                new Requirement(
+                    label: "ATC rating active in {$divisionName}",
+                    met: $user->isAtcActive(),
+                    detail: $user->isAtcActive()
+                        ? null
+                        : 'Your rating is inactive here. Ask training staff about a refresh.',
+                    blocking: true,
+                ),
+            ] : []),
         ];
     }
 

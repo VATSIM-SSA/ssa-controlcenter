@@ -102,10 +102,10 @@
             @livewire('user-roles', ['user' => $user])
         @endcan
 
-        {{-- VATSSA: which desks they receive requests on. Admin only -- a role
-             grants permissions, a desk decides who gets the work, and the two
-             are set in different places on purpose. --}}
-        @include('vatssa.parts.desks', ['user' => $user])
+        {{-- VATSSA: the Request desks card is GONE, folded into the Access
+             card above. Two cards answered one question -- what access does
+             this person have -- and the half you could act on lived on a
+             third page. See App\Livewire\UserRoles. --}}
 
         {{-- VATSSA: upstream's Mentoring card is GONE, folded into
              vatssa.parts.mentoring-summary further down.

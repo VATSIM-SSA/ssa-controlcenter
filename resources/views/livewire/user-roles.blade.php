@@ -3,9 +3,14 @@
         <h6 class="m-0 fw-bold text-white">
             Access
         </h6>
-        @if (count($this->grantableRoles()) > 0)
-            <button type="button" class="btn btn-icon btn-light" wire:click="openAddModal"><i class="fas fa-plus"></i> Add role</button>
-        @endif
+        <span class="d-flex gap-2">
+            @if (count($this->grantableRoles()) > 0)
+                <button type="button" class="btn btn-icon btn-light btn-sm" wire:click="openAddModal"><i class="fas fa-plus"></i> Role</button>
+            @endif
+            @if ($this->canManageDesks() && count($this->deskOptions()) > 0)
+                <button type="button" class="btn btn-icon btn-light btn-sm" wire:click="openDeskModal"><i class="fas fa-inbox"></i> Request desk</button>
+            @endif
+        </span>
     </div>
     <div class="card-body">
     @if ($status)
@@ -52,7 +57,73 @@
         @endforelse
     </div>
 
+    {{-- VATSSA: desks, in the same card as roles and still a separate list.
+
+         They were their own read-only card with an Edit button pointing at a
+         division-wide grid on another page -- two cards answering one question,
+         and the half you could act on was somewhere else.
+
+         Still two lists, though, because they are genuinely different things: a
+         role grants permissions, a desk decides who receives the work. An ATC
+         training manager holds every coordinator permission and is nobody's
+         default coordinator. Merging them into one list would say otherwise. --}}
+    @if ($this->canManageDesks())
+        <div>
+            <strong>Request desks</strong>
+            @forelse ($desks as $desk)
+                <span class="badge bg-secondary d-flex justify-content-between align-items-center w-100 mt-1"
+                      wire:key="desk-{{ $desk->id }}">
+                    <span>
+                        {{ \App\Models\Vatssa\RequestTarget::label($desk->tier) }}@if ($desk->rating)
+                            &mdash; {{ $desk->rating->name }}
+                        @elseif (\App\Models\Vatssa\RequestTarget::isPerRating($desk->tier))
+                            &mdash; all ratings
+                        @endif
+                    </span>
+                    <button type="button" class="btn-close btn-close-white"
+                            style="font-size:.6rem"
+                            aria-label="Remove desk"
+                            title="Remove this desk"
+                            wire:click="removeDesk({{ $desk->id }})"></button>
+                </span>
+            @empty
+                <div class="text-muted mt-1">On no request desk. They receive nothing automatically.</div>
+            @endforelse
+        </div>
+    @endif
+
     </div>{{-- /card-body --}}
+
+    @if ($showDeskModal)
+        <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.5)">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Add a request desk</h5>
+                        <button type="button" class="btn-close" wire:click="closeDeskModal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p class="text-muted">
+                            Which queue this person receives work from. A desk is not a
+                            permission &mdash; it decides who the request reaches, not what
+                            they are allowed to do with it.
+                        </p>
+                        <select class="form-select" wire:model="selectedDesk">
+                            <option value="">Choose a desk…</option>
+                            @foreach ($this->deskOptions() as $key => $label)
+                                <option value="{{ $key }}">{{ $label }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-link" wire:click="closeDeskModal">Cancel</button>
+                        <button type="button" class="btn btn-primary" wire:click="addDesk"
+                                @disabled(! $selectedDesk)>Add</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    @endif
 
     @if ($showAddModal)
         <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.5)">

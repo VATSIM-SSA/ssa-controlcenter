@@ -333,6 +333,38 @@ time,
     max-width: 1400px;
     padding-left: 1.5rem;
     padding-right: 1.5rem;
+
+    // TOP PADDING, which was missing.
+    //
+    // The override set the horizontal padding and left the vertical at zero, so
+    // the page title sat hard against the bottom edge of the topbar with
+    // nothing between them. On a page whose first element is a heading that
+    // reads as a rendering fault rather than as a layout, which is exactly what
+    // it looked like.
+    padding-top: 1.5rem;
+}
+
+// ---- the page title row ----------------------------------------------------
+//
+// Heading on the left, page controls on the right, and the two were sharing a
+// baseline with no room either side of them. The heading's own margin was doing
+// all the work of separating the title from the content, which meant the
+// controls -- which have no such margin -- sat closer to the content than the
+// words they belong to.
+.page-title {
+    align-items: center;
+    gap: .75rem;
+    margin-bottom: 1.25rem;
+
+    h3 {
+        // The row owns the spacing below now, so the heading does not need to.
+        // Two elements both trying to space the same gap is how it ends up
+        // uneven the moment one of them is absent.
+        margin-bottom: 0;
+        font-size: 1.4rem;
+        font-weight: 600;
+        letter-spacing: -.01em;
+    }
 }
 
 // ---- sidebar ---------------------------------------------------------------

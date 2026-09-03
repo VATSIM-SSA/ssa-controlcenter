@@ -66,6 +66,44 @@
                         :active="Route::is('feedback')" />
 
 
+        {{-- VATSSA: Tasks stands on its own rather than sitting in the
+             personal group at the top.
+
+             Dashboard, My profile, Booking and Give feedback are all things
+             about YOU. Tasks is a work queue -- what is sitting on your desks
+             waiting to be actioned -- and it is opened for a different reason,
+             by the people who hold the permission. Its own heading says so. --}}
+        @can('update', [\App\Models\Task::class])
+
+            {{-- Divider --}}
+            <div class="sidebar-divider"></div>
+
+            {{-- Heading --}}
+            <div class="sidebar-heading">
+            Tasks
+            </div>
+
+            @php
+                // VATSSA: what is on YOUR DESKS, not what carries your name.
+                // A request belongs to a desk; the assignee column exists only
+                // because it is NOT NULL. Counting it would tell a coordinator
+                // their queue was empty while their desk was not.
+                $myDesks = \App\Models\Vatssa\RequestTarget::desksFor(\Auth::user());
+                $pendingTaskCount = \App\Models\Task::where(function ($q) use ($myDesks) {
+                        $q->where('assignee_user_id', \Auth::id());
+                        $q->orWhere(fn ($inner) => \App\Models\Vatssa\RequestTarget::scopeToDesks($inner, $myDesks));
+                    })
+                    ->where('status', \App\Helpers\TaskStatus::PENDING)
+                    ->count();
+            @endphp
+
+            <x-sidebar.item :href="route('tasks')" icon="fa-list" title="Tasks" :active="Route::is('tasks')">
+                @if($pendingTaskCount)
+                    <span class="badge text-bg-danger">{{ $pendingTaskCount }}</span>
+                @endif
+            </x-sidebar.item>
+        @endcan
+
         {{-- VATSSA: the Training heading is NOT gated, and that is the fix for
              a real bug.
 
@@ -169,44 +207,6 @@
                 <x-sidebar.item :href="route('vatssa.admin.mentorship')" icon="fa-user-gear"
                                 title="Mentor Admin" :active="Route::is('vatssa.admin.mentorship')" />
             @endcan
-
-        {{-- VATSSA: Tasks stands on its own rather than sitting in the
-             personal group at the top.
-
-             Dashboard, My profile, Booking and Give feedback are all things
-             about YOU. Tasks is a work queue -- what is sitting on your desks
-             waiting to be actioned -- and it is opened for a different reason,
-             by the people who hold the permission. Its own heading says so. --}}
-        @can('update', [\App\Models\Task::class])
-
-            {{-- Divider --}}
-            <div class="sidebar-divider"></div>
-
-            {{-- Heading --}}
-            <div class="sidebar-heading">
-            Tasks
-            </div>
-
-            @php
-                // VATSSA: what is on YOUR DESKS, not what carries your name.
-                // A request belongs to a desk; the assignee column exists only
-                // because it is NOT NULL. Counting it would tell a coordinator
-                // their queue was empty while their desk was not.
-                $myDesks = \App\Models\Vatssa\RequestTarget::desksFor(\Auth::user());
-                $pendingTaskCount = \App\Models\Task::where(function ($q) use ($myDesks) {
-                        $q->where('assignee_user_id', \Auth::id());
-                        $q->orWhere(fn ($inner) => \App\Models\Vatssa\RequestTarget::scopeToDesks($inner, $myDesks));
-                    })
-                    ->where('status', \App\Helpers\TaskStatus::PENDING)
-                    ->count();
-            @endphp
-
-            <x-sidebar.item :href="route('tasks')" icon="fa-list" title="Tasks" :active="Route::is('tasks')">
-                @if($pendingTaskCount)
-                    <span class="badge text-bg-danger">{{ $pendingTaskCount }}</span>
-                @endif
-            </x-sidebar.item>
-        @endcan
 
         {{-- VATSSA: the heading only appears if something sits under it.
 

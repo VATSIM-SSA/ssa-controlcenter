@@ -5,7 +5,9 @@ namespace App\Livewire;
 use App\Actions\GrantRole;
 use App\Actions\RevokeRole;
 use App\Models\Area;
+use App\Models\Rating;
 use App\Models\User;
+use App\Models\Vatssa\RequestTarget;
 use Illuminate\Contracts\View\View;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Support\Collection;
@@ -48,6 +50,27 @@ class UserRoles extends Component
     public ?string $status = null;
 
     public ?string $error = null;
+
+    /*
+    | VATSSA: request desks live in this component too.
+    |
+    | They were a separate "Request desks" card, read-only, with an Edit button
+    | that sent you to a division-wide grid on another page. Two cards answering
+    | one question -- what access does this person have -- and the half you
+    | could act on was somewhere else.
+    |
+    | A role grants permissions; a desk decides who receives the work. They are
+    | genuinely different things, which is why they stay two lists inside one
+    | card rather than becoming one list.
+    |
+    | Gated on `system.settings.manage`, as the old card was: who receives which
+    | requests is a leadership arrangement, and putting it in front of every
+    | training manager invites quiet reassignment.
+    */
+    public bool $showDeskModal = false;
+
+    /** "tier" or "tier:ratingId" -- the same key shape the desk tables use. */
+    public ?string $selectedDesk = null;
 
     private ?Collection $areasCache = null;
 
@@ -310,6 +333,132 @@ class UserRoles extends Component
         $this->status = $error === null ? 'Role revoked.' : null;
     }
 
+    // ---------------------------------------------------------------- desks
+
+    /** Whether the acting user may change this member's desks at all. */
+    public function canManageDesks(): bool
+    {
+        return Gate::allows('system.settings.manage');
+    }
+
+    /**
+     * The desks this member sits at, newest first, as rows to render.
+     *
+     * Reads the table directly rather than `RequestTarget::desksFor()`: that
+     * helper adds the leadership desk for anybody holding
+     * `system.settings.manage`, which is right when deciding who SEES a queue
+     * and wrong here -- this list is what somebody was actually given, and a
+     * row you cannot remove because it was never stored is a confusing thing to
+     * show beside rows you can.
+     *
+     * @return Collection<int, RequestTarget>
+     */
+    public function heldDesks(): Collection
+    {
+        return RequestTarget::with('rating')
+            ->where('user_id', $this->user->id)
+            ->get();
+    }
+
+    /**
+     * Every desk that could be added, minus the ones already held.
+     *
+     * Per-rating desks expand into one option per rating plus a catch-all,
+     * because "the pipeline coordinator" is not a thing anybody can be -- the
+     * S2 and C1 coordinators are different people. The catch-all is offered
+     * FIRST and named, rather than left to be discovered by leaving a field
+     * blank.
+     *
+     * @return array<string, string> key => label
+     */
+    public function deskOptions(): array
+    {
+        $held = $this->heldDesks()
+            ->map(fn (RequestTarget $row) => RequestTarget::isPerRating($row->tier)
+                ? $row->tier . ':' . $row->rating_id
+                : $row->tier)
+            ->all();
+
+        $ratings = Rating::whereNotNull('vatsim_rating')->orderBy('vatsim_rating')->get();
+        $options = [];
+
+        foreach (RequestTarget::tiers(true) as $tier => $desk) {
+            if (! $desk['per_rating']) {
+                $options[$tier] = $desk['label'];
+
+                continue;
+            }
+
+            $options[$tier . ':'] = $desk['label'] . ' — all ratings';
+
+            foreach ($ratings as $rating) {
+                $options[$tier . ':' . $rating->id] = $desk['label'] . ' — ' . $rating->name;
+            }
+        }
+
+        return array_diff_key($options, array_flip($held));
+    }
+
+    public function openDeskModal(): void
+    {
+        abort_unless($this->canManageDesks(), 403);
+
+        $this->selectedDesk = null;
+        $this->showDeskModal = true;
+    }
+
+    public function closeDeskModal(): void
+    {
+        $this->showDeskModal = false;
+        $this->selectedDesk = null;
+    }
+
+    public function addDesk(): void
+    {
+        // Re-checked here, not only in openDeskModal(). Livewire calls arrive
+        // as their own requests, so a gate on the thing that opened a dialog is
+        // not a gate on the thing the dialog does.
+        abort_unless($this->canManageDesks(), 403);
+
+        [$tier, $ratingId] = array_pad(explode(':', (string) $this->selectedDesk, 2), 2, null);
+
+        if (! RequestTarget::isTier($tier)) {
+            $this->error = 'That is not a desk.';
+
+            return;
+        }
+
+        // A blank rating on a per-rating desk is the CATCH-ALL, not "no desk".
+        $resolvedRating = RequestTarget::isPerRating($tier) && $ratingId !== null && $ratingId !== ''
+            ? (int) $ratingId
+            : null;
+
+        // firstOrCreate, so a double submit is not an error and does not
+        // duplicate a row the unique index would refuse anyway.
+        RequestTarget::firstOrCreate([
+            'tier' => $tier,
+            'rating_id' => $resolvedRating,
+            'user_id' => $this->user->id,
+        ]);
+
+        $this->closeDeskModal();
+        $this->error = null;
+        $this->status = 'Desk added.';
+    }
+
+    public function removeDesk(int $id): void
+    {
+        abort_unless($this->canManageDesks(), 403);
+
+        // Scoped to THIS user's rows. The id comes from the payload like every
+        // other Livewire argument, and without the scope it would remove any
+        // desk assignment in the division.
+        RequestTarget::where('user_id', $this->user->id)->whereKey($id)->delete();
+
+        $this->error = null;
+        $this->status = 'Desk removed.';
+    }
+
     public function render(): View
     {
         $this->user->load('roleAssignments.area');
@@ -319,6 +468,7 @@ class UserRoles extends Component
             'globalAssignments' => $this->user->roleAssignments->whereNull('area_id'),
             'areaGroups' => $this->user->roleAssignments->whereNotNull('area_id')
                 ->groupBy(fn ($a) => $a->area->name),
+            'desks' => $this->canManageDesks() ? $this->heldDesks() : collect(),
         ]);
     }
 }

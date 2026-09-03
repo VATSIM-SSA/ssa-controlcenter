@@ -3,6 +3,9 @@
 namespace Tests\Feature;
 
 use anlutro\LaravelSettings\Facade as Setting;
+use App\Helpers\TrainingStatus;
+use App\Helpers\VatsimRating;
+use App\Models\Training;
 use App\Models\User;
 use App\Services\Vatssa\MembershipCheck;
 use App\Services\Vatssa\Requirement;
@@ -55,15 +58,21 @@ class MembershipCheckTest extends TestCase
     }
 
     #[Test]
-    public function training_being_closed_shows_as_its_own_unmet_requirement(): void
+    public function training_being_closed_is_listed_only_when_it_is_actually_closed(): void
     {
         $user = User::factory()->create();
 
         Setting::set('trainingEnabled', false);
         $this->assertFalse($this->labelled($user, 'Training is open')->met);
 
+        // And when it IS open, the line is gone rather than green. A tick that
+        // is true for everybody, nearly always, teaches somebody to stop
+        // reading the list it sits at the top of.
         Setting::set('trainingEnabled', true);
-        $this->assertTrue($this->labelled($user, 'Training is open')->met);
+        $this->assertNull(
+            MembershipCheck::for($user)->first(fn (Requirement $r) => str_contains($r->label, 'Training is open')),
+            'an always-true line should not be rendered at all'
+        );
     }
 
     #[Test]
@@ -71,7 +80,7 @@ class MembershipCheckTest extends TestCase
     {
         $user = User::factory()->create();
 
-        $open = $this->labelled($user, 'No training already open');
+        $open = $this->labelled($user, 'No other training open');
 
         $this->assertTrue($open->met, 'a fresh member has nothing open');
         $this->assertTrue($open->blocking);
@@ -96,7 +105,66 @@ class MembershipCheckTest extends TestCase
         $html = $this->actingAs($user)->get(route('dashboard'))->getContent();
 
         $this->assertStringContainsString('What you need', $html);
-        $this->assertStringContainsString('Discord linked', $html);
-        $this->assertStringContainsString('Moodle account', $html);
+        $this->assertStringContainsString('Discord account linked', $html);
+        $this->assertStringContainsString('Moodle account linked', $html);
+        $this->assertStringContainsString('No other training open', $html);
+
+        // The pill carries one word now, not the policy's first denial.
+        $this->assertStringContainsString('Not eligible', $html);
+    }
+
+    // ------------------------------------------------- rules that do not apply
+
+    #[Test]
+    public function an_observer_is_not_asked_for_an_active_atc_rating(): void
+    {
+        // An OBS has no rating to keep active, so telling them theirs is
+        // inactive is telling them something that is not about them -- and it
+        // rendered as a requirement they could never satisfy and never needed
+        // to. Upstream's own policy already carves this out; what changed is
+        // that a rule which does not apply to you is no longer shown to you.
+        $observer = User::factory()->create(['rating' => VatsimRating::OBS->value]);
+
+        $this->assertNull(
+            MembershipCheck::for($observer)->first(fn (Requirement $r) => str_contains($r->label, 'ATC rating active'))
+        );
+    }
+
+    #[Test]
+    public function somebody_already_in_training_is_not_asked_for_an_active_atc_rating(): void
+    {
+        // Measured by their training rather than by their hours, which is what
+        // makes refresher training reachable at all.
+        $user = User::factory()->create(['rating' => VatsimRating::S2->value]);
+        Training::factory()->create([
+            'user_id' => $user->id,
+            'status' => TrainingStatus::ACTIVE_TRAINING,
+        ]);
+
+        $list = MembershipCheck::for($user->fresh());
+
+        $this->assertNull($list->first(fn (Requirement $r) => str_contains($r->label, 'ATC rating active')));
+    }
+
+    #[Test]
+    public function a_rated_member_not_in_training_is_asked_for_an_active_atc_rating(): void
+    {
+        // The rule still exists. This is the case it was written for.
+        $user = User::factory()->create(['rating' => VatsimRating::S2->value]);
+
+        $this->assertNotNull(
+            MembershipCheck::for($user)->first(fn (Requirement $r) => str_contains($r->label, 'ATC rating active'))
+        );
+    }
+
+    #[Test]
+    public function the_seven_day_wait_is_listed_only_for_somebody_it_applies_to(): void
+    {
+        $user = User::factory()->create();
+
+        $this->assertNull(
+            MembershipCheck::for($user)->first(fn (Requirement $r) => str_contains($r->label, '7 days')),
+            'a member who has never trained here cannot fail a wait they are not serving'
+        );
     }
 }

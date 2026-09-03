@@ -304,13 +304,28 @@
                 </div>
                 @else
                 
-                <div class="btn btn-{{ (\Auth::user()->hasActiveTrainings(true) && Setting::get('trainingEnabled')) ? 'success' : 'primary' }} d-block disabled not-allowed" role="button" aria-disabled="true">
-                    @if(\Auth::user()->hasActiveTrainings(true) && Setting::get('trainingEnabled'))
-                    <i class="fas fa-check"></i>
+                {{-- VATSSA: two states, and only one of them is a refusal.
+
+                     Somebody who already has a training open is not being told
+                     no -- they are being told they are in the queue, which is
+                     the answer they came for. That keeps upstream's sentence.
+
+                     Everything else says "Not eligible" and nothing more. The
+                     pill used to carry the policy's FIRST denial, so a member
+                     read "You must join the SSA division to apply" as though it
+                     were the whole story, when it was one of several rules in
+                     whatever order the policy happened to check them. The
+                     reasons live in the list below, where all of them fit. --}}
+                @php($hasOpenTraining = \Auth::user()->hasActiveTrainings(true) && Setting::get('trainingEnabled'))
+
+                <div class="btn btn-{{ $hasOpenTraining ? 'success' : 'secondary' }} d-block disabled not-allowed" role="button" aria-disabled="true">
+                    @if($hasOpenTraining)
+                        <i class="fas fa-check"></i>
+                        {{ Gate::inspect('apply', \App\Models\Training::class)->message() }}
                     @else
-                    <i class="fas fa-exclamation-triangle"></i>
+                        <i class="fas fa-circle-info"></i>
+                        Not eligible
                     @endif
-                    {{ Gate::inspect('apply', \App\Models\Training::class)->message() }}
                 </div>
 
                 {{-- VATSSA: WHAT the requirements are, not only which one
@@ -327,28 +342,77 @@
                     ])
                 </div>
                 
+                {{-- VATSSA: the four questions, rebuilt.
+
+                     ## What was wrong with it
+
+                     A blue `alert-primary` holding four bold questions and four
+                     answers, separated by `<br>`, all inside one `<p>`. Four
+                     problems, and they compound:
+
+                     1. An ALERT is the page telling you something has gone
+                        wrong. Nothing has; this is help text. The blue slab
+                        pulled the eye to the least urgent thing in the card,
+                        directly under a list of requirements that actually
+                        needed reading.
+                     2. `<br>` between items is not separation. Question and
+                        answer ran together, and the four pairs ran together with
+                        each other, so it read as one blue paragraph.
+                     3. The ANSWERS were the links. A whole sentence underlined
+                        in link blue is harder to read than the same sentence in
+                        plain text, and it gives no clue which words are the
+                        action.
+                     4. Four chevrons, one per line, decorating nothing.
+
+                     ## What it is now
+
+                     No tint. Hierarchy instead of colour: one quiet section
+                     label, then question and answer as two lines, with a
+                     hairline between pairs. The link sits on the ACTION --
+                     "Read about joining" -- not on the explanation around it.
+
+                     Collapsed by default. Most people opening this card want the
+                     requirement list above it; these four are for the person
+                     whose answer is not in that list, and that is exactly when
+                     the rare case should not crowd out the common one. --}}
                 @if(Setting::get('trainingEnabled'))
-                <div class="alert alert-primary" role="alert">
-                    <p class="small">
-                        <b><i class="fas fa-chevron-right"></i> How do I join the division?</b>
-                        <a href="{{ Setting::get('linkJoin') }}" target="_blank">Read about joining here. You will be able to apply here within 24 hours after transfer.</a>
-                        
-                        <br>
-                        
-                        <b><i class="fas fa-chevron-right"></i> How to apply to be a visiting controller?</b>
-                        <a href="{{ Setting::get('linkVisiting') }}" target="_blank">Check this page for more information.</a>
-                        
-                        <br>
-                        
-                        <b><i class="fas fa-chevron-right"></i> My rating is inactive?</b>
-                        <a href="{{ Setting::get('linkContact') }}" target="_blank">Contact local training staff for refresh or transfer training.</a>
-                        
-                        <br>
-                        
-                        <b><i class="fas fa-chevron-right"></i> How long is the queue?</b>
-                        {{ \Auth::user()->getActiveTraining()->area->waiting_time ?? 'See application page or training confirmation email for details.' }}
-                    </p>
-                </div>
+                    @php($faqId = 'training-faq-' . \Auth::id())
+
+                    <div class="mt-3 pt-3 border-top">
+                        <button class="btn btn-link btn-sm p-0 text-decoration-none fw-bold fs-sm text-uppercase"
+                                type="button" data-bs-toggle="collapse" data-bs-target="#{{ $faqId }}"
+                                aria-expanded="false" aria-controls="{{ $faqId }}">
+                            <i class="fas fa-chevron-down"></i>&nbsp;Common questions
+                        </button>
+
+                        <div class="collapse mt-2" id="{{ $faqId }}">
+                            <dl class="mb-0 fs-sm">
+                                <dt>How do I join the division?</dt>
+                                <dd class="text-muted border-bottom pb-2 mb-2">
+                                    <a href="{{ Setting::get('linkJoin') }}" target="_blank">Read about joining</a>.
+                                    You can apply here within 24 hours of the transfer.
+                                </dd>
+
+                                <dt>How do I apply as a visiting controller?</dt>
+                                <dd class="text-muted border-bottom pb-2 mb-2">
+                                    <a href="{{ Setting::get('linkVisiting') }}" target="_blank">Check the visiting page</a>
+                                    for what is required.
+                                </dd>
+
+                                <dt>My rating is inactive.</dt>
+                                <dd class="text-muted border-bottom pb-2 mb-2">
+                                    <a href="{{ Setting::get('linkContact') }}" target="_blank">Contact training staff</a>
+                                    about refresh or transfer training.
+                                </dd>
+
+                                <dt>How long is the queue?</dt>
+                                <dd class="text-muted mb-0">
+                                    {{ \Auth::user()->getActiveTraining()?->area?->waiting_time
+                                        ?? 'Shown on the application page, and in your confirmation email.' }}
+                                </dd>
+                            </dl>
+                        </div>
+                    </div>
                 @endif
                 
                 @endcan
