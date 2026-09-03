@@ -67,10 +67,35 @@ class TrainingsTest extends TestCase
     /**
      * Create a user with moderator rights in the given training's area.
      */
+    /**
+     * VATSSA: the ATC training manager, globally, instead of an area moderator.
+     *
+     * ## Why this is a rewrite and not a skip
+     *
+     * Every test using this helper is about upstream's per-rating SIGN-OFF --
+     * completing a part, stamping a rating, what the completion control offers.
+     * None of them is about area scoping; the area was only ever how upstream
+     * built a user with `training.update`.
+     *
+     * VATSSA grants every role globally, `moderator` is retired, and
+     * `RoleAssignment` throws on an area -- so this one helper turned 32 tests
+     * of a working feature red. Skipping them would have thrown away upstream's
+     * coverage of its own headline release to avoid changing four lines.
+     *
+     * `atc-training-manager` is what `moderator` was remapped to; see the
+     * remap_moderator_buddy_roles migration and config/roles.php. It holds
+     * `training.**` minus a short deny list, so every permission these tests
+     * need is there, and a global assignment satisfies `hasPermission($p,
+     * $area)` for any area.
+     *
+     * The name stays `moderatorFor` deliberately: renaming it would touch
+     * thirty call sites and turn a one-hunk conflict on the next absorb into
+     * thirty.
+     */
     private function moderatorFor(Training $training): User
     {
         $moderator = User::factory()->create();
-        $moderator->roleAssignments()->create(['role' => 'moderator', 'area_id' => $training->area->id]);
+        $moderator->roleAssignments()->create(['role' => 'atc-training-manager', 'area_id' => null]);
 
         return $moderator;
     }
@@ -1174,8 +1199,22 @@ class TrainingsTest extends TestCase
         $this->assertNotNull($this->partCompletedAt($training, $s2));
 
         // Reopen it and add a rating the student still has to earn.
-        $this->patch(route('training.update.details', $training), ['status' => TrainingStatus::ACTIVE_TRAINING->value])
-            ->assertRedirect($training->path());
+        //
+        // VATSSA: reopened on the MODEL, not over HTTP. Active training is set
+        // by the pipeline when the student meets the requirement, and the fork
+        // refuses it as a hand-picked status -- so upstream's PATCH gets a
+        // validation error, redirects home, and the test fails on a mechanism
+        // it is not about.
+        //
+        // What it IS about is what happens to the facility rating when the last
+        // VATSIM part of a reopened training is signed off. Setting the status
+        // the way the pipeline sets it keeps that intact.
+        // refresh() first: this instance was loaded before the HTTP completion
+        // above, so it is holding the pre-completion row.
+        $training->refresh()->update([
+            'status' => TrainingStatus::ACTIVE_TRAINING,
+            'closed_at' => null,
+        ]);
         $s3 = $this->attachVatsimRating($training, VatsimRating::S3);
 
         // No unstamped pivot is left, but the facility rating is still only granted by

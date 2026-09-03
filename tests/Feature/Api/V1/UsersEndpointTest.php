@@ -9,6 +9,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
+use Tests\Vatssa\UpstreamRoleModel;
 
 /**
  * Regressions from 7.0.0: globally scoped role assignments matched no area
@@ -18,12 +19,32 @@ use Tests\TestCase;
 class UsersEndpointTest extends TestCase
 {
     use RefreshDatabase;
+    use UpstreamRoleModel;
 
+    /**
+     * VATSSA: the key is stored as a SHA-256, so the fixture stores one.
+     *
+     * SEC-007. Upstream writes the token into `id` and presents `id` as the
+     * bearer token; here the token is never stored at all and `forToken()`
+     * looks up `token_hash`. Without this line every request in this class is a
+     * 401 and twelve tests of the users endpoint fail for a reason that has
+     * nothing to do with the users endpoint.
+     *
+     * Same one-line patch as AuthTest and RouteMirrorTest already carry.
+     */
     private function token(): string
     {
-        ApiKey::create(['id' => 'users-endpoint-key', 'name' => 't', 'read_only' => true, 'created_at' => now()]);
+        $token = 'users-endpoint-key';
 
-        return 'users-endpoint-key';
+        ApiKey::create([
+            'id' => $token,
+            'token_hash' => ApiKey::hashToken($token),
+            'name' => 't',
+            'read_only' => true,
+            'created_at' => now(),
+        ]);
+
+        return $token;
     }
 
     /**
@@ -72,6 +93,14 @@ class UsersEndpointTest extends TestCase
 
     public function test_global_is_null_without_a_global_role(): void
     {
+        // The one genuine skip in this class. It asserts that `global` is null
+        // for somebody holding ONLY an area role -- and VATSSA has no area
+        // roles, and no `training-staff` either, so RoleAssignment refuses the
+        // fixture before the endpoint is ever reached. Kept rather than
+        // deleted: if a future upstream release changes area scoping, the diff
+        // should land on a test that still exists.
+        $this->skipPerAreaRoles('a user with only an area-scoped role');
+
         $area = Area::factory()->create(['name' => 'Alpha']);
         $user = User::factory()->create();
         $user->roleAssignments()->create(['role' => 'training-staff', 'area_id' => $area->id]);
