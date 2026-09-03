@@ -53,19 +53,27 @@
              and says how many are in the other two without offering to take you
              there. --}}
         <div class="p-3 border-bottom">
-            <form method="GET" class="row g-2">
-                <input type="hidden" name="queue" value="{{ $queue }}">
-                <div class="col-md-3">
-                    <select class="form-select form-select-sm" name="type" onchange="this.form.submit()">
-                        <option value="">All types</option>
-                        @foreach(MembershipRequestType::cases() as $type)
-                            <option value="{{ $type->value }}" @selected(request('type') === $type->value)>
-                                {{ $type->label() }}
-                            </option>
-                        @endforeach
-                    </select>
-                </div>
-            </form>
+            {{-- Upstream's shared filter components, not a hand-rolled select.
+
+                 #1652 moved every page-level filter in the application onto
+                 <x-filter.group> and <x-filter.item>, and a page that keeps its
+                 own is a page that looks subtly wrong beside the rest and drifts
+                 further with each release.
+
+                 Their query-carrying behaviour is the practical win: an item
+                 merges the CURRENT query string into its href, so a filter never
+                 silently drops unrelated state. --}}
+            <x-filter.group label="Type" icon="fa-filter">
+                <x-filter.item :href="route('vatssa.membership.index', ['queue' => $queue, 'type' => null])"
+                               :active="! request('type')">All</x-filter.item>
+
+                @foreach(MembershipRequestType::cases() as $type)
+                    <x-filter.item :href="route('vatssa.membership.index', ['queue' => $queue, 'type' => $type->value])"
+                                   :active="request('type') === $type->value">
+                        {{ $type->label() }}
+                    </x-filter.item>
+                @endforeach
+            </x-filter.group>
         </div>
 
         <div class="table-responsive">

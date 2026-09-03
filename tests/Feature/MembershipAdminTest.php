@@ -289,6 +289,28 @@ class MembershipAdminTest extends TestCase
     }
 
     #[Test]
+    public function the_type_filter_uses_the_shared_components_and_keeps_the_queue(): void
+    {
+        // #1652 moved every page-level filter onto <x-filter.group> and
+        // <x-filter.item>. A page keeping its own looks subtly wrong beside the
+        // rest and drifts further with each release, and it loses the
+        // query-carrying behaviour that stops a filter dropping unrelated state.
+        $html = $this->actingAs($this->withRole('membership-manager'))
+            ->get(route('vatssa.membership.index', ['queue' => 'training']))->getContent();
+
+        // The group's chrome, and pills rather than a select.
+        $this->assertStringContainsString('input-group-sm', $html);
+        $this->assertStringContainsString('btn-outline-primary', $html);
+        $this->assertStringNotContainsString('onchange="this.form.submit()"', $html);
+
+        // And every pill stays inside the queue it was pressed from.
+        $this->assertStringContainsString(
+            route('vatssa.membership.index', ['queue' => 'training', 'type' => 'transfer']),
+            $html
+        );
+    }
+
+    #[Test]
     public function the_queue_page_carries_no_navigation_of_its_own(): void
     {
         // The sidebar owns navigation. Two menus for one thing eventually

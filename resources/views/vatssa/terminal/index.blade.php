@@ -76,38 +76,49 @@
             </div>
 
             <div class="card-body p-0">
-                <div class="p-3 border-bottom">
-                    <form method="GET" class="row g-2">
-                        <div class="col-md-3">
-                            <select class="form-select form-select-sm" name="type" onchange="this.form.submit()">
-                                <option value="">All types</option>
-                                @foreach(TerminalLogType::cases() as $type)
-                                    <option value="{{ $type->value }}" @selected(request('type') === $type->value)>
-                                        {{ $type->label() }}
-                                    </option>
-                                @endforeach
-                            </select>
-                        </div>
-                        <div class="col-md-3">
-                            <select class="form-select form-select-sm" name="reason" onchange="this.form.submit()">
-                                <option value="">All reasons</option>
-                                @foreach(TerminalLogReason::cases() as $reason)
-                                    <option value="{{ $reason->value }}" @selected(request('reason') === $reason->value)>
-                                        {{ $reason->label() }}
-                                    </option>
-                                @endforeach
-                            </select>
-                        </div>
-                        <div class="col-md-3">
-                            {{-- A CID, not a name. This page is opened to answer a
-                                 question about one person, and a name search returns
-                                 the wrong Smith at exactly the wrong moment. --}}
-                            <input type="number" class="form-control form-control-sm" name="cid"
-                                   placeholder="CID…" value="{{ request('cid') }}">
-                        </div>
-                        <div class="col-auto">
-                            <button class="btn btn-sm btn-outline-secondary" type="submit">Filter</button>
-                        </div>
+                <div class="p-3 border-bottom d-flex flex-wrap gap-3 align-items-center">
+                    {{-- Upstream's shared filter components, per #1652.
+
+                         The pills carry the current query string, so narrowing by
+                         type keeps the reason and the CID you were already looking
+                         at. That is the behaviour this page most needs: an audit
+                         question is usually "this person, these reasons", and a
+                         filter that resets the others makes you rebuild it every
+                         time. --}}
+                    <x-filter.group label="Type" icon="fa-filter">
+                        <x-filter.item :href="route('vatssa.terminal.index', ['type' => null])"
+                                       :active="! request('type')">All</x-filter.item>
+                        @foreach(TerminalLogType::cases() as $type)
+                            <x-filter.item :href="route('vatssa.terminal.index', ['type' => $type->value])"
+                                           :active="request('type') === $type->value">
+                                {{ $type->label() }}
+                            </x-filter.item>
+                        @endforeach
+                    </x-filter.group>
+
+                    <x-filter.group label="Why" icon="fa-question">
+                        <x-filter.item :href="route('vatssa.terminal.index', ['reason' => null])"
+                                       :active="! request('reason')">All</x-filter.item>
+                        @foreach(TerminalLogReason::cases() as $reason)
+                            <x-filter.item :href="route('vatssa.terminal.index', ['reason' => $reason->value])"
+                                           :active="request('reason') === $reason->value">
+                                {{ $reason->label() }}
+                            </x-filter.item>
+                        @endforeach
+                    </x-filter.group>
+
+                    {{-- A CID stays a field rather than a pill: it is unbounded,
+                         and it is the one filter you TYPE. A name search is
+                         deliberately not offered -- this page is opened to answer a
+                         question about one person, and a name returns the wrong
+                         Smith at exactly the wrong moment. --}}
+                    <form method="GET" class="d-flex gap-2 align-items-center">
+                        @foreach(request()->except(['cid', 'page']) as $key => $value)
+                            <input type="hidden" name="{{ $key }}" value="{{ $value }}">
+                        @endforeach
+                        <input type="number" class="form-control form-control-sm w-auto" name="cid"
+                               placeholder="CID…" value="{{ request('cid') }}">
+                        <button class="btn btn-sm btn-outline-primary" type="submit">Find</button>
                     </form>
                 </div>
 
