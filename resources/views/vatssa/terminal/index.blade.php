@@ -196,8 +196,13 @@
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
                 <form method="POST" action="{{ route('vatssa.terminal.store') }}"
-                      x-data="{ type: 'query', discipline: '' }">
+                      x-data="{ type: '{{ $prefill['type'] ?? 'query' }}', discipline: '' }">
                     @csrf
+                    {{-- Carried through when somebody arrived from a membership
+                         request, so the row it produces is tied back to it. --}}
+                    @isset($prefill['membership_request_id'])
+                        <input type="hidden" name="membership_request_id" value="{{ $prefill['membership_request_id'] }}">
+                    @endisset
                     <div class="modal-header">
                         <h5 class="modal-title">Log a Terminal action</h5>
                         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
@@ -208,7 +213,7 @@
                                 <label class="form-label" for="tl-type">What kind</label>
                                 <select class="form-select" id="tl-type" name="type" x-model="type" required>
                                     @foreach(TerminalLogType::cases() as $case)
-                                        <option value="{{ $case->value }}">{{ $case->label() }}</option>
+                                        <option value="{{ $case->value }}" @selected(($prefill['type'] ?? null) === $case->value)>{{ $case->label() }}</option>
                                     @endforeach
                                 </select>
                             </div>
@@ -216,14 +221,15 @@
                                 <label class="form-label" for="tl-reason">Why</label>
                                 <select class="form-select" id="tl-reason" name="reason" required>
                                     @foreach(TerminalLogReason::cases() as $case)
-                                        <option value="{{ $case->value }}">{{ $case->label() }}</option>
+                                        <option value="{{ $case->value }}" @selected(($prefill['reason'] ?? null) === $case->value)>{{ $case->label() }}</option>
                                     @endforeach
                                 </select>
                             </div>
 
                             <div class="col-md-6">
                                 <label class="form-label" for="tl-cid">About which member (CID)</label>
-                                <input type="number" class="form-control" id="tl-cid" name="user_id" required>
+                                <input type="number" class="form-control" id="tl-cid" name="user_id"
+                                       value="{{ $prefill['user_id'] ?? '' }}" required>
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label" for="tl-when">When it happened</label>
@@ -260,7 +266,7 @@
                                 <select class="form-select" id="tl-to" name="rating_to_id">
                                     <option value="">—</option>
                                     @foreach($ratings as $rating)
-                                        <option value="{{ $rating->id }}">{{ $rating->name }}</option>
+                                        <option value="{{ $rating->id }}" @selected(($prefill['rating_to_id'] ?? null) === $rating->id)>{{ $rating->name }}</option>
                                     @endforeach
                                 </select>
                             </div>
@@ -310,6 +316,13 @@
 
 @section('js')
 <script>
+    // Arriving with ?request=… means somebody pressed "Log to Terminal" on a
+    // membership request, so open the form for them rather than making them
+    // find the button again.
+    @isset($prefill['membership_request_id'])
+        new bootstrap.Modal(document.getElementById('terminal-log-modal')).show();
+    @endisset
+
     // The copy button. Written here rather than pulled in, because it is six
     // lines and the alternative is a dependency for one interaction.
     document.querySelectorAll('[data-vatssa-copy]').forEach(function (button) {

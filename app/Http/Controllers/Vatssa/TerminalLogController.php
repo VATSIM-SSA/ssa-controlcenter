@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Vatssa;
 
+use App\Helpers\Vatssa\MembershipRequestType;
 use App\Helpers\Vatssa\TerminalLogReason;
 use App\Helpers\Vatssa\TerminalLogType;
 use App\Http\Controllers\Controller;
@@ -59,10 +60,19 @@ class TerminalLogController extends Controller
             ->paginate(50)
             ->withQueryString();
 
+        // Pre-fill, when somebody arrived here from a membership request.
+        // Empty otherwise, so the view has one thing to check.
+        $prefill = $this->prefillFrom(
+            $request->filled('request')
+                ? MembershipRequest::find($request->query('request'))
+                : null
+        );
+
         return view('vatssa.terminal.index', [
             'entries' => $entries,
             'comments' => TerminalComment::offered()->get(),
             'ratings' => Rating::whereNotNull('vatsim_rating')->orderBy('vatsim_rating')->get(),
+            'prefill' => $prefill,
         ]);
     }
 
@@ -112,52 +122,39 @@ class TerminalLogController extends Controller
     }
 
     /**
-     * The composed comment for a code, ready to paste into Terminal.
-     *
-     * Its own endpoint because the copy button is the feature: the catalogue's
-     * job is to produce copy-ready text, and a catalogue you have to retype
-     * from is one people stop using by the third entry.
-     */
-    public function comment(Request $request, TerminalComment $terminalComment): array
-    {
-        $this->authorize('membership.terminal.view');
-
-        $values = $request->validate([
-            'values' => 'nullable|array',
-            'values.*' => 'nullable|string|max:100',
-        ])['values'] ?? [];
-
-        return [
-            'code' => $terminalComment->code,
-            'text' => $terminalComment->compose($values),
-            'placeholders' => $terminalComment->placeholders(),
-        ];
-    }
-
-    /**
      * A row pre-filled from a membership request.
      *
-     * Offered, not written. The person confirms it, because Control Center
-     * cannot know what happened on Terminal.
+     * SERVER-SIDE, through a query parameter, rather than the JSON endpoint
+     * this used to be. That endpoint was never called: the button that would
+     * have called it did not exist, so it was an untested public surface
+     * sitting behind a permission check for nothing.
+     *
+     * Offered, not written. Control Center cannot see Terminal, so it cannot
+     * know the action happened -- the pre-fill is a convenience and the
+     * confirmation is the record.
+     *
+     * @return array<string, mixed>
      */
-    public function prefill(MembershipRequest $membershipRequest): array
+    private function prefillFrom(?MembershipRequest $request): array
     {
-        $this->authorize('membership.terminal.log');
+        if ($request === null) {
+            return [];
+        }
 
         return [
-            'user_id' => $membershipRequest->user_id,
-            'membership_request_id' => $membershipRequest->id,
-            'type' => match ($membershipRequest->type->value) {
-                'transfer', 'visiting' => TerminalLogType::TRANSFER_IN->value,
+            'user_id' => $request->user_id,
+            'membership_request_id' => $request->id,
+            'type' => match ($request->type) {
+                MembershipRequestType::TRANSFER, MembershipRequestType::VISITING => TerminalLogType::TRANSFER_IN->value,
                 default => TerminalLogType::CHANGE->value,
             },
-            'reason' => match ($membershipRequest->type->value) {
-                'transfer', 'visiting' => TerminalLogReason::TRANSFER->value,
-                'rating-upgrade' => TerminalLogReason::RATING_UPDATE->value,
-                'staff-inquiry' => TerminalLogReason::STAFF_CHECK->value,
+            'reason' => match ($request->type) {
+                MembershipRequestType::TRANSFER, MembershipRequestType::VISITING => TerminalLogReason::TRANSFER->value,
+                MembershipRequestType::RATING_UPGRADE => TerminalLogReason::RATING_UPDATE->value,
+                MembershipRequestType::STAFF_INQUIRY => TerminalLogReason::STAFF_CHECK->value,
                 default => TerminalLogReason::DUPE_CHECK->value,
             },
-            'rating_to_id' => $membershipRequest->rating_id,
+            'rating_to_id' => $request->rating_id,
         ];
     }
 }

@@ -160,10 +160,6 @@ Route::middleware(['web', 'auth', 'activity', 'suspended'])
     ->group(function () {
         Route::get('/', [TerminalLogController::class, 'index'])->name('vatssa.terminal.index');
         Route::post('/', [TerminalLogController::class, 'store'])->name('vatssa.terminal.store');
-        Route::get('/comment/{terminalComment}', [TerminalLogController::class, 'comment'])
-            ->name('vatssa.terminal.comment');
-        Route::get('/prefill/{membershipRequest}', [TerminalLogController::class, 'prefill'])
-            ->name('vatssa.terminal.prefill');
     });
 
 Route::middleware(['web', 'auth', 'suspended'])

@@ -13,8 +13,6 @@ class AuthServiceProvider extends ServiceProvider
      * @var array<class-string, class-string>
      */
     protected $policies = [
-        // VATSSA: the exam booking workflow. Registered explicitly -- the
-        // convention resolver does not find policies under a nested namespace.
         'anlutro\LaravelSettings\Facade' => 'App\Policies\SettingPolicy',
         'Illuminate\Notifications\Notification' => 'App\Policies\NotificationPolicy',
     ];

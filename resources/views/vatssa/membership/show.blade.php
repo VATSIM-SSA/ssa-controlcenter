@@ -166,6 +166,17 @@
                     </dd>
                 </dl>
 
+                @can('membership.terminal.log')
+                    {{-- Log what was done on Terminal, pre-filled from this
+                         request. Offered rather than written: Control Center
+                         cannot see Terminal, so it cannot know the action
+                         happened -- a person confirms it. --}}
+                    <a href="{{ route('vatssa.terminal.index', ['request' => $request->id]) }}"
+                       class="btn btn-sm btn-outline-secondary w-100 mb-2">
+                        <i class="fas fa-terminal"></i>&nbsp;Log to Terminal
+                    </a>
+                @endcan
+
                 @can('membership.requests.manage')
                     <hr>
                     <form method="POST" action="{{ route('vatssa.membership.transition', $request) }}">
