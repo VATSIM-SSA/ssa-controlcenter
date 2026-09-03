@@ -12,10 +12,12 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Response as ClientResponse;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
+use Tests\Vatssa\UpstreamRoleModel;
 
 class RevokeRoleTest extends TestCase
 {
     use RefreshDatabase;
+    use UpstreamRoleModel;
 
     private function admin(): User
     {
@@ -28,6 +30,8 @@ class RevokeRoleTest extends TestCase
     #[Test]
     public function it_deletes_the_assignment(): void
     {
+        $this->skipPerAreaRoles('revoking a role scoped to an area');
+
         $actor = $this->admin();
         $target = User::factory()->create();
         $area = Area::factory()->create();
@@ -44,6 +48,8 @@ class RevokeRoleTest extends TestCase
     #[Test]
     public function it_detaches_trainings_in_area_when_no_longer_mentor_anywhere(): void
     {
+        $this->skipPerAreaRoles('a per-area role assignment');
+
         $actor = $this->admin();
         $target = User::factory()->create();
         $area = Area::factory()->create();
@@ -61,6 +67,8 @@ class RevokeRoleTest extends TestCase
     #[Test]
     public function it_keeps_trainings_when_still_mentor_in_another_area(): void
     {
+        $this->skipPerAreaRoles('a per-area role assignment');
+
         $actor = $this->admin();
         $target = User::factory()->create();
         $areaA = Area::factory()->create();
@@ -80,6 +88,8 @@ class RevokeRoleTest extends TestCase
     #[Test]
     public function it_detaches_trainings_when_the_roleassignments_relation_was_cached_before_revocation(): void
     {
+        $this->skipPerAreaRoles('revoking a role scoped to an area');
+
         $actor = $this->admin();
         $target = User::factory()->create();
         $area = Area::factory()->create();
@@ -106,6 +116,8 @@ class RevokeRoleTest extends TestCase
     #[Test]
     public function it_blocks_removal_when_division_api_fails(): void
     {
+        $this->skipPerAreaRoles('revoking a role scoped to an area');
+
         $actor = $this->admin();
         $target = User::factory()->create();
         $area = Area::factory()->create();
@@ -124,6 +136,8 @@ class RevokeRoleTest extends TestCase
     #[Test]
     public function area_training_staff_can_revoke_a_mentor_in_their_area(): void
     {
+        $this->skipPerAreaRoles('the retired training-staff role');
+
         $area = Area::factory()->create();
         $trainingStaff = User::factory()->create();
         $trainingStaff->roleAssignments()->create(['role' => 'training-staff', 'area_id' => $area->id]);

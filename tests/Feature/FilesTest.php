@@ -10,10 +10,12 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
+use Tests\Vatssa\UpstreamRoleModel;
 
 class FilesTest extends TestCase
 {
     use RefreshDatabase, WithFaker;
+    use UpstreamRoleModel;
 
     /**
      * Create a special tearDown method since we don't want our test files
@@ -97,6 +99,8 @@ class FilesTest extends TestCase
     #[Test]
     public function moderator_can_delete_another_users_file()
     {
+        $this->skipPerAreaRoles('the retired moderator role');
+
         $user = User::factory()->create(['id' => 10000001]);
         $user->roleAssignments()->create(['role' => 'mentor', 'area_id' => 1]);
         $file = UploadedFile::fake()->image($this->faker->word . '.jpg');
@@ -128,6 +132,8 @@ class FilesTest extends TestCase
     #[Test]
     public function test_director_has_full_file_access(): void
     {
+        $this->skipPerAreaRoles('the retired director role');
+
         $director = User::factory()->create();
         $director->roleAssignments()->create(['role' => 'director', 'area_id' => null]);
         $file = File::create([

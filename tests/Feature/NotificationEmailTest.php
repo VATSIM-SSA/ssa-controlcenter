@@ -19,6 +19,7 @@ use Illuminate\Support\Facades\Notification;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
+use Tests\Vatssa\UpstreamRoleModel;
 
 /**
  * Slightly ad-hoc feature test specifically for e-mail notifications.
@@ -26,6 +27,7 @@ use Tests\TestCase;
 class NotificationEmailTest extends TestCase
 {
     use RefreshDatabase;
+    use UpstreamRoleModel;
 
     protected User $user;
 
@@ -103,6 +105,8 @@ class NotificationEmailTest extends TestCase
     #[Test]
     public function sends_training_request_to_personal_email_and_bcc_to_work_email(): void
     {
+        $this->skipPerAreaRoles('the retired moderator role');
+
         $anotherArea = Area::factory()->create();
 
         $staffReceivesBcc = User::factory()->create([
@@ -148,6 +152,8 @@ class NotificationEmailTest extends TestCase
     #[Test]
     public function bccs_directors_who_opted_in_to_new_request_notifications(): void
     {
+        $this->skipPerAreaRoles('the retired moderator role');
+
         $director = User::factory()->create([
             'setting_workmail_address' => 'director@example.com',
         ]);

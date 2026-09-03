@@ -7,10 +7,12 @@ use App\Models\Endorsement;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
+use Tests\Vatssa\UpstreamRoleModel;
 
 class EndorsementPolicyTest extends TestCase
 {
     use RefreshDatabase;
+    use UpstreamRoleModel;
 
     private User $admin;
 
@@ -53,6 +55,8 @@ class EndorsementPolicyTest extends TestCase
 
     public function test_moderator_can_create_facility_endorsement(): void
     {
+        $this->skipPerAreaRoles('a per-area role assignment');
+
         $this->assertTrue($this->moderator->can('create', [Endorsement::class, 'FACILITY']));
     }
 

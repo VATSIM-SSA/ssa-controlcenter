@@ -16,10 +16,12 @@ use Illuminate\Foundation\Testing\WithFaker;
 use Illuminate\Support\Facades\Notification;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
+use Tests\Vatssa\UpstreamRoleModel;
 
 class TrainingReportsTest extends TestCase
 {
     use RefreshDatabase, WithFaker;
+    use UpstreamRoleModel;
 
     /**
      * Create a training with a student.
@@ -63,6 +65,8 @@ class TrainingReportsTest extends TestCase
     #[Test]
     public function only_authorized_users_can_view_published_reports()
     {
+        $this->skipPerAreaRoles('the retired buddy role');
+
         $training = $this->makeTraining();
         $mentor = $this->makeMentor($training);
         $report = $this->makeReport($training, ['written_by_id' => $mentor->id]);
@@ -105,6 +109,8 @@ class TrainingReportsTest extends TestCase
     #[Test]
     public function a_buddy_can_create_a_report_via_a_one_time_link()
     {
+        $this->skipPerAreaRoles('the retired buddy role');
+
         $training = $this->makeTraining();
         $buddy = User::factory()->create();
         $buddy->roleAssignments()->create(['role' => 'buddy', 'area_id' => $training->area->id]);
@@ -275,6 +281,8 @@ class TrainingReportsTest extends TestCase
     #[Test]
     public function unauthorized_users_cannot_delete_reports()
     {
+        $this->skipPerAreaRoles('the retired buddy role');
+
         $training = $this->makeTraining();
         $author = $this->makeMentor($training);
         $report = $this->makeReport($training, ['written_by_id' => $author->id]);
@@ -320,6 +328,8 @@ class TrainingReportsTest extends TestCase
     #[Test]
     public function director_permissions_are_scoped_to_their_area()
     {
+        $this->skipPerAreaRoles('the retired director role');
+
         $training = $this->makeTraining();
         $mentor = $this->makeMentor($training);
         $report = $this->makeReport($training, ['written_by_id' => $mentor->id]);

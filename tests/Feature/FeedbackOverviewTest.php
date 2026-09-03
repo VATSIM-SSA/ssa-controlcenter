@@ -12,11 +12,13 @@ use Livewire\Livewire;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\Support\CreatesRoleAssignedUsers;
 use Tests\TestCase;
+use Tests\Vatssa\UpstreamRoleModel;
 
 class FeedbackOverviewTest extends TestCase
 {
     use CreatesRoleAssignedUsers;
     use RefreshDatabase;
+    use UpstreamRoleModel;
 
     #[Test]
     public function guest_without_role_cannot_mount_the_component(): void
@@ -53,6 +55,8 @@ class FeedbackOverviewTest extends TestCase
     #[Test]
     public function moderator_sees_only_own_area_correlated_and_uncorrelated(): void
     {
+        $this->skipPerAreaRoles('a per-area role assignment');
+
         $area1 = Area::factory()->create();
         $area2 = Area::factory()->create();
         $moderator = $this->moderatorFor($area1);
@@ -211,6 +215,8 @@ class FeedbackOverviewTest extends TestCase
     #[Test]
     public function crafted_out_of_scope_position_filter_cannot_widen_scope(): void
     {
+        $this->skipPerAreaRoles('an area-scoped moderator, whose scope is the whole point of this test');
+
         $area1 = Area::factory()->create();
         $area2 = Area::factory()->create();
         $moderator = $this->moderatorFor($area1);

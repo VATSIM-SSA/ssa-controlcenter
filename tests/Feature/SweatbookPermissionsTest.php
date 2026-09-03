@@ -8,13 +8,17 @@ use App\Models\User;
 use App\Policies\SweatbookPolicy;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
+use Tests\Vatssa\UpstreamRoleModel;
 
 class SweatbookPermissionsTest extends TestCase
 {
     use RefreshDatabase;
+    use UpstreamRoleModel;
 
     public function test_director_can_view_create_and_update_sweatbook(): void
     {
+        $this->skipPerAreaRoles('the retired director role');
+
         $director = User::factory()->create();
         $director->roleAssignments()->create(['role' => 'director', 'area_id' => null]);
         $otherUsersBooking = new Sweatbook;

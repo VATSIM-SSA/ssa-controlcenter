@@ -13,10 +13,12 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
+use Tests\Vatssa\UpstreamRoleModel;
 
 class TrainingObjectAttachmentTest extends TestCase
 {
     use RefreshDatabase, WithFaker;
+    use UpstreamRoleModel;
 
     private $report;
 
@@ -38,7 +40,15 @@ class TrainingObjectAttachmentTest extends TestCase
             ])->id,
         ]);
 
-        $this->report->author->roleAssignments()->create(['role' => 'moderator', 'area_id' => $this->report->training->area->id]);
+        // VATSSA: the report's author is training staff, globally.
+        //
+        // Upstream made them an area-scoped `moderator`, which RoleAssignment
+        // refuses here, so every test in this class died in setUp -- none of
+        // them about area scoping, all of them about attachments. Same rewrite
+        // as TrainingsTest::moderatorFor(): atc-training-manager is what
+        // `moderator` was remapped to, and a global assignment satisfies
+        // hasPermission() for any area.
+        $this->report->author->roleAssignments()->create(['role' => 'atc-training-manager', 'area_id' => null]);
     }
 
     /**
@@ -131,6 +141,8 @@ class TrainingObjectAttachmentTest extends TestCase
     #[Test]
     public function test_director_can_delete_attachment(): void
     {
+        $this->skipPerAreaRoles('the retired director role');
+
         $mentor = $this->report->author;
         $file = UploadedFile::fake()->image($this->faker->word . '.jpg');
 

@@ -6,13 +6,17 @@ use App\Models\Area;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
+use Tests\Vatssa\UpstreamRoleModel;
 
 class UpdateWorkmailsTest extends TestCase
 {
     use RefreshDatabase;
+    use UpstreamRoleModel;
 
     public function test_director_can_see_workmail_field_in_settings(): void
     {
+        $this->skipPerAreaRoles('the retired director role');
+
         $area = Area::factory()->create();
         $director = User::factory()->create();
         $director->roleAssignments()->create(['role' => 'director', 'area_id' => $area->id]);
@@ -25,6 +29,8 @@ class UpdateWorkmailsTest extends TestCase
 
     public function test_director_keeps_workmail_while_roleless_user_loses_it(): void
     {
+        $this->skipPerAreaRoles('the retired director role');
+
         $area = Area::factory()->create();
 
         $director = User::factory()->create(['setting_workmail_address' => 'director@example.test']);

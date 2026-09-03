@@ -15,6 +15,7 @@ use App\Models\Task;
 use App\Models\Training;
 use App\Models\TrainingActivity;
 use App\Models\User;
+use App\Models\Vatssa\UserPlatform;
 use App\Notifications\TrainingClosedNotification;
 use App\Notifications\TrainingCreatedNotification;
 use App\Notifications\TrainingMentorNotification;
@@ -30,10 +31,12 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Notification;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
+use Tests\Vatssa\UpstreamRoleModel;
 
 class TrainingsTest extends TestCase
 {
     use RefreshDatabase, WithFaker;
+    use UpstreamRoleModel;
 
     private Training $training;
 
@@ -238,6 +241,21 @@ class TrainingsTest extends TestCase
 
         $applicant = User::factory()->create(['rating' => VatsimRating::OBS->value]);
 
+        // VATSSA: reachable before trainable. TrainingController::store()
+        // refuses an application from somebody who is on neither Discord nor
+        // Moodle, which is a deliberate fork rule and the reason this upstream
+        // test was red -- the POST was rejected and no training was ever made.
+        //
+        // Satisfying it here rather than skipping: the test is about applying
+        // for several ratings at once and bundling them with a plus sign, and
+        // that still works.
+        UserPlatform::create([
+            'user_id' => $applicant->id,
+            'on_discord' => true,
+            'on_moodle' => true,
+            'checked_at' => now(),
+        ]);
+
         // Applying for several ratings at once bundles them with a plus sign
         $response = $this->actingAs($applicant)->post(route('training.store'), [
             'training_level' => implode('+', collect($ratings)->pluck('id')->all()),
@@ -321,24 +339,52 @@ class TrainingsTest extends TestCase
     {
         $moderator = User::factory()->create();
 
+        // VATSSA: AWAITING_EXAM on both, and the Theoretical Exam assertions
+        // are gone. Two fork rules, neither about roles.
+        //
+        // Rating Upgrade is offered only on a training AWAITING_EXAM -- it is
+        // the "process my rating" request, and there is nothing to process
+        // until somebody has sat something. See RequestAvailability::applies().
+        // Upstream's factory rolls a random status, so the type was almost
+        // never offered and the assertion almost never held.
+        //
+        // "Theoretical Exam Access" cannot appear at all: the CPT workflow and
+        // its task type were removed, and PATCHES.md keeps them removed. The
+        // rest of the test -- which task types a training's SHAPE offers --
+        // still holds and is what it was written for.
         $facilityTraining = Training::factory()
             ->has(Rating::factory(['vatsim_rating' => null]))
-            ->create(['user_id' => User::factory()->create()->id]);
-        $moderator->roleAssignments()->create(['role' => 'moderator', 'area_id' => $facilityTraining->area->id]);
+            ->create([
+                'user_id' => User::factory()->create()->id,
+                'status' => TrainingStatus::AWAITING_EXAM,
+            ]);
+        // VATSSA: a global ADMIN here, not the atc-training-manager the other
+        // rewrites use.
+        //
+        // This test asserts that a Rating Upgrade task is OFFERED, and
+        // `training.ratings.manage` is admin-only in this fork -- deliberately:
+        // config/roles.php denies it to the ATC training manager. So the
+        // substitute that works everywhere else would make this test assert
+        // something false about the person it acts as, rather than about the
+        // page. The subject is which task types a training's SHAPE offers, and
+        // acting as somebody who can see all of them is what tests that.
+        $moderator->roleAssignments()->create(['role' => 'admin', 'area_id' => null]);
 
         $this->actingAs($moderator)->get($facilityTraining->path())
             ->assertSeeText('Custom Request')
-            ->assertDontSeeText('Rating Upgrade')
-            ->assertDontSeeText('Theoretical Exam Access');
+            ->assertDontSeeText('Rating Upgrade');
 
         $combinedTraining = Training::factory()
             ->has(Rating::factory(['vatsim_rating' => VatsimRating::S2, 'name' => 'TST-S2']))
-            ->create(['user_id' => User::factory()->create()->id, 'area_id' => $facilityTraining->area_id]);
+            ->create([
+                'user_id' => User::factory()->create()->id,
+                'area_id' => $facilityTraining->area_id,
+                'status' => TrainingStatus::AWAITING_EXAM,
+            ]);
         $combinedTraining->ratings()->save(Rating::factory()->create(['vatsim_rating' => null, 'name' => 'TST-MAE']));
 
         $this->actingAs($moderator)->get($combinedTraining->path())
             ->assertSeeText('Rating Upgrade')
-            ->assertSeeText('Theoretical Exam Access')
             ->assertSee('for <b>TST-S2</b> rating', false)
             ->assertSeeText('TST-S2 + TST-MAE');
     }
@@ -382,6 +428,8 @@ class TrainingsTest extends TestCase
     #[Test]
     public function test_director_is_eligible_as_training_mentor_in_their_area(): void
     {
+        $this->skipPerAreaRoles('the retired director role');
+
         $area = Area::factory()->create();
         $director = User::factory()->create();
         $director->roleAssignments()->create(['role' => 'director', 'area_id' => $area->id]);
@@ -393,6 +441,8 @@ class TrainingsTest extends TestCase
     #[Test]
     public function moderator_can_update_training_request()
     {
+        $this->skipPerAreaRoles('the retired moderator role');
+
         $moderator = User::factory()->create();
 
         $training = Training::factory()->create([
@@ -504,6 +554,8 @@ class TrainingsTest extends TestCase
     #[Test]
     public function a_moderator_can_remove_mentors_from_a_training(): void
     {
+        $this->skipPerAreaRoles('a per-area role assignment');
+
         Notification::fake();
 
         $keptMentor = $this->makeMentor();
@@ -536,6 +588,8 @@ class TrainingsTest extends TestCase
     #[Test]
     public function test_director_can_create_training_requests_for_others(): void
     {
+        $this->skipPerAreaRoles('the retired director role');
+
         $director = User::factory()->create();
         $director->roleAssignments()->create(['role' => 'director', 'area_id' => null]);
 
@@ -546,6 +600,8 @@ class TrainingsTest extends TestCase
     #[Test]
     public function a_mentor_cant_be_added_if_they_are_not_a_mentor_in_the_right_area()
     {
+        $this->skipPerAreaRoles('the retired moderator role');
+
         $training = Training::factory()->create([
             'user_id' => User::factory()->create(['id' => 10000005])->id,
             'area_id' => 1,

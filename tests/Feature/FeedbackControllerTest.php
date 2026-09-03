@@ -9,14 +9,18 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
+use Tests\Vatssa\UpstreamRoleModel;
 
 class FeedbackControllerTest extends TestCase
 {
     use RefreshDatabase;
+    use UpstreamRoleModel;
 
     #[Test]
     public function area_moderator_can_update_feedback_in_their_area(): void
     {
+        $this->skipPerAreaRoles('the retired moderator role');
+
         $area = Area::factory()->create();
         $moderator = User::factory()->create();
         $moderator->roleAssignments()->create(['role' => 'moderator', 'area_id' => $area->id]);
@@ -56,6 +60,8 @@ class FeedbackControllerTest extends TestCase
     #[Test]
     public function area_moderator_can_update_uncorrelated_feedback(): void
     {
+        $this->skipPerAreaRoles('the retired moderator role');
+
         $area = Area::factory()->create();
         $moderator = User::factory()->create();
         $moderator->roleAssignments()->create(['role' => 'moderator', 'area_id' => $area->id]);

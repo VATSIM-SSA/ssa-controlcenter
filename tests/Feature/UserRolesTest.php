@@ -40,6 +40,8 @@ class UserRolesTest extends TestCase
     #[Test]
     public function it_lists_current_assignments_grouped_by_scope(): void
     {
+        $this->skipPerAreaRoles('the upstream `staff` role, and a per-area grouping');
+
         $area = Area::factory()->create(['name' => 'Enroute East']);
         $target = User::factory()->create();
         $target->roleAssignments()->create(['role' => 'staff', 'area_id' => null]);
@@ -56,6 +58,8 @@ class UserRolesTest extends TestCase
     #[Test]
     public function it_shows_the_global_section_with_an_empty_note_when_the_user_has_no_assignments(): void
     {
+        $this->skipPerAreaRoles('the global/area split this component renders');
+
         $target = User::factory()->create();
 
         Livewire::actingAs($this->admin())
@@ -80,6 +84,8 @@ class UserRolesTest extends TestCase
     #[Test]
     public function it_grants_an_area_role_to_multiple_areas_at_once(): void
     {
+        $this->skipPerAreaRoles('a per-area role assignment');
+
         $areaA = Area::factory()->create();
         $areaB = Area::factory()->create();
         $target = User::factory()->create();
@@ -99,6 +105,8 @@ class UserRolesTest extends TestCase
     #[Test]
     public function granting_an_area_scoped_role_with_no_areas_ticked_does_not_report_success(): void
     {
+        $this->skipPerAreaRoles('a per-area role assignment');
+
         $area = Area::factory()->create();
         $target = User::factory()->create();
 
@@ -121,6 +129,8 @@ class UserRolesTest extends TestCase
     #[Test]
     public function grantable_roles_exclude_admin_and_roles_the_actor_cannot_grant(): void
     {
+        $this->skipPerAreaRoles('a per-area actor granting per-area roles');
+
         $area = Area::factory()->create();
         $moderator = User::factory()->create();
         $moderator->roleAssignments()->create(['role' => 'moderator', 'area_id' => $area->id]);
@@ -136,6 +146,8 @@ class UserRolesTest extends TestCase
     #[Test]
     public function grantable_roles_for_training_staff_are_mentor_and_buddy(): void
     {
+        $this->skipPerAreaRoles('the retired buddy role');
+
         $area = Area::factory()->create();
         $trainingStaff = User::factory()->create();
         $trainingStaff->roleAssignments()->create(['role' => 'training-staff', 'area_id' => $area->id]);
@@ -150,6 +162,8 @@ class UserRolesTest extends TestCase
     #[Test]
     public function global_option_for_an_area_only_role_is_not_applicable(): void
     {
+        $this->skipPerAreaRoles('a per-area role assignment');
+
         $target = User::factory()->create();
 
         $component = Livewire::actingAs($this->admin())
@@ -165,6 +179,8 @@ class UserRolesTest extends TestCase
     #[Test]
     public function area_options_for_marks_an_already_held_area_disabled_and_a_free_area_enabled(): void
     {
+        $this->skipPerAreaRoles('a per-area role assignment');
+
         $heldArea = Area::factory()->create();
         $openArea = Area::factory()->create();
         $target = User::factory()->create();
@@ -186,6 +202,8 @@ class UserRolesTest extends TestCase
     #[Test]
     public function it_grants_a_global_role(): void
     {
+        $this->skipPerAreaRoles('the upstream `staff` role');
+
         $target = User::factory()->create();
 
         Livewire::actingAs($this->admin())
@@ -263,6 +281,8 @@ class UserRolesTest extends TestCase
     #[Test]
     public function removing_a_role_requires_confirmation_then_deletes(): void
     {
+        $this->skipPerAreaRoles('a per-area assignment to remove');
+
         $area = Area::factory()->create();
         $target = User::factory()->create();
         $target->roleAssignments()->create(['role' => 'moderator', 'area_id' => $area->id]);
@@ -281,6 +301,8 @@ class UserRolesTest extends TestCase
     #[Test]
     public function mentor_removal_shows_the_division_and_training_consequence(): void
     {
+        $this->skipPerAreaRoles('a mentor scoped to one area of several');
+
         $area = Area::factory()->create();
         $target = User::factory()->create();
         $target->roleAssignments()->create(['role' => 'mentor', 'area_id' => $area->id]);
@@ -295,6 +317,8 @@ class UserRolesTest extends TestCase
     #[Test]
     public function mentor_removal_in_one_of_two_areas_does_not_show_the_detach_clause(): void
     {
+        $this->skipPerAreaRoles('a per-area role assignment');
+
         $areaA = Area::factory()->create();
         $areaB = Area::factory()->create();
         $target = User::factory()->create();

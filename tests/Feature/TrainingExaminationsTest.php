@@ -19,10 +19,12 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Notification;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
+use Tests\Vatssa\UpstreamRoleModel;
 
 class TrainingExaminationsTest extends TestCase
 {
     use RefreshDatabase, WithFaker;
+    use UpstreamRoleModel;
 
     private Training $training;
 
@@ -31,6 +33,17 @@ class TrainingExaminationsTest extends TestCase
     private User $examiner;
 
     private OneTimeLink $oneTimeLink;
+
+    /**
+     * VATSSA: a real position, because position 1 no longer exists.
+     *
+     * The fork's remove_non_vatssa_positions migration deletes every position
+     * outside VATSSA's FIRs -- 402 of them on a fresh database, including the
+     * low ids upstream's fixtures hard-code. `Position::find(1)` then returns
+     * null and five tests die on "Attempt to read property callsign on null",
+     * or on a foreign key, for a reason with nothing to do with examinations.
+     */
+    private Position $position;
 
     protected function setUp(): void
     {
@@ -62,11 +75,13 @@ class TrainingExaminationsTest extends TestCase
         $examinerEndorsement->ratings()->save(Rating::find(5));
         $examinerEndorsement->areas()->save($area);
 
+        $this->position = Position::factory()->create(['area_id' => $this->training->area_id]);
+
         // Create examination for testing
         $this->examination = TrainingExamination::factory()->make([
             'training_id' => $this->training->id,
             'examiner_id' => $this->examiner->id,
-            'position_id' => 1,
+            'position_id' => $this->position->id,
             'examination_date' => Carbon::now(),
         ]);
 
@@ -131,11 +146,15 @@ class TrainingExaminationsTest extends TestCase
     #[Test]
     public function moderator_can_delete_training_examination()
     {
+        $this->skipPerAreaRoles('the retired moderator role');
 
         $examination = TrainingExamination::create($this->examination->getAttributes());
 
         $moderator = User::factory()->create();
-        $moderator->roleAssignments()->create(['role' => 'moderator', 'area_id' => $this->training->area->id]);
+        // VATSSA: globally, as atc-training-manager. See
+        // TrainingsTest::moderatorFor() -- these tests are about examinations,
+        // not about area scoping.
+        $moderator->roleAssignments()->create(['role' => 'atc-training-manager', 'area_id' => null]);
 
         $this->actingAs($moderator)->followingRedirects()
             ->getJson(route('training.examination.delete', ['examination' => $examination]))
@@ -164,6 +183,7 @@ class TrainingExaminationsTest extends TestCase
     #[Test]
     public function buddy_cant_delete_training_examination()
     {
+        $this->skipPerAreaRoles('the retired buddy role');
 
         $examination = TrainingExamination::create($this->examination->getAttributes());
 
@@ -222,7 +242,7 @@ class TrainingExaminationsTest extends TestCase
         $this->assertEquals($this->oneTimeLink->key, session()->get('onetimekey'));
 
         $examData = [
-            'position' => Position::find(1)->callsign,
+            'position' => $this->position->callsign,
             'result' => 'PASSED',
             'examination_date' => Carbon::now()->format('d/m/Y'),
         ];
@@ -275,7 +295,7 @@ class TrainingExaminationsTest extends TestCase
         $response->assertStatus(200);
 
         $validExamData = [
-            'position' => Position::find(1)->callsign,
+            'position' => $this->position->callsign,
             'result' => 'PASSED',
             'examination_date' => Carbon::now()->format('d/m/Y'),
         ];
@@ -321,7 +341,7 @@ class TrainingExaminationsTest extends TestCase
         session()->forget('onetimekey');
 
         $examData = [
-            'position' => Position::find(1)->callsign,
+            'position' => $this->position->callsign,
             'result' => 'PASSED',
             'examination_date' => Carbon::now()->format('d/m/Y'),
         ];
@@ -403,6 +423,8 @@ class TrainingExaminationsTest extends TestCase
     #[Test]
     public function test_director_can_update_and_delete_examination_in_their_area(): void
     {
+        $this->skipPerAreaRoles('the retired director role');
+
         $examination = TrainingExamination::create($this->examination->getAttributes());
         $area = $this->training->area;
 
@@ -417,6 +439,8 @@ class TrainingExaminationsTest extends TestCase
     #[Test]
     public function test_moderator_of_other_area_cannot_view_examination(): void
     {
+        $this->skipPerAreaRoles('the retired moderator role');
+
         $examination = TrainingExamination::create($this->examination->getAttributes());
 
         $otherArea = Area::factory()->create();

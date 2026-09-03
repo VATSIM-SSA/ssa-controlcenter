@@ -6,10 +6,12 @@ use App\Models\Endorsement;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
+use Tests\Vatssa\UpstreamRoleModel;
 
 class EndorsementPolicyDeleteTest extends TestCase
 {
     use RefreshDatabase;
+    use UpstreamRoleModel;
 
     private function endorsement(string $type): Endorsement
     {
@@ -24,6 +26,8 @@ class EndorsementPolicyDeleteTest extends TestCase
 
     public function test_moderator_can_delete_solo_but_not_visiting_or_examiner(): void
     {
+        $this->skipPerAreaRoles('the retired moderator role');
+
         $moderator = User::factory()->create();
         $moderator->roleAssignments()->create(['role' => 'moderator', 'area_id' => null]);
 
@@ -34,6 +38,8 @@ class EndorsementPolicyDeleteTest extends TestCase
 
     public function test_director_can_delete_every_type(): void
     {
+        $this->skipPerAreaRoles('the retired director role');
+
         $director = User::factory()->create();
         $director->roleAssignments()->create(['role' => 'director', 'area_id' => null]);
 

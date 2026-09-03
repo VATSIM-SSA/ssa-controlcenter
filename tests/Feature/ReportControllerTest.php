@@ -13,10 +13,12 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
+use Tests\Vatssa\UpstreamRoleModel;
 
 class ReportControllerTest extends TestCase
 {
     use RefreshDatabase;
+    use UpstreamRoleModel;
 
     private User $adminUser;
 
@@ -49,6 +51,8 @@ class ReportControllerTest extends TestCase
 
     public function test_moderator_sees_only_mentors_in_their_area(): void
     {
+        $this->skipPerAreaRoles('the retired moderator role');
+
         $area1 = Area::factory()->create();
         $area2 = Area::factory()->create();
 
@@ -96,6 +100,8 @@ class ReportControllerTest extends TestCase
     #[Test]
     public function global_director_sees_mentor_report(): void
     {
+        $this->skipPerAreaRoles('the retired director role');
+
         $director = User::factory()->create();
         $director->roleAssignments()->create(['role' => 'director', 'area_id' => null]);
 
@@ -116,6 +122,8 @@ class ReportControllerTest extends TestCase
     #[Test]
     public function single_area_moderator_is_redirected_to_area_training_report(): void
     {
+        $this->skipPerAreaRoles('the retired moderator role');
+
         $area = Area::factory()->create();
         $moderator = User::factory()->create();
         $moderator->roleAssignments()->create(['role' => 'moderator', 'area_id' => $area->id]);
@@ -128,6 +136,8 @@ class ReportControllerTest extends TestCase
     #[Test]
     public function multi_area_moderator_sees_area_picker_for_training_report(): void
     {
+        $this->skipPerAreaRoles('the retired moderator role');
+
         $area1 = Area::factory()->create();
         $area2 = Area::factory()->create();
         $moderator = User::factory()->create();
@@ -164,6 +174,8 @@ class ReportControllerTest extends TestCase
     #[Test]
     public function single_area_moderator_is_redirected_to_area_activities_report(): void
     {
+        $this->skipPerAreaRoles('the retired moderator role');
+
         $area = Area::factory()->create();
         $moderator = User::factory()->create();
         $moderator->roleAssignments()->create(['role' => 'moderator', 'area_id' => $area->id]);
@@ -176,6 +188,8 @@ class ReportControllerTest extends TestCase
     #[Test]
     public function multi_area_moderator_sees_area_picker_for_activities_report(): void
     {
+        $this->skipPerAreaRoles('the retired moderator role');
+
         $area1 = Area::factory()->create();
         $area2 = Area::factory()->create();
         $moderator = User::factory()->create();
@@ -260,6 +274,8 @@ class ReportControllerTest extends TestCase
     #[Test]
     public function area_moderator_can_access_feedback_page(): void
     {
+        $this->skipPerAreaRoles('the retired moderator role');
+
         $area = Area::factory()->create();
         $moderator = User::factory()->create();
         $moderator->roleAssignments()->create(['role' => 'moderator', 'area_id' => $area->id]);

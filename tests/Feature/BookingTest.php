@@ -20,12 +20,14 @@ use Illuminate\Testing\TestResponse;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
+use Tests\Vatssa\UpstreamRoleModel;
 
 const TEST_USER_TRAINING_AREA = 1;
 
 class BookingTest extends TestCase
 {
     use RefreshDatabase, WithFaker;
+    use UpstreamRoleModel;
 
     private function assertCreateBookingAvailable(User $controller, Position $position): void
     {
@@ -293,6 +295,8 @@ class BookingTest extends TestCase
     #[Test]
     public function test_director_can_update_other_users_booking(): void
     {
+        $this->skipPerAreaRoles('the retired director role');
+
         $director = User::factory()->create();
         $director->roleAssignments()->create(['role' => 'director', 'area_id' => null]);
         $booking = Booking::factory()->create(['user_id' => User::factory()->create()->id, 'source' => 'CC']);

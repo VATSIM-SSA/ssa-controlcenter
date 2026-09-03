@@ -12,10 +12,12 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Response as ClientResponse;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
+use Tests\Vatssa\UpstreamRoleModel;
 
 class GrantRoleTest extends TestCase
 {
     use RefreshDatabase;
+    use UpstreamRoleModel;
 
     private function admin(): User
     {
@@ -28,6 +30,8 @@ class GrantRoleTest extends TestCase
     #[Test]
     public function it_creates_an_area_assignment(): void
     {
+        $this->skipPerAreaRoles('the retired moderator role');
+
         $actor = $this->admin();
         $target = User::factory()->create();
         $area = Area::factory()->create();
@@ -43,6 +47,8 @@ class GrantRoleTest extends TestCase
     #[Test]
     public function it_is_idempotent_when_the_assignment_already_exists(): void
     {
+        $this->skipPerAreaRoles('the upstream `staff` role');
+
         $actor = $this->admin();
         $target = User::factory()->create();
         $target->roleAssignments()->create(['role' => 'staff', 'area_id' => null]);
@@ -67,6 +73,8 @@ class GrantRoleTest extends TestCase
     #[Test]
     public function it_creates_a_mentor_assignment_when_the_division_api_reports_success(): void
     {
+        $this->skipPerAreaRoles('granting a role WITH an area, which UserPolicy refuses outright');
+
         $actor = $this->admin();
         $target = User::factory()->create();
         $area = Area::factory()->create();
@@ -84,6 +92,8 @@ class GrantRoleTest extends TestCase
     #[Test]
     public function it_calls_the_division_api_before_creating_a_mentor_and_blocks_on_failure(): void
     {
+        $this->skipPerAreaRoles('granting a role WITH an area, which UserPolicy refuses outright');
+
         $actor = $this->admin();
         $target = User::factory()->create();
         $area = Area::factory()->create();

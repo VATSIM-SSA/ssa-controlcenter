@@ -10,6 +10,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
 use Tests\TestCase;
+use Tests\Vatssa\UpstreamRoleModel;
 
 /**
  * Behavioural coverage for role assignment now that the Bootstrap role matrix
@@ -19,6 +20,7 @@ use Tests\TestCase;
 class UserRoleAssignmentTest extends TestCase
 {
     use RefreshDatabase;
+    use UpstreamRoleModel;
 
     private User $admin;
 
@@ -48,6 +50,8 @@ class UserRoleAssignmentTest extends TestCase
 
     public function test_global_admin_can_assign_moderator_per_area(): void
     {
+        $this->skipPerAreaRoles('the retired moderator role');
+
         Livewire::actingAs($this->admin)
             ->test(UserRoles::class, ['user' => $this->target])
             ->call('openAddModal')
@@ -65,6 +69,8 @@ class UserRoleAssignmentTest extends TestCase
 
     public function test_revoking_a_role_via_the_component_is_logged(): void
     {
+        $this->skipPerAreaRoles('a per-area role assignment');
+
         $this->target->roleAssignments()->create([
             'role' => 'moderator',
             'area_id' => $this->area->id,
@@ -122,6 +128,8 @@ class UserRoleAssignmentTest extends TestCase
 
     public function test_area_director_can_assign_moderator_in_their_area(): void
     {
+        $this->skipPerAreaRoles('the retired moderator role');
+
         $director = User::factory()->create();
         $director->roleAssignments()->create(['role' => 'director', 'area_id' => $this->area->id]);
 
@@ -142,6 +150,8 @@ class UserRoleAssignmentTest extends TestCase
 
     public function test_area_director_cannot_assign_director(): void
     {
+        $this->skipPerAreaRoles('the retired director role');
+
         $director = User::factory()->create();
         $director->roleAssignments()->create(['role' => 'director', 'area_id' => $this->area->id]);
 
@@ -159,6 +169,8 @@ class UserRoleAssignmentTest extends TestCase
 
     public function test_global_director_can_assign_director_per_area(): void
     {
+        $this->skipPerAreaRoles('the retired director role');
+
         $globalDirector = User::factory()->create();
         $globalDirector->roleAssignments()->create(['role' => 'director', 'area_id' => null]);
 
@@ -200,6 +212,8 @@ class UserRoleAssignmentTest extends TestCase
 
     public function test_global_admin_can_assign_global_moderator(): void
     {
+        $this->skipPerAreaRoles('the retired moderator role');
+
         Livewire::actingAs($this->admin)
             ->test(UserRoles::class, ['user' => $this->target])
             ->call('openAddModal')
@@ -217,6 +231,8 @@ class UserRoleAssignmentTest extends TestCase
 
     public function test_global_admin_can_revoke_global_moderator(): void
     {
+        $this->skipPerAreaRoles('the retired moderator role');
+
         $this->target->roleAssignments()->create(['role' => 'moderator', 'area_id' => null]);
 
         Livewire::actingAs($this->admin)
@@ -233,6 +249,8 @@ class UserRoleAssignmentTest extends TestCase
 
     public function test_mentor_cannot_be_assigned_globally_due_to_area_scope(): void
     {
+        $this->skipPerAreaRoles('a per-area role assignment');
+
         Livewire::actingAs($this->admin)
             ->test(UserRoles::class, ['user' => $this->target])
             ->call('openAddModal')
@@ -247,6 +265,8 @@ class UserRoleAssignmentTest extends TestCase
 
     public function test_global_director_can_assign_global_director(): void
     {
+        $this->skipPerAreaRoles('the retired director role');
+
         $globalDirector = User::factory()->create();
         $globalDirector->roleAssignments()->create(['role' => 'director', 'area_id' => null]);
 
@@ -267,6 +287,8 @@ class UserRoleAssignmentTest extends TestCase
 
     public function test_area_director_cannot_assign_global_roles(): void
     {
+        $this->skipPerAreaRoles('the retired moderator role');
+
         $director = User::factory()->create();
         $director->roleAssignments()->create(['role' => 'director', 'area_id' => $this->area->id]);
 
@@ -286,6 +308,8 @@ class UserRoleAssignmentTest extends TestCase
 
     public function test_area_training_staff_can_assign_mentor_in_their_area(): void
     {
+        $this->skipPerAreaRoles('the retired training-staff role');
+
         DivisionApi::shouldReceive('assignMentor')->once()->andReturn(false);
 
         $trainingStaff = User::factory()->create();
@@ -308,6 +332,8 @@ class UserRoleAssignmentTest extends TestCase
 
     public function test_area_training_staff_cannot_assign_moderator_or_director(): void
     {
+        $this->skipPerAreaRoles('the retired moderator role');
+
         $trainingStaff = User::factory()->create();
         $trainingStaff->roleAssignments()->create(['role' => 'training-staff', 'area_id' => $this->area->id]);
 

@@ -7,9 +7,12 @@ use App\Models\User;
 use Illuminate\Support\Facades\Auth;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
+use Tests\Vatssa\UpstreamRoleModel;
 
 class FrontpageTest extends TestCase
 {
+    use UpstreamRoleModel;
+
     #[Test]
     public function user_can_load_front_page()
     {
@@ -46,6 +49,8 @@ class FrontpageTest extends TestCase
     #[Test]
     public function test_director_sees_user_search_in_topbar(): void
     {
+        $this->skipPerAreaRoles('the retired director role');
+
         $director = User::factory()->create();
         $director->roleAssignments()->create(['role' => 'director', 'area_id' => null]);
 

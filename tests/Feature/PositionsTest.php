@@ -12,10 +12,12 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
+use Tests\Vatssa\UpstreamRoleModel;
 
 class PositionsTest extends TestCase
 {
     use RefreshDatabase;
+    use UpstreamRoleModel;
 
     private User $admin;
 
@@ -113,6 +115,8 @@ class PositionsTest extends TestCase
     #[Test]
     public function view_only_staff_can_view_index_but_cannot_store()
     {
+        $this->skipPerAreaRoles('the retired staff role');
+
         $staff = User::factory()->create();
         $staff->roleAssignments()->create(['role' => 'staff', 'area_id' => null]);
 
@@ -404,6 +408,8 @@ class PositionsTest extends TestCase
     #[Test]
     public function moderator_of_one_area_cannot_see_positions_of_another_area()
     {
+        $this->skipPerAreaRoles('the retired moderator role');
+
         $otherModerator = User::factory()->create();
         $otherModerator->roleAssignments()->create(['role' => 'moderator', 'area_id' => $this->area2->id]); // Moderator of Area 2
 

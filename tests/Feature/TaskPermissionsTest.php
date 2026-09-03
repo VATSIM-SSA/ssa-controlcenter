@@ -9,13 +9,17 @@ use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
+use Tests\Vatssa\UpstreamRoleModel;
 
 class TaskPermissionsTest extends TestCase
 {
     use RefreshDatabase;
+    use UpstreamRoleModel;
 
     public function test_director_can_create_update_and_receive_tasks(): void
     {
+        $this->skipPerAreaRoles('the retired director role');
+
         $director = User::factory()->create();
         $director->roleAssignments()->create(['role' => 'director', 'area_id' => null]);
 
@@ -58,6 +62,8 @@ class TaskPermissionsTest extends TestCase
 
     public function test_mentor_is_not_a_suggested_task_recipient(): void
     {
+        $this->skipPerAreaRoles('the retired moderator role');
+
         $area = Area::factory()->create();
         $mentor = User::factory()->create();
         $mentor->roleAssignments()->create(['role' => 'mentor', 'area_id' => $area->id]);

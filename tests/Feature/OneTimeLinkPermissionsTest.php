@@ -6,13 +6,17 @@ use App\Models\Area;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
+use Tests\Vatssa\UpstreamRoleModel;
 
 class OneTimeLinkPermissionsTest extends TestCase
 {
     use RefreshDatabase;
+    use UpstreamRoleModel;
 
     public function test_buddy_holds_report_link_permission_and_moderator_does_not(): void
     {
+        $this->skipPerAreaRoles('the retired moderator role');
+
         $area = Area::factory()->create();
 
         $buddy = User::factory()->create();
@@ -27,6 +31,8 @@ class OneTimeLinkPermissionsTest extends TestCase
 
     public function test_director_holds_update_training_in_their_area(): void
     {
+        $this->skipPerAreaRoles('the retired director role');
+
         $area = Area::factory()->create();
         $director = User::factory()->create();
         $director->roleAssignments()->create(['role' => 'director', 'area_id' => $area->id]);

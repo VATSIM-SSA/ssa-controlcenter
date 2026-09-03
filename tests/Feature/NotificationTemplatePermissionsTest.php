@@ -7,13 +7,17 @@ use App\Models\User;
 use App\Policies\NotificationPolicy;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
+use Tests\Vatssa\UpstreamRoleModel;
 
 class NotificationTemplatePermissionsTest extends TestCase
 {
     use RefreshDatabase;
+    use UpstreamRoleModel;
 
     public function test_director_can_view_and_modify_templates_in_their_area(): void
     {
+        $this->skipPerAreaRoles('the retired director role');
+
         $area = Area::factory()->create();
         $director = User::factory()->create();
         $director->roleAssignments()->create(['role' => 'director', 'area_id' => $area->id]);
@@ -36,6 +40,8 @@ class NotificationTemplatePermissionsTest extends TestCase
 
     public function test_area_moderator_cannot_modify_other_areas_templates(): void
     {
+        $this->skipPerAreaRoles('the retired moderator role');
+
         $area = Area::factory()->create();
         $otherArea = Area::factory()->create();
         $moderator = User::factory()->create();
