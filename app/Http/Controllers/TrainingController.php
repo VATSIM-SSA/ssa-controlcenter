@@ -26,6 +26,7 @@ use App\Notifications\TrainingClosedNotification;
 use App\Notifications\TrainingCreatedNotification;
 use App\Notifications\TrainingMentorNotification;
 use App\Notifications\TrainingPreStatusNotification;
+use App\Notifications\Vatssa\MentorAssignedNotification;
 use App\Rules\AssignableTrainingStatus;
 use App\Services\ActivityLogService;
 use App\Support\Vatssa\RequestAvailability;
@@ -624,6 +625,12 @@ class TrainingController extends Controller
         }
 
         $notifyOfNewMentor = false;
+        // VATSSA: who was ACTUALLY attached this time round, so the mentors can
+        // be told too. Several mentors on one training is normal --
+        // Training::mentors() is a belongsToMany -- so this is a list rather
+        // than "the mentor", and a co-mentor added a month later gets the same
+        // message as the first one did.
+        $newlyAttachedMentors = [];
         if (array_key_exists('mentors', $attributes)) {
             foreach ((array) $attributes['mentors'] as $mentor) {
                 if (! $training->mentors->contains($mentor) && User::find($mentor) != null && User::find($mentor)->hasPermission('training.mentor', $training->area)) {
@@ -631,6 +638,7 @@ class TrainingController extends Controller
 
                     // Notify student of their new mentor
                     $notifyOfNewMentor = true;
+                    $newlyAttachedMentors[] = $mentor;
 
                     TrainingActivityController::create($training->id, 'MENTOR', $mentor, null, Auth::id());
                 }
@@ -646,6 +654,25 @@ class TrainingController extends Controller
             // Notify student of their new mentor. We put this here so detached mentors ain't included.
             if ($notifyOfNewMentor) {
                 $training->user->notify(new TrainingMentorNotification($training));
+            }
+
+            // VATSSA: AND THE MENTOR. Upstream tells the student a mentor was
+            // attached and tells the mentor nothing at all -- they found out by
+            // opening My students, or by the student emailing them first.
+            //
+            // Backwards in a pipeline whose commonest stall is nobody making
+            // the first move: the student is told to make contact within seven
+            // days or lose their place, and the mentor was never told to expect
+            // them.
+            //
+            // NO refresh() here, deliberately. `status` is assigned onto the
+            // model in memory further up and only saved by the update() at the
+            // bottom of this method; refreshing would revert it and change what
+            // the `$training->status !== $oldStatus` branches below decide. The
+            // notification reads `ratings` and `user`, neither of which a
+            // mentor attach touches, so there is nothing to reload.
+            foreach ($newlyAttachedMentors as $mentorId) {
+                User::find($mentorId)?->notify(new MentorAssignedNotification($training));
             }
 
             unset($attributes['mentors']);

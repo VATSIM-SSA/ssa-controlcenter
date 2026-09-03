@@ -48,6 +48,15 @@ class MessageTemplate extends Model
     public const ROSTER_EXPIRING = 'V3';
 
     /**
+     * V4: the mentor is told they have a student.
+     *
+     * Upstream tells the STUDENT a mentor was attached and tells the mentor
+     * nothing. The student is instructed to make contact within seven days or
+     * lose their place; the mentor is not told to expect them.
+     */
+    public const MENTOR_ASSIGNED = 'V4';
+
+    /**
      * Subject and body for one of ours, with the placeholders filled in.
      *
      * Returns null when the row is missing, and the caller then sends the text

@@ -1086,9 +1086,15 @@ class VatssaTest extends TestCase
         // A later migration drops S1, the staff digest, which digest.py builds
         // in code and has never read from a template, and another adds V1-V3,
         // the fork's own three emails, which used to be PHP arrays nobody could
-        // edit. 17 - 3 + 2 - 1 + 3 = 18.
-        $this->assertSame(18, MessageTemplate::count());
+        // edit. A fourth, V4, tells a mentor they have been given a student --
+        // upstream told the student and told the mentor nothing.
+        // 17 - 3 + 2 - 1 + 4 = 19.
+        $this->assertSame(19, MessageTemplate::count());
         $this->assertNotNull(MessageTemplate::find('T7'));
+
+        // The fork's own four. Editable from the same page as upstream's, so a
+        // rewording is training staff's job rather than a deploy.
+        $this->assertNotNull(MessageTemplate::find('V4'));
 
         // The two the repair migration exists for. Control Center used to
         // describe these keys as a staff digest and a mentor index; the bot
