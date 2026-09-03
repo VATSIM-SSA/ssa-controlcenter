@@ -303,10 +303,10 @@
             {{-- Nav Item - Utilities Collapse Menu --}}
             {{-- VATSSA: two groups, because Administration was two things.
 
-                 It mixed what the training pipeline SAYS -- request routing,
-                 mentorship, the email wording, which Moodle course each rating
-                 sits -- with how the application RUNS: settings, logs, votes,
-                 the position list. A training manager opening it to reword an
+                 It mixed what the training pipeline SAYS -- mentorship, the
+                 email wording, which Moodle course each rating sits -- with how
+                 the application RUNS: settings, logs, votes, the position
+                 list. A training manager opening it to reword an
                  email scrolled past the log viewer to get there, and the two
                  halves are not even edited by the same people.
 
@@ -322,7 +322,6 @@
                          desks a request can go to. First, because it is the one
                          that answers "how do I add a new endorsement". --}}
                     <x-sidebar.item :href="route('vatssa.admin.setup')" title="Training setup" collapse />
-                    <x-sidebar.item :href="route('vatssa.admin.routing')" title="Request routing" collapse />
                     <x-sidebar.item :href="route('vatssa.admin.templates')" title="Pipeline templates" collapse />
                     <x-sidebar.item :href="route('vatssa.admin.courses')" title="Moodle courses" collapse />
                 @endcan

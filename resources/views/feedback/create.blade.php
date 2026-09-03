@@ -86,6 +86,30 @@
                         </div>
                     </div>
 
+                    {{-- VATSSA: what kind of feedback this is.
+
+                         One undifferentiated stream meant the feedback team read
+                         every row to find the one that mattered. A compliment, a
+                         complaint and a bug report are three different jobs with
+                         three different urgencies. Editable list, not a constant
+                         -- see App\Models\Vatssa\FeedbackType. --}}
+                    <div class="row mb-3">
+                        <div class="col-md-12">
+                            <label class="form-label">What kind of feedback is this?</label>
+                            <select class="form-select" name="vatssa_type">
+                                <option value="" disabled @selected(! old('vatssa_type'))>Choose one</option>
+                                @foreach(\App\Models\Vatssa\FeedbackType::map(true) as $key => $type)
+                                    <option value="{{ $key }}" @selected(old('vatssa_type') === $key)>
+                                        {{ $type['label'] }}@if($type['hint']) &mdash; {{ $type['hint'] }}@endif
+                                    </option>
+                                @endforeach
+                            </select>
+                            @error('vatssa_type')
+                                <span class="text-danger">{{ $errors->first('vatssa_type') }}</span>
+                            @enderror
+                        </div>
+                    </div>
+
                     <div class="row mb-3">
                         <div class="col-md-12">
                             <label class="form-label">Your feedback (English only)</label>

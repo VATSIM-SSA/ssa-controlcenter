@@ -67,6 +67,9 @@
                             <th>Controller</th>
                             <th>Position</th>
                             <th>Area</th>
+                            {{-- VATSSA: the kind, so a queue can be sorted rather
+                                 than read end to end. --}}
+                            <th>Kind</th>
                             <th>Feedback</th>
                             @can('update', \App\Models\Feedback::class)
                                 <th>Actions</th>
@@ -87,6 +90,16 @@
                                 </td>
                                 <td>{{ $f->referencePosition?->callsign ?? 'N/A' }}</td>
                                 <td>{{ $f->referencePosition?->area?->name ?? 'N/A' }}</td>
+                                <td>
+                                    @if($f->vatssa_type)
+                                        <span class="badge bg-secondary">{{ \App\Models\Vatssa\FeedbackType::label($f->vatssa_type) }}</span>
+                                    @else
+                                        {{-- Everything submitted before the field existed. Not
+                                             backfilled with a guess: inventing what somebody
+                                             meant is worse than an empty cell. --}}
+                                        <span class="text-muted">&mdash;</span>
+                                    @endif
+                                </td>
                                 <td>{!! nl2br(e($f->feedback)) !!}</td>
                                 @can('update', $f)
                                     <td>
@@ -111,7 +124,7 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="{{ auth()->user()->can('update', \App\Models\Feedback::class) ? 7 : 6 }}" class="text-center text-muted py-4">No feedback found.</td>
+                                <td colspan="{{ auth()->user()->can('update', \App\Models\Feedback::class) ? 8 : 7 }}" class="text-center text-muted py-4">No feedback found.</td>
                             </tr>
                         @endforelse
                     </tbody>

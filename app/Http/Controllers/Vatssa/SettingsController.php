@@ -51,79 +51,54 @@ class SettingsController extends Controller
     }
 
     /**
-     * Who sits at each request desk.
+     * Which desks ONE member sits at.
      *
-     * The coordinator desk is per rating, because VATSSA's pipelines are per
-     * rating. Everything else is one list. Several people per desk is normal --
-     * the request goes to whichever of them has the fewest open tasks.
+     * This is the Request routing page, per person, and it is where desk
+     * assignment belongs: "what access does this person have" is a question
+     * about a person, and the answer used to be split between their profile
+     * (roles) and a grid on a different page (desks).
+     *
+     * SAFER THAN THE GRID IT REPLACES. That page rebuilt every desk in the
+     * division on every save, which is why it needed a guard against a browser
+     * omitting an empty multi-select and silently emptying all of them. This
+     * touches one member's rows and nothing else, so an empty submission means
+     * exactly what it says: this person sits at no desk.
      */
-    public function routing(): View
-    {
-        $this->authorize('system.settings.manage');
-
-        return view('vatssa.admin.routing', [
-            'tiers' => RequestTarget::tiers(),
-            'ratings' => Rating::whereNotNull('vatsim_rating')
-                ->orderBy('vatsim_rating')->get(),
-            'targets' => RequestTarget::with('user')->get(),
-            // Anybody who could plausibly staff a desk. Not filtered by role:
-            // VATSSA1 and VATSSA2 are people, not a Control Center role, and
-            // hard-coding which role may sit where would defeat the point of
-            // the page.
-            'candidates' => User::whereHas('roleAssignments')->orderBy('first_name')->get(),
-        ]);
-    }
-
-    public function updateRouting(Request $request): RedirectResponse
+    public function updateDesks(Request $request, User $user): RedirectResponse
     {
         $this->authorize('system.settings.manage');
 
         $data = $request->validate([
-            'targets' => 'sometimes|array',
-            'targets.*' => 'array',
-            'targets.*.*' => 'integer|exists:users,id',
+            'desks' => 'sometimes|array|max:50',
+            // "coordinator:14" for a per-rating desk, "membership" otherwise --
+            // the same key shape the grid used, so nothing else had to change.
+            'desks.*' => 'string|max:40',
         ]);
 
-        // A BROWSER OMITS AN EMPTY MULTI-SELECT ENTIRELY. So a form submitted
-        // with nothing chosen -- a mis-click on Save, a stale page, a partial
-        // POST -- arrives with no `targets` key at all, and a bare
-        // delete-then-recreate would silently empty every desk. Empty desks are
-        // not loud: requests just stay with whoever raised them.
-        //
-        // Refusing the wipe is the safe failure. Clearing a desk deliberately
-        // is still possible -- deselect everyone in ONE desk and the others
-        // survive.
-        if (empty($data['targets'])) {
-            return redirect()->back()->withErrors(
-                'That would have removed every desk assignment, so nothing was saved. '
-                . 'To clear one desk, deselect its people and leave the others alone.'
-            );
-        }
+        DB::transaction(function () use ($data, $user) {
+            RequestTarget::where('user_id', $user->id)->delete();
 
-        // Replace wholesale inside a transaction. Diffing rows would be more
-        // code for no benefit at this size.
-        DB::transaction(function () use ($data) {
-            RequestTarget::query()->delete();
-
-            foreach ($data['targets'] ?? [] as $key => $userIds) {
-                // "coordinator:14" for a per-rating desk, "vatssa1" otherwise.
-                [$tier, $ratingId] = array_pad(explode(':', (string) $key, 2), 2, null);
+            foreach (array_unique($data['desks'] ?? []) as $key) {
+                [$tier, $ratingId] = array_pad(explode(':', $key, 2), 2, null);
 
                 if (! RequestTarget::isTier($tier)) {
                     continue;
                 }
 
-                foreach (array_unique($userIds) as $userId) {
-                    RequestTarget::create([
-                        'tier' => $tier,
-                        'rating_id' => RequestTarget::isPerRating($tier) && $ratingId ? (int) $ratingId : null,
-                        'user_id' => $userId,
-                    ]);
-                }
+                RequestTarget::create([
+                    'tier' => $tier,
+                    // A coordinator row with no rating is the CATCH-ALL, which
+                    // is what makes a one-coordinator division work without
+                    // four identical rows. Blank is not "no desk" here.
+                    'rating_id' => RequestTarget::isPerRating($tier) && $ratingId !== null && $ratingId !== ''
+                        ? (int) $ratingId
+                        : null,
+                    'user_id' => $user->id,
+                ]);
             }
         });
 
-        return redirect()->back()->with('success', 'Request routing saved.');
+        return redirect()->back()->with('success', 'Desks saved for ' . $user->name . '.');
     }
 
     /**

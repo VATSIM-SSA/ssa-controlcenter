@@ -57,6 +57,10 @@ class FeedbackController extends Controller
             'submitter_user_id' => $submitter->id,
             'reference_user_id' => isset($controller) ? $controller->id : null,
             'reference_position_id' => isset($position) ? $position->id : null,
+            // VATSSA: compliment, complaint or bug report. Validated against the
+            // OFFERED types in StoreFeedbackRequest, so a retired one cannot be
+            // posted by hand at a stale page.
+            'vatssa_type' => $data['vatssa_type'] ?? null,
         ]);
 
         // Forward email if configured

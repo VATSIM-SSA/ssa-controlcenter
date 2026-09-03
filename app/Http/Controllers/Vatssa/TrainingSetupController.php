@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Vatssa;
 
 use App\Http\Controllers\Controller;
 use App\Models\Rating;
+use App\Models\Vatssa\FeedbackType;
 use App\Models\Vatssa\RequestDesk;
 use App\Models\Vatssa\TrainingType;
 use Illuminate\Http\RedirectResponse;
@@ -63,6 +64,9 @@ class TrainingSetupController extends Controller
             'types' => TrainingType::orderBy('sort_order')->orderBy('id')->get(),
             'desks' => RequestDesk::orderBy('sort_order')->orderBy('key')->get(),
             'nextTypeId' => TrainingType::nextId(),
+            // VATSSA: compliment, complaint, bug report -- editable, for the
+            // same reason as training types and desks. See FeedbackType.
+            'feedbackTypes' => FeedbackType::orderBy('sort_order')->orderBy('key')->get(),
         ]);
     }
 
@@ -199,7 +203,54 @@ class TrainingSetupController extends Controller
             'active' => true,
         ]);
 
-        return back()->with('success', $data['label'] . ' added. Staff it under Request routing.');
+        return back()->with('success', $data['label'] . " added. Staff it from a member's Request desks box.");
+    }
+
+    public function storeFeedbackType(Request $request): RedirectResponse
+    {
+        $this->authorize('system.settings.manage');
+
+        $data = $request->validate([
+            // Stored on every piece of feedback of this kind, so fixed at
+            // creation and never editable afterwards -- same rule as a desk key.
+            'key' => ['required', 'string', 'max:40', 'regex:/^[a-z0-9-]+$/', Rule::unique('vatssa_feedback_types', 'key')],
+            'label' => 'required|string|max:80',
+            'hint' => 'nullable|string|max:255',
+            'sort_order' => 'nullable|integer|min:0|max:999',
+        ]);
+
+        FeedbackType::create([
+            'key' => $data['key'],
+            'label' => $data['label'],
+            'hint' => $data['hint'] ?? null,
+            'sort_order' => $data['sort_order'] ?? 99,
+            'active' => true,
+        ]);
+
+        return back()->with('success', $data['label'] . ' added.');
+    }
+
+    public function updateFeedbackType(Request $request, FeedbackType $feedbackType): RedirectResponse
+    {
+        $this->authorize('system.settings.manage');
+
+        $data = $request->validate([
+            'label' => 'required|string|max:80',
+            'hint' => 'nullable|string|max:255',
+            'sort_order' => 'nullable|integer|min:0|max:999',
+            'active' => 'nullable|boolean',
+        ]);
+
+        $feedbackType->update([
+            'label' => $data['label'],
+            'hint' => $data['hint'] ?? null,
+            'sort_order' => $data['sort_order'] ?? $feedbackType->sort_order,
+            // Retired, not deleted: it stops being OFFERED and keeps rendering
+            // on every piece of feedback that already used it.
+            'active' => (bool) ($data['active'] ?? false),
+        ]);
+
+        return back()->with('success', $feedbackType->label . ' saved.');
     }
 
     public function updateDesk(Request $request, RequestDesk $desk): RedirectResponse

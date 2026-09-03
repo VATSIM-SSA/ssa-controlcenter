@@ -29,6 +29,9 @@ class Feedback extends Model implements DescribesActivityChanges
      */
     protected $fillable = [
         'feedback',
+        // VATSSA: compliment, complaint or bug report. See
+        // App\Models\Vatssa\FeedbackType -- a table, not a constant.
+        'vatssa_type',
         'submitter_user_id',
         'reference_user_id',
         'reference_position_id',

@@ -135,8 +135,16 @@ Route::middleware(['web', 'auth', 'activity', 'suspended'])
         Route::get('/mentorship', [SettingsController::class, 'mentorship'])->name('mentorship');
         Route::post('/mentorship', [SettingsController::class, 'updateMentorship'])->name('mentorship.update');
 
-        Route::get('/routing', [SettingsController::class, 'routing'])->name('routing');
-        Route::post('/routing', [SettingsController::class, 'updateRouting'])->name('routing.update');
+        // VATSSA: the Request routing GRID is gone. Desks are set on the
+        // member whose desks they are, from the access box on their profile,
+        // and read back from the access report -- which is where "what access
+        // does this person have" was always going to be asked.
+        //
+        // The grid rebuilt every desk in the division on every save, which is
+        // why it needed a guard against a browser omitting an empty
+        // multi-select and emptying all of them at once. Per member, that whole
+        // class of accident stops existing.
+        Route::post('/desks/{user}', [SettingsController::class, 'updateDesks'])->name('desks.update');
 
         Route::get('/moodle-courses', [SettingsController::class, 'courses'])->name('courses');
 
@@ -155,5 +163,11 @@ Route::middleware(['web', 'auth', 'activity', 'suspended'])
         Route::patch('/training-setup/types/{type}', [TrainingSetupController::class, 'updateType'])->name('setup.types.update');
         Route::post('/training-setup/desks', [TrainingSetupController::class, 'storeDesk'])->name('setup.desks.store');
         Route::patch('/training-setup/desks/{desk}', [TrainingSetupController::class, 'updateDesk'])->name('setup.desks.update');
+
+        // VATSSA: compliment, complaint, bug report. A table for the same
+        // reason training types and desks are one -- it describes how the
+        // division organises itself, which changes more often than the code.
+        Route::post('/training-setup/feedback-types', [TrainingSetupController::class, 'storeFeedbackType'])->name('setup.feedback-types.store');
+        Route::patch('/training-setup/feedback-types/{feedbackType}', [TrainingSetupController::class, 'updateFeedbackType'])->name('setup.feedback-types.update');
         Route::post('/moodle-courses', [SettingsController::class, 'updateCourses'])->name('courses.update');
     });

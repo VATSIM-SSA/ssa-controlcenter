@@ -273,7 +273,7 @@
                             Where a request goes. <strong>Per rating</strong> means the desk is
                             staffed separately for each rating &mdash; an S2 request reaches the
                             S2 coordinator. Who actually sits at each desk is set under
-                            <a href="{{ route('vatssa.admin.routing') }}">Request routing</a>.
+                            the Request desks box on a member's profile.
                         </p>
 
                         <div class="table-responsive">
@@ -362,6 +362,110 @@
                                                name="per_rating" value="1">
                                         <label class="form-check-label" for="d-per">Per rating</label>
                                     </div>
+                                </div>
+                                <div class="col-md-1">
+                                    <button class="btn btn-sm btn-primary w-100" type="submit">Add</button>
+                                </div>
+                            </div>
+                        </form>
+
+                    </div>
+                </div>
+            </div>
+
+            {{-- ---------------------------------------------------------- --}}
+            {{-- Feedback types                                             --}}
+            {{-- ---------------------------------------------------------- --}}
+            <div class="accordion-item">
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed" type="button"
+                            data-bs-toggle="collapse" data-bs-target="#feedbackTypesPane">
+                        Feedback types
+                        <span class="badge bg-light text-dark ms-2">{{ $feedbackTypes->count() }}</span>
+                    </button>
+                </h2>
+                <div id="feedbackTypesPane" class="accordion-collapse collapse" data-bs-parent="#setupAccordion">
+                    <div class="accordion-body">
+
+                        <p class="text-muted">
+                            What kind of feedback somebody is leaving. Upstream's feedback is one
+                            undifferentiated stream, so a compliment, a complaint and a bug report
+                            arrive in the same queue and read the same &mdash; three different jobs
+                            with three different urgencies. The kind shows as a column on the
+                            feedback report.
+                        </p>
+
+                        <div class="table-responsive">
+                            <table class="table table-sm align-middle">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Key</th>
+                                        <th>Label</th>
+                                        <th>Hint shown on the form</th>
+                                        <th style="width:6rem">Order</th>
+                                        <th style="width:6rem">Offered</th>
+                                        <th class="text-end">Save</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach($feedbackTypes as $type)
+                                        <tr>
+                                            <form method="POST" action="{{ route('vatssa.admin.setup.feedback-types.update', $type) }}">
+                                                @csrf
+                                                @method('PATCH')
+                                                <td><code class="small">{{ $type->key }}</code></td>
+                                                <td>
+                                                    <input type="text" class="form-control form-control-sm"
+                                                           name="label" value="{{ $type->label }}" required maxlength="80">
+                                                </td>
+                                                <td>
+                                                    <input type="text" class="form-control form-control-sm"
+                                                           name="hint" value="{{ $type->hint }}" maxlength="255">
+                                                </td>
+                                                <td>
+                                                    <input type="number" class="form-control form-control-sm"
+                                                           name="sort_order" value="{{ $type->sort_order }}" min="0" max="999">
+                                                </td>
+                                                <td>
+                                                    <div class="form-check">
+                                                        <input class="form-check-input" type="checkbox"
+                                                               name="active" value="1" @checked($type->active)>
+                                                    </div>
+                                                </td>
+                                                <td class="text-end">
+                                                    <button class="btn btn-sm btn-outline-secondary" type="submit">Save</button>
+                                                </td>
+                                            </form>
+                                        </tr>
+                                    @endforeach
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <hr>
+
+                        <p class="text-muted small">
+                            The key is stored on every piece of feedback of this kind and cannot be
+                            changed afterwards. Lower case, digits and hyphens.
+                        </p>
+                        <form method="POST" action="{{ route('vatssa.admin.setup.feedback-types.store') }}">
+                            @csrf
+                            <div class="row g-2 align-items-end">
+                                <div class="col-md-3">
+                                    <label class="form-label" for="f-key">Key</label>
+                                    <input type="text" class="form-control form-control-sm" id="f-key"
+                                           name="key" required maxlength="40"
+                                           pattern="[a-z0-9\-]+" placeholder="suggestion">
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label" for="f-label">Label</label>
+                                    <input type="text" class="form-control form-control-sm" id="f-label"
+                                           name="label" required maxlength="80" placeholder="Suggestion">
+                                </div>
+                                <div class="col-md-5">
+                                    <label class="form-label" for="f-hint">Hint</label>
+                                    <input type="text" class="form-control form-control-sm" id="f-hint"
+                                           name="hint" maxlength="255">
                                 </div>
                                 <div class="col-md-1">
                                     <button class="btn btn-sm btn-primary w-100" type="submit">Add</button>
