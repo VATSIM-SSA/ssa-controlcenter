@@ -2,6 +2,7 @@
 
 namespace App\Livewire;
 
+use App\Helpers\FeedbackStatus;
 use App\Models\Area;
 use App\Models\Feedback;
 use App\Models\ManagementReport;
@@ -44,6 +45,18 @@ class FeedbackTable extends Component
     public string $submitter = '';
 
     /**
+     * Which statuses to show. DEFAULTS TO OPEN, and that default is the whole
+     * point of #1467: a division that receives feedback steadily was scrolling
+     * past everything it had already dealt with to find the one thing it had
+     * not.
+     *
+     * Empty string means every status, so nothing is ever hidden for good --
+     * closed feedback is one select away, and stays searchable.
+     */
+    #[Url]
+    public string $status = FeedbackStatus::OPEN->value;
+
+    /**
      * Toggled by the edit modal's open/close events so the controller and
      * position pick-lists (the full active-controller and position sets) are
      * only queried and rendered while the modal is actually open, never on a
@@ -81,7 +94,10 @@ class FeedbackTable extends Component
      */
     public function clearFilters(): void
     {
-        $this->reset(['search', 'controller', 'area', 'position', 'submitter']);
+        // `status` is reset with the rest, which returns it to OPEN rather than
+        // to "all" -- clearing filters should give somebody their queue back,
+        // not the entire archive.
+        $this->reset(['search', 'controller', 'area', 'position', 'submitter', 'status']);
         $this->resetPage();
     }
 
@@ -95,7 +111,10 @@ class FeedbackTable extends Component
             || $this->controller !== ''
             || $this->position !== ''
             || $this->submitter !== ''
-            || $this->area !== null;
+            || $this->area !== null
+            // Not `!== ''`: OPEN is the default, so only a DEPARTURE from it
+            // counts as a filter somebody has set and might want to clear.
+            || $this->status !== FeedbackStatus::OPEN->value;
     }
 
     /**
@@ -114,6 +133,9 @@ class FeedbackTable extends Component
             ->when($this->position !== '', fn (Builder $q) => $q->whereHas('referencePosition', fn (Builder $q) => $q->where('callsign', 'like', '%' . $this->position . '%')->orWhere('name', 'like', '%' . $this->position . '%')))
             ->when($this->area !== null, fn (Builder $q) => $q->whereHas('referencePosition', fn (Builder $q) => $q->where('area_id', $this->area)))
             ->when($this->submitter !== '', fn (Builder $q) => $q->whereHas('submitter', fn (Builder $q) => $q->where('first_name', 'like', '%' . $this->submitter . '%')->orWhere('last_name', 'like', '%' . $this->submitter . '%')->orWhere('id', 'like', '%' . $this->submitter . '%')))
+            // Validated against the enum rather than passed through: a crafted
+            // ?status= must narrow to a real status or do nothing at all.
+            ->when(FeedbackStatus::tryFrom($this->status) !== null, fn (Builder $q) => $q->where('status', $this->status))
             ->orderBy('created_at', $direction);
     }
 
@@ -124,6 +146,7 @@ class FeedbackTable extends Component
         $feedbacks = $this->baseQuery()->paginate($perPage);
 
         return view('livewire.feedback-table', [
+            'statuses' => FeedbackStatus::cases(),
             'feedbacks' => $feedbacks,
             'areas' => $this->filterAreas(),
             'editControllers' => $this->showReferenceOptions ? User::getActiveAtcMembers() : collect(),
