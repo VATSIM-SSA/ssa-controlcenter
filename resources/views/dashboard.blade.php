@@ -312,6 +312,20 @@
                     @endif
                     {{ Gate::inspect('apply', \App\Models\Training::class)->message() }}
                 </div>
+
+                {{-- VATSSA: WHAT the requirements are, not only which one
+                     refused you first.
+
+                     The pill above is the policy's first denial, one sentence,
+                     in whatever order the policy happens to check. Somebody
+                     reading it learned one reason at a time and had no way to
+                     see the rest. Same rules, listed. --}}
+                <div class="mt-3">
+                    @include('vatssa.parts.requirements', [
+                        'requirements' => \App\Services\Vatssa\MembershipCheck::for(\Auth::user()),
+                        'heading' => 'What you need',
+                    ])
+                </div>
                 
                 @if(Setting::get('trainingEnabled'))
                 <div class="alert alert-primary" role="alert">

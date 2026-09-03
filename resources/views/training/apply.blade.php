@@ -66,6 +66,29 @@
                         <p class="card-text">You should expect that we will help you as best as we can to prepare you for your practical exam. You will be assigned to a mentor that will guide you on the way, and you should expect him to take you and your time seriously and to adapt the training to your level of competence.</p>
                     </div>
                 </div>
+
+                {{-- VATSSA: the same requirement list as the dashboard, rendered
+                     by the same partial.
+
+                     The warning at the top of this page is the two platform
+                     rules only, and it appears only when one is missing. This is
+                     the whole list, always, so somebody reading before they
+                     apply can see where they stand rather than discovering it
+                     three steps in. Rating-specific lines are not here: the
+                     rating is chosen on the right, in Vue, and this page renders
+                     once on the server. --}}
+                <div class="card shadow mb-4">
+                    <div class="card-header py-3 d-flex flex-row align-items-center justify-content-between">
+                        <h6 class="m-0 fw-bold text-primary">
+                            <i class="fas fa-list-check"></i>&nbsp;Where you stand
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        @include('vatssa.parts.requirements', [
+                            'requirements' => \App\Services\Vatssa\MembershipCheck::for(Auth::user()),
+                        ])
+                    </div>
+                </div>
             </div>
 
             <div class="col-xl-6 col-lg-12 col-md-12 mb-12">
