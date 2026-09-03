@@ -20,6 +20,7 @@ use App\Models\TrainingInterest;
 use App\Models\TrainingReport;
 use App\Models\User;
 use App\Models\Vatssa\ActionLog;
+use App\Models\Vatssa\MembershipRequest;
 use App\Models\Vatssa\PlatformRequirement;
 use App\Notifications\TrainingClosedNotification;
 use App\Notifications\TrainingCreatedNotification;
@@ -550,17 +551,26 @@ class TrainingController extends Controller
 
         // Whether the rating upgrade for that part was already requested, so the modal can
         // warn when it was not. Mirrors how RatingUpgrade picks its target rating.
-        $upgradeRequestedForPart = $completablePart !== null && $training->tasks->contains(function (Task $task) use ($training, $completablePart) {
-            if ($task->type !== RatingUpgrade::class || $task->status !== TaskStatus::COMPLETED) {
-                return false;
-            }
+        //
+        // VATSSA: asked of BOTH sources, and that is not temporary. A rating
+        // upgrade is a membership request now, so new ones are never Tasks --
+        // but every historical one is a Task and always will be. Reading only
+        // one of the two makes this warning wrong for half the trainings in the
+        // database, and a warning that is always on is one people click past.
+        $upgradeRequestedForPart = $completablePart !== null && (
+            MembershipRequest::upgradeCompletedFor($training, $completablePart)
+            || $training->tasks->contains(function (Task $task) use ($training, $completablePart) {
+                if ($task->type !== RatingUpgrade::class || $task->status !== TaskStatus::COMPLETED) {
+                    return false;
+                }
 
-            if ($task->subject_training_rating_id !== null) {
-                return (int) $task->subject_training_rating_id === $completablePart->id;
-            }
+                if ($task->subject_training_rating_id !== null) {
+                    return (int) $task->subject_training_rating_id === $completablePart->id;
+                }
 
-            return $training->getHighestVatsimRating()?->id === $completablePart->id;
-        });
+                return $training->getHighestVatsimRating()?->id === $completablePart->id;
+            })
+        );
 
         return view('training.show', compact('training', 'reportsAndExams', 'trainingMentors', 'types', 'experiences', 'activities', 'trainingInterests', 'activeTrainingInterest', 'relatedTasks', 'requestTypes', 'requestPopularAssignees', 'showCompletionControl', 'completablePart', 'outstandingRatings', 'otherOutstandingRatings', 'outstandingEndorsementRatings', 'canCompletePartially', 'upgradeRequestedForPart'));
     }

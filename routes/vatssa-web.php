@@ -8,6 +8,7 @@ use App\Http\Controllers\Vatssa\MembershipRequestController;
 use App\Http\Controllers\Vatssa\RequestActionController;
 use App\Http\Controllers\Vatssa\SettingsController;
 use App\Http\Controllers\Vatssa\TaskEditController;
+use App\Http\Controllers\Vatssa\TerminalLogController;
 use App\Http\Controllers\Vatssa\TrainingSetupController;
 use Illuminate\Support\Facades\Route;
 
@@ -147,6 +148,22 @@ Route::middleware(['web', 'auth', 'activity', 'suspended'])
             ->name('vatssa.membership.check');
         Route::post('/admin/request/{membershipRequest}/state', [MembershipAdminController::class, 'transition'])
             ->name('vatssa.membership.transition');
+    });
+
+/*
+| Terminal management. The audit surface, so reading it is its own permission:
+| the log carries CERT queries and disciplinary findings, which is the same
+| sensitivity class as a member note.
+*/
+Route::middleware(['web', 'auth', 'activity', 'suspended'])
+    ->prefix('vatssa/terminal')
+    ->group(function () {
+        Route::get('/', [TerminalLogController::class, 'index'])->name('vatssa.terminal.index');
+        Route::post('/', [TerminalLogController::class, 'store'])->name('vatssa.terminal.store');
+        Route::get('/comment/{terminalComment}', [TerminalLogController::class, 'comment'])
+            ->name('vatssa.terminal.comment');
+        Route::get('/prefill/{membershipRequest}', [TerminalLogController::class, 'prefill'])
+            ->name('vatssa.terminal.prefill');
     });
 
 Route::middleware(['web', 'auth', 'suspended'])

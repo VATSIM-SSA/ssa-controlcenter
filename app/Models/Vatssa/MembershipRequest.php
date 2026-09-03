@@ -232,6 +232,44 @@ class MembershipRequest extends Model
     }
 
     /**
+     * Whether the rating upgrade for one part of a training has been done.
+     *
+     * ## Why this exists
+     *
+     * The training page warns before signing off a part that no upgrade was
+     * requested for it. That check used to read COMPLETED RatingUpgrade tasks.
+     * Rating upgrades are membership requests now, so the task is never
+     * created and the check silently became "always false" -- the warning would
+     * have shown on every sign-off for ever, and a warning that is always on is
+     * one people learn to click past.
+     *
+     * ## Both sources, and that is not temporary
+     *
+     * Historical rows are Tasks and always will be; new ones are membership
+     * requests. Answering from only one of the two would make the warning wrong
+     * for half the trainings in the database, so the caller asks both. That is
+     * the honest shape of a system that changed how it records something.
+     *
+     * Mirrors how RatingUpgrade picked its target rating: an explicit
+     * `rating_id` when the request names one, otherwise the training's highest
+     * VATSIM rating.
+     */
+    public static function upgradeCompletedFor(Training $training, Rating $part): bool
+    {
+        return static::where('type', MembershipRequestType::RATING_UPGRADE)
+            ->where('state', MembershipRequestState::COMPLETE)
+            ->where('training_id', $training->id)
+            ->get()
+            ->contains(function (self $request) use ($training, $part) {
+                if ($request->rating_id !== null) {
+                    return (int) $request->rating_id === $part->id;
+                }
+
+                return $training->getHighestVatsimRating()?->id === $part->id;
+            });
+    }
+
+    /**
      * Whether this member already has one of these open.
      *
      * One of the four checks that genuinely BLOCKS a new request -- see

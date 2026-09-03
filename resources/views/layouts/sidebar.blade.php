@@ -287,6 +287,15 @@
                 icon="fa-box-archive" title="Closed requests"
                 :active="request()->route('queue') === 'closed'" />
 
+            {{-- The audit surface. Its own permission, because the log carries
+                 CERT queries and disciplinary findings -- the same sensitivity
+                 class as a member note, which is admin-only for that reason. --}}
+            @can('membership.terminal.view')
+                <x-sidebar.item :href="route('vatssa.terminal.index')"
+                    icon="fa-terminal" title="Terminal management"
+                    :active="Route::is('vatssa.terminal.index')" />
+            @endcan
+
         @endcan
 
 
