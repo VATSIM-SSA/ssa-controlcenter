@@ -439,6 +439,49 @@
             </div>
 
             <div class="col-xl-4 col-lg-12 col-md-12">
+                {{-- Feedback about this controller.
+
+                     #1467 asks for it here so staff can see how much feedback
+                     somebody has received without going to the report and
+                     filtering. Renders nothing for anybody who cannot read the
+                     feedback report, and the rows come through the same
+                     `visibleTo()` scope that report uses -- so this can never
+                     be a way around the area scope.
+
+                     The submitter is named, unlike the controller-facing page:
+                     this is the staff view, and knowing who said what is half
+                     of deciding what to do about it. --}}
+                @if($feedbackReceived->isNotEmpty())
+                    <div class="card shadow mb-4">
+                        <div class="card-header bg-primary py-3 d-flex flex-row align-items-center justify-content-between">
+                            <h6 class="m-0 fw-bold text-white">Feedback received</h6>
+                            <a href="{{ route('reports.feedback', ['controller' => $user->id, 'status' => '']) }}"
+                               class="btn btn-icon btn-light btn-sm">
+                                <i class="fas fa-list"></i> All
+                            </a>
+                        </div>
+                        <div class="card-body">
+                            @foreach($feedbackReceived as $item)
+                                <div class="mb-3 pb-3 {{ ! $loop->last ? 'border-bottom' : '' }}">
+                                    <div class="d-flex justify-content-between align-items-start gap-2">
+                                        <span class="small text-muted">
+                                            {{ $item->referencePosition?->callsign ?? 'No position' }}
+                                            &middot; {{ $item->created_at->toEuropeanDate() }}
+                                        </span>
+                                        <span class="text-nowrap">
+                                            @if($item->sentiment)
+                                                <span class="badge text-bg-{{ $item->sentiment->color() }}">{{ $item->sentiment->label() }}</span>
+                                            @endif
+                                            <span class="badge text-bg-{{ $item->status->color() }}">{{ $item->status->label() }}</span>
+                                        </span>
+                                    </div>
+                                    <div class="mt-1" style="white-space: pre-wrap;">{{ Str::limit($item->feedback, 240) }}</div>
+                                </div>
+                            @endforeach
+                        </div>
+                    </div>
+                @endif
+
                 <div class="card shadow mb-4">
                     <div class="card-header bg-primary py-3 d-flex flex-row align-items-center justify-content-between">
                         <h6 class="m-0 fw-bold text-white">

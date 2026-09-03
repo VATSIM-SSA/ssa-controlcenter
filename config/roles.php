@@ -121,6 +121,10 @@ return [
         'feedback.correlated.view',
         'feedback.uncorrelated.view',
         'feedback.update',
+        // Close or forward feedback. Distinct from `feedback.update`, which
+        // only re-points a submission at the right controller or position:
+        // forwarding puts words in front of the person they are about.
+        'feedback.action',
 
         // Bookings
         'bookings.bypass-restrictions',
