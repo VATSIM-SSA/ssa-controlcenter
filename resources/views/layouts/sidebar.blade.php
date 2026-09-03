@@ -216,9 +216,21 @@
              are now gated too -- the roster came out of the nav, and the
              endorsement rosters became staff-only -- which made an existing
              oversight visible on every account. --}}
-        {{-- `users.manage` alone now: endorsements moved to Training, so the
-             roster permission no longer has anything under this heading. --}}
-        @can('users.manage')
+        {{-- VATSSA: Members holds THREE things now -- the directory, the
+             membership queues and the Terminal log.
+
+             The membership desk had its own heading with three top-level
+             entries beside it. That was wrong twice over: three entries for
+             three views of ONE list is a menu that grows every time a queue is
+             added, and a second heading beside Members split one subject across
+             two places. Members is who they are; Requests is what they have
+             asked for; Terminal management is what we did about it. One
+             section, three dropdowns.
+
+             The heading now appears for anybody holding EITHER permission --
+             `users.manage` alone would have hidden it from a membership manager
+             who could still reach the queues by url. --}}
+        @canany(['users.manage', 'membership.requests.view'])
 
         {{-- Divider --}}
         <div class="sidebar-divider"></div>
@@ -236,7 +248,35 @@
                 <x-sidebar.item :href="route('users.other')" title="Other Users" collapse />
             </x-sidebar.section>
 
-        @endif
+        @endcan
+
+        {{-- The membership queues, as ONE dropdown.
+
+             Three views of one list, so they collapse together the way Requests
+             does under Training. The page they open no longer carries tabs of
+             its own: navigating from inside a page duplicates the menu and then
+             the two disagree about which one is current. --}}
+        @can('membership.requests.view')
+
+            <x-sidebar.section icon="fa-inbox" title="Requests"
+                :active="Route::is('vatssa.membership.index') || Route::is('vatssa.membership.show')"
+                id="collapseMembership">
+                <x-sidebar.item :href="route('vatssa.membership.index', ['queue' => 'open'])" title="Open requests" collapse />
+                <x-sidebar.item :href="route('vatssa.membership.index', ['queue' => 'training'])" title="Pending training" collapse />
+                <x-sidebar.item :href="route('vatssa.membership.index', ['queue' => 'closed'])" title="Closed requests" collapse />
+            </x-sidebar.section>
+
+        @endcan
+
+        {{-- The audit surface. Its own permission, because the log carries CERT
+             queries and disciplinary findings -- the same sensitivity class as
+             a member note, which is admin-only for that reason. One page, so
+             one item rather than a dropdown with a single child. --}}
+        @can('membership.terminal.view')
+            <x-sidebar.item :href="route('vatssa.terminal.index')"
+                icon="fa-terminal" title="Terminal management"
+                :active="Route::is('vatssa.terminal.index')" />
+        @endcan
 
         {{-- VATSSA: the ATC roster is not in the sidebar.
 
@@ -251,53 +291,7 @@
              longer advertised. The roster people actually read is the public
              one on vatssa.com, served by `/api/vatssa/roster`. --}}
 
-        @endcan
-
-        {{-- VATSSA: the membership desk.
-
-             Its own section rather than an entry under Members, because it is a
-             different job done by different people: Members is the directory,
-             this is a queue of work. The three entries are three views of one
-             list -- open is what the desk has to act on, pending training is
-             alive but somebody else's move, and closed is the record.
-
-             Gated on `membership.requests.view`, which the ATC training manager
-             also holds: they may assign a visiting endorsement on the strength
-             of the membership team's Terminal check, so they need to see
-             whether it came back clean. --}}
-        @can('membership.requests.view')
-
-            {{-- Divider --}}
-            <div class="sidebar-divider"></div>
-
-            {{-- Heading --}}
-            <div class="sidebar-heading">
-            Membership
-            </div>
-
-            <x-sidebar.item :href="route('vatssa.membership.index', ['queue' => 'open'])"
-                icon="fa-inbox" title="Open requests"
-                :active="Route::is('vatssa.membership.index') && request()->route('queue') !== 'training' && request()->route('queue') !== 'closed'" />
-
-            <x-sidebar.item :href="route('vatssa.membership.index', ['queue' => 'training'])"
-                icon="fa-hourglass-half" title="Pending training"
-                :active="request()->route('queue') === 'training'" />
-
-            <x-sidebar.item :href="route('vatssa.membership.index', ['queue' => 'closed'])"
-                icon="fa-box-archive" title="Closed requests"
-                :active="request()->route('queue') === 'closed'" />
-
-            {{-- The audit surface. Its own permission, because the log carries
-                 CERT queries and disciplinary findings -- the same sensitivity
-                 class as a member note, which is admin-only for that reason. --}}
-            @can('membership.terminal.view')
-                <x-sidebar.item :href="route('vatssa.terminal.index')"
-                    icon="fa-terminal" title="Terminal management"
-                    :active="Route::is('vatssa.terminal.index')" />
-            @endcan
-
-        @endcan
-
+        @endcanany
 
         @can('fir.management.reports.view')
             {{-- Divider --}}

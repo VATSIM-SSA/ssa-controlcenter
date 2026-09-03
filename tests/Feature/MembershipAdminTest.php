@@ -254,14 +254,49 @@ class MembershipAdminTest extends TestCase
     // ------------------------------------------------------------- the sidebar
 
     #[Test]
-    public function the_membership_section_appears_for_staff_and_nobody_else(): void
+    public function the_queues_live_under_members_as_one_dropdown(): void
     {
-        $staffHtml = $this->actingAs($this->withRole('membership-manager'))
+        // Not their own heading with three top-level entries beside it: three
+        // entries for three views of ONE list is a menu that grows every time a
+        // queue is added, and a second heading split one subject across two
+        // places. Members is who they are, Requests is what they asked for,
+        // Terminal management is what we did about it.
+        $html = $this->actingAs($this->withRole('membership-manager'))
             ->get(route('dashboard'))->getContent();
-        $this->assertStringContainsString('Open requests', $staffHtml);
 
-        $memberHtml = $this->actingAs(User::factory()->create())
-            ->get(route('dashboard'))->getContent();
-        $this->assertStringNotContainsString('Pending training', $memberHtml);
+        $this->assertStringContainsString('Members', $html);
+        $this->assertStringContainsString('Open requests', $html);
+        $this->assertStringContainsString('Pending training', $html);
+        $this->assertStringContainsString('Terminal management', $html);
+
+        // The collapse the three sit inside, which is what makes it a dropdown
+        // rather than three rows.
+        $this->assertStringContainsString('collapseMembership', $html);
+
+        // And no heading of its own any more.
+        $this->assertStringNotContainsString('>
+            Membership
+', $html);
+    }
+
+    #[Test]
+    public function a_member_sees_none_of_it(): void
+    {
+        $html = $this->actingAs(User::factory()->create())->get(route('dashboard'))->getContent();
+
+        $this->assertStringNotContainsString('Pending training', $html);
+        $this->assertStringNotContainsString('Terminal management', $html);
+    }
+
+    #[Test]
+    public function the_queue_page_carries_no_navigation_of_its_own(): void
+    {
+        // The sidebar owns navigation. Two menus for one thing eventually
+        // disagree about which is current, and the page's copy is the one that
+        // cannot show you where else you might go.
+        $html = $this->actingAs($this->withRole('membership-manager'))
+            ->get(route('vatssa.membership.index', ['queue' => 'open']))->getContent();
+
+        $this->assertStringNotContainsString('nav-tabs', $html);
     }
 }

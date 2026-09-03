@@ -1,25 +1,37 @@
 @extends('layouts.app')
 
-@section('title', 'Membership')
+@php
+    use App\Helpers\Vatssa\MembershipRequestType;
+
+    $queueTitles = [
+        'open' => 'Open requests',
+        'training' => 'Pending training',
+        'closed' => 'Closed requests',
+    ];
+@endphp
+
+@section('title', $queueTitles[$queue])
 
 @section('content')
 
-@php
-    use App\Helpers\Vatssa\MembershipRequestType;
-@endphp
-
 {{--
-    VATSSA: the membership desk.
+    VATSSA: the membership desk, one queue at a time.
 
-    Three queues as tabs rather than three sidebar pages, because they are three
-    views of one list and somebody working the desk moves between them
-    constantly. The counts are on the tabs: a queue you cannot see the length of
-    is a queue you check by opening it.
+    The three queues live in the sidebar dropdown, not in tabs on this page.
+    Putting them in both meant the same navigation in two places, and two menus
+    for one thing eventually disagree about which is current -- with the page's
+    copy being the one that cannot show you where else you might go.
+
+    So this page says which queue it is and how many are in it, and the sidebar
+    says where else to go.
 --}}
 
 <div class="card shadow mb-4">
     <div class="card-header bg-primary py-3 d-flex flex-row align-items-center justify-content-between">
-        <h6 class="m-0 fw-bold text-white">Membership requests</h6>
+        <h6 class="m-0 fw-bold text-white">
+            {{ $queueTitles[$queue] }}
+            <span class="badge text-bg-light text-dark">{{ $counts[$queue] }}</span>
+        </h6>
         @can('membership.requests.manage')
             <button type="button" class="btn btn-icon btn-light btn-sm"
                     data-bs-toggle="modal" data-bs-target="#membership-create-modal">
@@ -29,18 +41,17 @@
     </div>
 
     <div class="card-body p-0">
-        <ul class="nav nav-tabs px-3 pt-2">
-            @foreach(['open' => 'Open requests', 'training' => 'Pending training', 'closed' => 'Closed'] as $key => $label)
-                <li class="nav-item">
-                    <a class="nav-link {{ $queue === $key ? 'active' : '' }}"
-                       href="{{ route('vatssa.membership.index', ['queue' => $key]) }}">
-                        {{ $label }}
-                        <span class="badge text-bg-secondary">{{ $counts[$key] }}</span>
-                    </a>
-                </li>
-            @endforeach
-        </ul>
+        {{-- No tabs here.
 
+             The three queues used to be tabs across the top of this card, which
+             put the same navigation in two places: the sidebar dropdown and the
+             page. Two menus for one thing eventually disagree about which is
+             current, and the page's copy is the one that cannot show you where
+             else you might go.
+
+             The sidebar owns navigation. This card shows one queue, says which,
+             and says how many are in the other two without offering to take you
+             there. --}}
         <div class="p-3 border-bottom">
             <form method="GET" class="row g-2">
                 <input type="hidden" name="queue" value="{{ $queue }}">
