@@ -284,6 +284,30 @@
     </div>
     
     <div class="col-xl-4 col-lg-5">
+
+        {{-- VATSSA: what this column offers depends on whether you are one of
+             us yet.
+
+             A non-member could only ever be told "Not eligible" by the Request
+             Training block, which reads as the application being broken and
+             hides the two things that ARE open to them. They get the membership
+             box instead.
+
+             A VISITING controller gets the training block back, and that is not
+             a special case bolted on -- a visitor can request endorsement
+             training, FSS and the like, so training genuinely is available to
+             them. The rule is membership OR visiting, not membership alone. --}}
+        @php($vatssaCanTrain = Auth::user()->isMember() || Auth::user()->isVisiting())
+
+        @unless($vatssaCanTrain)
+            @include('vatssa.parts.membership-boxes', ['user' => Auth::user()])
+        @endunless
+
+        {{-- Their own requests, when they have any. Visiting and transfer only:
+             the other three types are Terminal work nobody filed. --}}
+        @include('vatssa.parts.my-membership-requests', ['user' => Auth::user()])
+
+        @if($vatssaCanTrain)
         <div class="card shadow mb-4">
             <!-- Card Header - Dropdown -->
             <div class="card-header bg-primary py-3 d-flex flex-row align-items-center justify-content-between">
@@ -418,6 +442,7 @@
                 @endcan
             </div>
         </div>
+        @endif
     </div>
     
 </div>

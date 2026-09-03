@@ -241,6 +241,20 @@ return [
         // and has no business changing their rating or their roles.
         'users.profile.view',
         'users.access.view',
+
+        // Membership
+        //
+        // Transfers, visits, rating upgrades, and the record of what was done
+        // on VATSIM Terminal. Split into three because they are three different
+        // sensitivities: reading the queue, deciding on it, and reading a
+        // person's CERT history.
+        'membership.requests.view',
+        'membership.requests.manage',
+        // The Terminal log carries CERT queries and disciplinary findings --
+        // the same sensitivity class as a member note, which is admin-only for
+        // exactly this reason. Narrower than `requests.view` on purpose.
+        'membership.terminal.view',
+        'membership.terminal.log',
         // Admin only. Deliberately NOT inside users.** for anybody else --
         // see the denies on the ATC training manager below.
         'users.notes.view',
@@ -325,6 +339,12 @@ return [
             'bookings.**',
             'roles.mentor.manage',              // the only role ATM may grant
             'events.exams.manage',              // the fallback when events are short
+            // The ATM may assign a visiting endorsement on the strength of the
+            // membership team having done the Terminal check, so they must be
+            // able to READ the request and see whether that check came back
+            // clean. Deciding the request, and the CERT log behind it, stay
+            // with membership.
+            'membership.requests.view',
         ],
 
         // Day-to-day pipeline.
@@ -384,6 +404,8 @@ return [
             'tasks.**',                         // includes the overview
             'training.view',                    // context for an upgrade, nothing more
             'fir.management.reports.view',       // the request queue they work from
+            // The module this role exists for.
+            'membership.**',
         ],
 
         // Deliberately narrow. Bookings and examinations, and nothing else --

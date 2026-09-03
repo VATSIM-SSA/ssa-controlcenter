@@ -138,6 +138,22 @@ return [
     | Ratings are named, not id'd, because ids differ between environments and a
     | routing table that breaks on a database restore is worse than useless.
     */
+    /*
+    |--------------------------------------------------------------------------
+    | Our VATSIM region
+    |--------------------------------------------------------------------------
+    |
+    | Decides whether somebody outside the division is offered a TRANSFER or a
+    | VISIT, and that is VATSIM policy rather than a preference: inside the
+    | region you move, outside it you visit. TVCP 5.1-5.3.
+    |
+    | Config rather than a constant because it is the one line another division
+    | forking this would have to change, and a hard-coded 'EMEA' would send
+    | every one of their applicants down the wrong branch while looking
+    | deliberate.
+    */
+    'region' => env('VATSSA_REGION', 'EMEA'),
+
     'request_ratings' => [
         SoloEndorsement::class => ['S2', 'S3', 'C1'],
     ],

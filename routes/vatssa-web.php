@@ -3,6 +3,7 @@
 use App\Http\Controllers\Vatssa\ActionLogController;
 use App\Http\Controllers\Vatssa\AvailabilityController;
 use App\Http\Controllers\Vatssa\InternalNoteController;
+use App\Http\Controllers\Vatssa\MembershipRequestController;
 use App\Http\Controllers\Vatssa\RequestActionController;
 use App\Http\Controllers\Vatssa\SettingsController;
 use App\Http\Controllers\Vatssa\TaskEditController;
@@ -100,6 +101,37 @@ Route::middleware(['web', 'auth', 'activity', 'suspended'])
         Route::post('/{poll}/visibility', [AvailabilityController::class, 'updateVisibility'])
             ->middleware('throttle:20,1')
             ->name('vatssa.availability.visibility');
+    });
+
+/*
+|--------------------------------------------------------------------------
+| Membership: transfers and visits
+|--------------------------------------------------------------------------
+|
+| NOT public, and deliberately. Somebody outside the division can already log
+| in -- VATSIM OAuth through Handover creates the account and `isMember()` is
+| simply false for them -- so asking them to sign in with the CID the request
+| is about avoids both a spam surface and an identity problem.
+|
+| Ungated by permission for the same reason: these two routes exist FOR the
+| people who hold no permissions at all. The controller refuses anybody who is
+| already a member, already visiting, or already has one open.
+*/
+// 'web' and 'suspended' matter here. Without 'web' there is no session, so
+// ShareErrorsFromSession never runs and the form cannot show a validation
+// error; without 'suspended' a suspended account could ask to join us, which
+// is one of the four things that genuinely blocks a request.
+//
+// NOT 'activity': that middleware is about controlling activity in the
+// division, and somebody who is not in the division yet has none by
+// definition.
+Route::middleware(['web', 'auth', 'suspended'])
+    ->prefix('vatssa/membership')
+    ->group(function () {
+        Route::get('/request', [MembershipRequestController::class, 'create'])->name('vatssa.membership.create');
+        Route::post('/request', [MembershipRequestController::class, 'store'])
+            ->middleware('throttle:10,1')
+            ->name('vatssa.membership.store');
     });
 
 /*

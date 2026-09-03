@@ -100,7 +100,15 @@ class MembershipCheckTest extends TestCase
     #[Test]
     public function the_dashboard_renders_the_list_for_somebody_who_cannot_apply(): void
     {
-        $user = User::factory()->create();
+        // A MEMBER who cannot apply. A plain factory user is not in the
+        // division, and since the membership module landed those people get the
+        // transfer/visit box instead of the training block -- so this test has
+        // to say which of the two it is about, or it silently starts asserting
+        // against a card it was not written for.
+        $user = User::factory()->create([
+            'division' => config('app.owner_code'),
+            'subdivision' => config('app.owner_code'),
+        ]);
 
         $html = $this->actingAs($user)->get(route('dashboard'))->getContent();
 

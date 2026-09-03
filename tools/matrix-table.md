@@ -1,6 +1,6 @@
 # Expanded matrix — roles.php
 
-68 permissions x 10 roles.
+72 permissions x 10 roles.
 
 | Permission | admin | atc-training-manager | membership-manager | events-team | pipeline-coordinator | nav-editor | feedback-team | mentor | moderator | director |
 |---|---|---|---|---|---|---|---|---|---|---|
@@ -44,6 +44,10 @@
 | `users.manage` | O | O | O |  |  |  |  |  |  |  |
 | `users.profile.view` | O | O | O |  | O |  |  |  |  |  |
 | `users.access.view` | O |  |  |  |  |  |  |  |  |  |
+| `membership.requests.view` | O | O | O |  |  |  |  |  |  |  |
+| `membership.requests.manage` | O |  | O |  |  |  |  |  |  |  |
+| `membership.terminal.view` | O |  | O |  |  |  |  |  |  |  |
+| `membership.terminal.log` | O |  | O |  |  |  |  |  |  |  |
 | `users.notes.view` | O |  |  |  |  |  |  |  |  |  |
 | `users.workmail.use` | O | O |  |  | O |  |  |  |  |  |
 | `tasks.manage` | O | O | O |  | O |  |  | O |  |  |
@@ -73,4 +77,4 @@
 | `roles.mentor.manage` | O | O |  |  |  |  |  |  |  |  |
 | `roles.feedback-team.manage` | O |  |  |  |  |  |  |  |  |  |
 
-**Totals:** admin **68** · atc-training-manager **45** · membership-manager **10** · events-team **7** · pipeline-coordinator **30** · nav-editor **2** · feedback-team **4** · mentor **9** · moderator **0** · director **0**
+**Totals:** admin **72** · atc-training-manager **46** · membership-manager **14** · events-team **7** · pipeline-coordinator **30** · nav-editor **2** · feedback-team **4** · mentor **9** · moderator **0** · director **0**
