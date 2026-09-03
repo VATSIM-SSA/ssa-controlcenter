@@ -158,6 +158,33 @@
                     </form>
                 </div>
             </div>
+
+            {{-- Who may open it, changeable after the fact.
+
+                 The choice used to be made once, in the creation form, and a
+                 poll created invite-only could not be opened up: you deleted it
+                 and built a new one, losing every answer already given. That is
+                 the same failure as not being able to add a participant, and it
+                 gets the same fix. Narrowing works too -- closing it stops new
+                 strangers arriving without touching the answers already in. --}}
+            <div class="card shadow mb-4">
+                <div class="card-header bg-primary py-3">
+                    <h6 class="m-0 fw-bold text-white">
+                        <i class="fas fa-user-lock"></i>&nbsp;Who can open it
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="{{ route('vatssa.availability.visibility', $poll) }}">
+                        @csrf
+                        <select class="form-select form-select-sm mb-2" name="visibility" required>
+                            @foreach(\App\Models\Vatssa\AvailabilityPoll::VISIBILITIES as $key => $label)
+                                <option value="{{ $key }}" @selected($poll->visibility === $key)>{{ $label }}</option>
+                            @endforeach
+                        </select>
+                        <button type="submit" class="btn btn-sm btn-outline-secondary">Change</button>
+                    </form>
+                </div>
+            </div>
         @endif
     </div>
 </div>

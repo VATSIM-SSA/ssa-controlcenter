@@ -33,6 +33,10 @@
                                 <th data-field="id" data-sortable="true" data-filter-control="input" data-visible-search="true">Mentor ID</th>
                                 <th data-field="mentor" data-sortable="true" data-filter-control="input">Mentor</th>
                                 <th data-field="level" data-sortable="true" data-filter-control="select" data-filter-strict-search="false">Area</th>
+                                {{-- VATSSA: load against the ceiling. A count with no
+                                     denominator is why this page did not answer
+                                     "who can take another one". --}}
+                                <th data-field="load" data-sortable="true">Load</th>
                                 <th data-field="applied" data-sortable="false">Last training</th>
                                 <th data-field="teaching" data-sortable="true" data-filter-control="input">Teaching</th>
                             </tr>
@@ -44,6 +48,18 @@
                                     <td>{{ $mentor->name }}</td>
                                     <td>
                                         {{ $mentor->getInlineMentoringAreas() }}
+                                    </td>
+                                    <td>
+                                        @php
+                                            $load = $capacity[$mentor->id]['load'];
+                                            $limit = $capacity[$mentor->id]['limit'];
+                                        @endphp
+                                        @if($limit === null)
+                                            {{-- No ceiling set is UNLIMITED, not zero. --}}
+                                            {{ $load }} <span class="text-muted">/ no limit</span>
+                                        @else
+                                            <span class="{{ $load >= $limit ? 'text-danger fw-bold' : '' }}">{{ $load }} / {{ $limit }}</span>
+                                        @endif
                                     </td>
                                     <td>
                                         @if($mentor->trainingReports->count() > 0)

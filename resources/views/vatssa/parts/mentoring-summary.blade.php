@@ -27,6 +27,17 @@
     Renders NOTHING for somebody who is not a mentor, so the column collapses
     and Trainings takes the full width rather than sitting beside a hole.
 
+    ## The two Mentoring cards are one card
+
+    Upstream had its own "Mentoring" card in the left column listing this
+    mentor's students; this one carried the ceiling, the load and what they may
+    teach. Two cards, the same heading, the same subject, on the same page --
+    and a reader had to hold both to answer any question about this mentor.
+
+    One card now: who they teach, how loaded they are against their ceiling, and
+    what they may teach. The students table and its "See reports" button came
+    over verbatim, so nothing was lost in the merge.
+
     Expects: $user
 --}}
 @if($user->hasRole('mentor'))
@@ -75,6 +86,36 @@
                     @endforelse
                 </dd>
             </dl>
+        </div>
+
+        {{-- The students themselves, from upstream's card. The numbers above
+             are the summary; this is the list they summarise, and they belong
+             in the same box. --}}
+        @if($user->teaches->count() > 0)
+            <div class="table-responsive border-top">
+                <table class="table table-sm table-leftpadded mb-0" width="100%" cellspacing="0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Teaches</th>
+                            <th>Expires</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach($user->teaches as $training)
+                            <tr>
+                                <td><a href="{{ route('user.show', $training->user->id) }}">{{ $training->user->name }}</a></td>
+                                <td>{{ \Carbon\Carbon::parse($training->pivot->expire_at)->toEuropeanDate() }}</td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        @endif
+
+        <div class="card-footer bg-transparent text-end">
+            <a href="{{ route('user.reports', $user->id) }}" class="btn btn-sm btn-outline-secondary">
+                <i class="fas fa-file"></i>&nbsp;See reports
+            </a>
         </div>
     </div>
 @endif

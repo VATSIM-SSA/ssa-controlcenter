@@ -167,6 +167,34 @@ class AvailabilityController extends Controller
     }
 
     /**
+     * Open a poll up, or close it back down, after it exists.
+     *
+     * The choice was made once at creation and could not be revisited, so a
+     * poll created invite-only had to be deleted and rebuilt to be shared --
+     * which loses every answer already given. That is the same failure as not
+     * being able to add a participant, and it has the same fix.
+     *
+     * Narrowing is allowed too. A poll that was open while people answered
+     * stays answered; closing it only stops new strangers arriving.
+     */
+    public function updateVisibility(Request $request, AvailabilityPoll $poll): RedirectResponse
+    {
+        abort_unless($poll->isManageableBy(Auth::user()), 403);
+
+        $data = $request->validate([
+            'visibility' => ['required', Rule::in(array_keys(AvailabilityPoll::VISIBILITIES))],
+        ]);
+
+        $poll->visibility = $data['visibility'];
+        $poll->save();
+
+        return redirect()->route('vatssa.availability.show', $poll)
+            ->with('success', $poll->visibility === AvailabilityPoll::VISIBILITY_LINK
+                ? 'Anybody with the link can now open this poll.'
+                : 'Only the people you invite can open this poll now.');
+    }
+
+    /**
      * An empty response row per person: the invitation.
      *
      * `firstOrCreate`, so inviting somebody twice is not an error and does not

@@ -94,6 +94,12 @@ Route::middleware(['web', 'auth', 'activity', 'suspended'])
         Route::post('/{poll}/participants', [AvailabilityController::class, 'addParticipants'])
             ->middleware('throttle:20,1')
             ->name('vatssa.availability.participants');
+
+        // Same gate as adding people, for the same reason: whether this is
+        // YOUR poll is a narrower question than a permission can ask.
+        Route::post('/{poll}/visibility', [AvailabilityController::class, 'updateVisibility'])
+            ->middleware('throttle:20,1')
+            ->name('vatssa.availability.visibility');
     });
 
 /*

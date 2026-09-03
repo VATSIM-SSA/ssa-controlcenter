@@ -107,48 +107,14 @@
              are set in different places on purpose. --}}
         @include('vatssa.parts.desks', ['user' => $user])
 
-        {{-- VATSSA: only for somebody who actually mentors.
-             This card said "No registered students" on every profile in the
-             division, including students and members who have never mentored
-             anybody. An empty answer to a question nobody asked is still
-             clutter, and on a page that already has eight cards it is the kind
-             that makes the real ones harder to find. --}}
-        @if($user->hasRole('mentor'))
-        <div class="card shadow mb-4">
-            <div class="card-header bg-primary py-3 d-flex flex-row align-items-center justify-content-between">
-                <h6 class="m-0 fw-bold text-white">
-                    Mentoring
-                </h6>
-                <a href="{{ route('user.reports', $user->id) }}" class="btn btn-icon btn-light"><i class="fas fa-file"></i> See reports</a>
-            </div>
-            <div class="card-body {{ $user->teaches->count() == 0 ? '' : 'p-0' }}">
+        {{-- VATSSA: upstream's Mentoring card is GONE, folded into
+             vatssa.parts.mentoring-summary further down.
 
-                @if($user->teaches->count() == 0)
-                    <p class="mb-0">No registered students</p>
-                @else
-                    <div class="table-responsive">
-                        <table class="table table-sm table-leftpadded mb-0" width="100%" cellspacing="0">
-                            <thead class="table-light">
-                                <tr>
-                                    <th data-sortable="true" data-filter-control="select">Teaches</th>
-                                    <th data-sortable="true" data-filter-control="input">Expires</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach($user->teaches as $training)
-                                <tr>
-                                    <td><a href="{{ route('user.show', $training->user->id) }}">{{ $training->user->name }}</a></td>
-                                    <td>{{ Carbon\Carbon::parse($user->teaches->find($training->id)->pivot->expire_at)->toEuropeanDate() }}</td>
-                                </tr>
-                                @endforeach
-                            </tbody>
-                        </table>
-                    </div>
-                @endif
-
-            </div>
-        </div>
-        @endif
+             Two cards with the same heading on one page, both about the same
+             mentor -- one listing their students, the other their ceiling, load
+             and teachable ratings. Neither answered a question on its own. The
+             students table and its "See reports" button moved across verbatim;
+             nothing was lost. --}}
     </div>
 
     <div class="col-xl-9 col-md-8 col-sm-12 mb-12">

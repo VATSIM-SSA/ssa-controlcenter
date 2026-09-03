@@ -11,6 +11,9 @@ use App\Models\TrainingActivity;
 use App\Models\TrainingExamination;
 use App\Models\TrainingReport;
 use App\Models\User;
+use App\Models\Vatssa\MentorCapacity;
+use App\Models\Vatssa\MentorCeiling;
+use App\Models\Vatssa\RequestTarget;
 use App\Services\Sql\Sql;
 use App\Traits\ResolvesAreaScope;
 use Carbon\Carbon;
@@ -38,11 +41,37 @@ class ReportController extends Controller
     {
         $this->authorize('viewAccessReport', ManagementReport::class);
 
-        $users = User::has('roleAssignments')->get();
+        // VATSSA: ROLES, not areas.
+        //
+        // Upstream printed one "Access <area>" column per area and repeated
+        // every global role in all of them, because a null area_id matches
+        // every area. Every fork role is global, so the table was one list of
+        // roles copied sideways as many times as VATSSA has areas. One Roles
+        // column says the same thing once.
+        //
+        // Desks come with it. "What access does this person have" is not
+        // answered by roles alone -- a role grants permissions, a desk decides
+        // who receives the work -- and until now the second half lived on a
+        // different page entirely.
+        $users = User::has('roleAssignments')->with('roleAssignments')->get();
 
-        $areas = Area::all();
+        // Catalogue order, so this report agrees with the roles box and the
+        // grant picker without a third sort. See config/roles.php.
+        $roleOrder = array_keys(config('roles.roles', []));
+        $roleNames = collect(config('roles.roles', []))->map(fn ($role) => $role['name'] ?? null);
 
-        return view('reports.access', compact('users', 'areas'));
+        $deskLabels = collect(RequestTarget::tiers())->map(fn ($desk) => $desk['label']);
+
+        // Resolved once. desksFor() is a query per person, and this page is
+        // every role-holder in the division.
+        $desks = $users->mapWithKeys(fn (User $user) => [
+            $user->id => RequestTarget::desksFor($user)
+                ->map(fn ($desk) => $deskLabels[$desk['tier']] ?? $desk['tier'])
+                ->unique()
+                ->values(),
+        ]);
+
+        return view('reports.access', compact('users', 'roleOrder', 'roleNames', 'desks'));
     }
 
     /**
@@ -234,7 +263,28 @@ class ReportController extends Controller
 
         $mentors = $mentors->sortBy('name')->unique();
 
-        return view('reports.mentors', compact('mentors'));
+        // VATSSA: load against ceiling, keyed by mentor id.
+        //
+        // A count of students with no denominator is what stopped this page
+        // answering the question people open it for -- "who can take another
+        // one" -- and sent them to each mentor's profile one at a time. Both
+        // numbers already exist; nothing here computes anything new.
+        //
+        // Resolved once, outside the loop: MentorCapacity::loadFor() walks a
+        // relation, and calling it from a blade row is a query per mentor.
+        $ceilings = MentorCeiling::whereIn('user_id', $mentors->pluck('id'))
+            ->get()
+            ->keyBy('user_id');
+
+        $capacity = $mentors->mapWithKeys(fn ($mentor) => [
+            $mentor->id => [
+                'load' => MentorCapacity::loadFor($mentor),
+                // Null is UNLIMITED, and must never render as zero.
+                'limit' => $ceilings->get($mentor->id)?->total_limit,
+            ],
+        ]);
+
+        return view('reports.mentors', compact('mentors', 'capacity'));
     }
 
     /**

@@ -10,6 +10,21 @@
 // a permission must be listed to exist, and adding one here does not create a gate.
 
 return [
+    /*
+    | THE ORDER OF THIS ARRAY IS THE ORDER ROLES ARE SHOWN IN.
+    |
+    | The roles box on a member, the grant picker and the access report all read
+    | this array and none of them sorts. So the running order here is the one
+    | fix that makes all three agree, and a `sort_order` key would only be a
+    | second place to get it wrong.
+    |
+    | Seniority, not the alphabet and not the order they were added:
+    | ATC Training Manager, Membership Manager, Events Team, Pipeline
+    | Coordinator, Navigational Editor, Feedback Team, Mentor.
+    |
+    | Administrator sits above all of them and is not grantable; the two retired
+    | roles sit at the bottom, out of the way of everything a person reads.
+    */
     'roles' => [
         'admin' => [
             'name' => 'Administrator',
@@ -19,6 +34,66 @@ return [
             // way in is `user:makeadmin`, which is the point: the role that can
             // do everything should need a shell, not a dropdown.
             'grantable' => false,
+        ],
+
+        'atc-training-manager' => [
+            'name' => 'ATC Training Manager',
+            'description' => 'Division training authority',
+            'scope' => 'both',
+        ],
+
+        'membership-manager' => [
+            'name' => 'Membership Manager',
+            'description' => 'Rating upgrades, visiting endorsements and member standing',
+            'scope' => 'global',
+        ],
+
+        'events-team' => [
+            'name' => 'Events Team',
+            'description' => 'Event and examination bookings, and nothing else',
+            'scope' => 'global',
+        ],
+
+        'pipeline-coordinator' => [
+            'name' => 'Pipeline Coordinator',
+            'description' => 'Day-to-day running of the training pipeline',
+            'scope' => 'both',
+        ],
+
+        'nav-editor' => [
+            'name' => 'Navigational Editor',
+            'description' => 'Editor of navigational and operationally relevant sector data',
+            // 'both', not 'area'. VATSSA grants this globally like everything
+            // else -- UserPolicy refuses an area outright -- and 'area' would
+            // now make it ungrantable, because a role whose scope forbids a
+            // global grant plus a policy that forbids an area one is a role
+            // nobody can be given.
+            //
+            // Not 'global' either: RoleAssignment throws on an area given to a
+            // global role, and upstream's suite creates 181 area-scoped
+            // assignments across 35 files.
+            'scope' => 'both',
+        ],
+
+        'feedback-team' => [
+            'name' => 'Feedback Team',
+            'description' => 'Reviews controller feedback',
+            'scope' => 'global',
+        ],
+
+        'mentor' => [
+            'name' => 'Mentor',
+            'description' => 'Training mentor',
+            // 'both', not 'area'. VATSSA grants this globally like everything
+            // else -- UserPolicy refuses an area outright -- and 'area' would
+            // now make it ungrantable, because a role whose scope forbids a
+            // global grant plus a policy that forbids an area one is a role
+            // nobody can be given.
+            //
+            // Not 'global' either: RoleAssignment throws on an area given to a
+            // global role, and upstream's suite creates 181 area-scoped
+            // assignments across 35 files.
+            'scope' => 'both',
         ],
 
         /*
@@ -55,59 +130,6 @@ return [
             'description' => 'Replaced by Pipeline Coordinator. Recognised so upstream tests run; cannot be granted.',
             'scope' => 'global',
             'grantable' => false,
-        ],
-        'atc-training-manager' => [
-            'name' => 'ATC Training Manager',
-            'description' => 'Division training authority',
-            'scope' => 'both',
-        ],
-        'pipeline-coordinator' => [
-            'name' => 'Pipeline Coordinator',
-            'description' => 'Day-to-day running of the training pipeline',
-            'scope' => 'both',
-        ],
-        'mentor' => [
-            'name' => 'Mentor',
-            'description' => 'Training mentor',
-            // 'both', not 'area'. VATSSA grants this globally like everything
-            // else -- UserPolicy refuses an area outright -- and 'area' would
-            // now make it ungrantable, because a role whose scope forbids a
-            // global grant plus a policy that forbids an area one is a role
-            // nobody can be given.
-            //
-            // Not 'global' either: RoleAssignment throws on an area given to a
-            // global role, and upstream's suite creates 181 area-scoped
-            // assignments across 35 files.
-            'scope' => 'both',
-        ],
-        'membership-manager' => [
-            'name' => 'Membership Manager',
-            'description' => 'Rating upgrades, visiting endorsements and member standing',
-            'scope' => 'global',
-        ],
-        'events-team' => [
-            'name' => 'Events Team',
-            'description' => 'Event and examination bookings, and nothing else',
-            'scope' => 'global',
-        ],
-        'nav-editor' => [
-            'name' => 'Navigational Editor',
-            'description' => 'Editor of navigational and operationally relevant sector data',
-            // 'both', not 'area'. VATSSA grants this globally like everything
-            // else -- UserPolicy refuses an area outright -- and 'area' would
-            // now make it ungrantable, because a role whose scope forbids a
-            // global grant plus a policy that forbids an area one is a role
-            // nobody can be given.
-            //
-            // Not 'global' either: RoleAssignment throws on an area given to a
-            // global role, and upstream's suite creates 181 area-scoped
-            // assignments across 35 files.
-            'scope' => 'both',
-        ],
-        'feedback-team' => [
-            'name' => 'Feedback Team',
-            'description' => 'Reviews controller feedback',
-            'scope' => 'global',
         ],
     ],
 
