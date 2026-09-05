@@ -735,6 +735,30 @@ time,
     }
 }
 
+// Cards INSIDE a tab pane.
+//
+// A tabbed page puts cards on the tab card's own body, so the two share a
+// background and the shadow every card relies on has nothing to cast against.
+// The panels stopped reading as panels and became one flat sheet with headings
+// down it.
+//
+// A hairline gives each one its edge back. The shadow goes with it -- it was
+// doing nothing visible here, and stacking two depth cues on nested cards is
+// what makes a page look quilted.
+.tab-content {
+    .card {
+        border: 1px solid var(--border-card, rgba(127, 143, 148, .22));
+        box-shadow: none;
+    }
+
+    // The last card in a pane has nothing under it to separate from, and its
+    // margin was showing as dead space above the tab card's own edge.
+    > .tab-pane > .card:last-child,
+    > .tab-pane > .row:last-child > [class^="col"] > .card:last-child {
+        margin-bottom: 0;
+    }
+}
+
 // ---- the timeline ----------------------------------------------------------
 //
 // The densest thing on the busiest page. Upstream renders it as a bulleted

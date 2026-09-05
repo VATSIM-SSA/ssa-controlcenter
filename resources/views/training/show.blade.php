@@ -40,648 +40,18 @@
     <i class="fa fa-link"></i>&nbsp;<a id="otl-link" href=""></a>&nbsp;<button type="button" id="otl-link-copy-btn" class="btn btn-sm"><i class="fas fa-copy"></i></button>
 </div>
 
+
+{{-- The masthead: what this training is, and every action on it. --}}
+@include('vatssa.parts.training-identity', ['training' => $training, 'types' => $types])
+
+{{-- The deadlines, above the tabs on purpose.
+
+     Nothing in here is a fact about the training; they are things running out
+     -- a roster window closing, a confirmation not yet given. A deadline
+     filed behind a tab is a deadline nobody sees until it has passed, which is
+     the one outcome the panel exists to prevent. --}}
 <div class="row">
-    <div class="col-xl-3 col-md-12 col-sm-12 mb-12">
-        <div class="card shadow mb-2">
-            <div class="card-header bg-primary py-3 d-flex flex-row column-gap-3 pe-0">
-                <h6 class="m-0 fw-bold text-white flex-grow-1">
-                    <i class="fas fa-flag"></i>&nbsp;{{ $training->user->first_name }}'s training for {{ $training->getInlineRatings() }}
-                </h6>
-
-                {{-- Upstream's dropdown, kept. Six request types laid out as
-                     buttons pushed the card header onto two rows and crowded
-                     everything beside it; a labelled menu holds them without
-                     costing the page its shape. --}}
-                @can('create', [\App\Models\Task::class])
-                    <button class="btn btn-light btn-icon dropdown-toggle" type="button" id="dropdownMenuButton" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
-                        <i class="fas fa-hand"></i> Request
-                    </button>
-                    <div class="dropdown">
-                        <div class="dropdown-menu" aria-labelledby="dropdownMenuButton">
-                            @foreach($requestTypes as $requestType)
-                                {{-- VATSSA: and only the types that apply to
-                                     THIS rating. An S1 controller holds no solo
-                                     endorsement, so a solo request on an S1
-                                     training can only ever be declined. See
-                                     config/vatssa.php request_ratings. --}}
-                                @php
-                                    $onlyFor = config('vatssa.request_ratings.' . $requestType::class);
-                                    $appliesHere = $onlyFor === null
-                                        || $training->ratings->pluck('name')->intersect($onlyFor)->isNotEmpty();
-                                @endphp
-                                @if($appliesHere && ($requestType->allowNonVatsimRatings() == true || ($requestType->allowNonVatsimRatings() == false && $training->hasVatsimRatings() == true)))
-                                    <button class="dropdown-item" data-bs-toggle="modal" data-bs-target="#{{ Str::camel($requestType->getName()) }}">
-                                        <i class="fas {{ $requestType->getIcon() }}"></i>&nbsp;
-                                        {{ $requestType->getName() }}
-                                    </button>
-                                @endif
-                            @endforeach
-                        </div>
-                    </div>
-                @endcan
-
-            </div>
-            <div class="card-body">
-                <dl class="copyable">
-                    <dt>State</dt>
-                    <dd>
-                        <i class="{{ $training->status->icon() }} text-{{ $training->status->color() }}"></i>
-                        {{ $training->status->label() }}
-                        {{ isset($training->paused_at) ? ' (PAUSED)' : '' }}
-                    </dd>
-
-                    <dt>Type</dt>
-                    <dd><i class="{{ $types[$training->type]["icon"] }} text-primary"></i>&ensp;{{ $types[$training->type]["text"] }}</dd>
-
-                    <dt>Level</dt>
-                    <dd class="separator pb-3">
-                        @foreach($training->ratings as $rating)
-                            <div>
-                                @if($rating->pivot->completed_at)
-                                    <i class="fas fa-check text-success"></i>&nbsp;{{ $rating->name }}
-                                    <span class="text-muted">({{ \Carbon\Carbon::parse($rating->pivot->completed_at)->toEuropeanDate() }})</span>
-                                @else
-                                    {{ $rating->name }}
-                                @endif
-                            </div>
-                        @endforeach
-                    </dd>
-
-                    {{-- VATSSA: can we actually reach this person.
-                         Beside their rating and their name, because that is
-                         where it gets read. The full card is gone from this
-                         page -- same facts, and one of them had to be the
-                         one people trust. --}}
-                    @include('vatssa.parts.platform-lines', ['user' => $training->user])
-
-                    <dt class="pt-2">Vatsim ID</dt>
-                    <dd>
-                        <a href="{{ route('user.show', $training->user->id) }}">
-                            {{ $training->user->id }}
-                        </a>
-                        <button type="button" onclick="navigator.clipboard.writeText('{{ $training->user->id }}')"><i class="fas fa-copy"></i></button>
-                        <a href="https://stats.vatsim.net/stats/{{ $training->user->id }}" target="_blank" title="VATSIM Stats" class="link-btn me-1"><i class="fas fa-chart-simple"></i></button></a>
-                        @if($training->user->division == 'EUD')
-                            <a href="https://core.vateud.net/manage/controller/{{ $training->user->id }}/view" target="_blank" title="VATEUD Core Profile" class="link-btn"><i class="fa-solid fa-earth-europe"></i></button></a>
-                        @endif
-                    </dd>
-
-                    <dt>Name</dt>
-                    <dd class="separator pb-3"><a href="{{ route('user.show', $training->user->id) }}">{{ $training->user->name }}</a><button type="button" onclick="navigator.clipboard.writeText('{{ $training->user->first_name.' '.$training->user->last_name }}')"><i class="fas fa-copy"></i></button></dd>
-
-                    <dt class="pt-2">Area</dt>
-                    <dd>{{ $training->area->name }}</dd>
-
-                    <dt>Mentor</dt>
-                    <dd class="separator pb-3">{{ !empty($training->getInlineMentors()) ? $training->getInlineMentors() : '-' }}</dd>
-
-                    <dt class="pt-2">Period</dt>
-                    <dd>
-                        @if ($training->started_at == null && $training->closed_at == null)
-                            Training not started
-                        @elseif ($training->closed_at == null)
-                            {{ $training->started_at->toEuropeanDate() }} -
-                        @elseif ($training->started_at != null)
-                            {{ $training->started_at->toEuropeanDate() }} - {{ $training->closed_at->toEuropeanDate() }}
-                        @else
-                            N/A
-                        @endif
-                    </dd>
-
-                    <dt>Applied</dt>
-                    <dd>{{ $training->created_at->toEuropeanDate() }}</dd>
-
-                    <dt>Closed</dt>
-                    <dd>
-                        @if ($training->closed_at != null)
-                            {{ $training->closed_at->toEuropeanDate() }}
-                        @else
-                            -
-                        @endif
-                    </dd>
-                </dl>
-
-                <div class="btn-group" role="group" aria-label="Training actions">
-                    @can('edit', [\App\Models\Training::class, $training])
-                        <a href="{{ route('training.edit', $training->id) }}" class="btn btn-outline-primary btn-icon"><i class="fas fa-pencil"></i>&nbsp;Edit training</a>
-                    @endcan
-
-                    @if($showCompletionControl)
-                        @can('update', $training)
-                            <div class="btn-group" role="group">
-                                <button class="btn btn-outline-success btn-icon dropdown-toggle" type="button" id="completionMenuButton" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
-                                    <i class="fas fa-check me-1"></i>Complete training
-                                </button>
-                                <div class="dropdown-menu" aria-labelledby="completionMenuButton">
-                                    @if($canCompletePartially)
-                                        <button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#completePartialTraining">
-                                            <i class="fas fa-list-check me-1"></i>Complete partial training
-                                        </button>
-                                    @endif
-                                    <button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#completeWholeTraining">
-                                        <i class="fas fa-check me-1"></i>Mark training as completed
-                                    </button>
-                                </div>
-                            </div>
-                        @endcan
-                    @endif
-                </div>
-            </div>
-        </div>
-
-        @can('update', $training)
-            <div class="card shadow mb-4">
-
-                <div class="card-body">
-                    <form action="{{ route('training.update.details', ['training' => $training->id]) }}" method="POST">
-                        @method('PATCH')
-                        @csrf
-
-                        <div class="mb-3">
-
-                            @if($activeTrainingInterest)
-                                <div class="alert alert-warning" role="alert">
-                                    <i class="fas fa-exclamation-triangle"></i>&nbsp;This training has an active interest request pending.
-                                </div>
-                            @endif
-
-                            @php
-                                $pipelineOwned = in_array($training->status, [
-                                    \App\Helpers\TrainingStatus::IN_QUEUE,
-                                    \App\Helpers\TrainingStatus::PRE_TRAINING,
-                                    \App\Helpers\TrainingStatus::AWAITING_MENTOR,
-                                ], true);
-                            @endphp
-
-                            {{-- VATSSA: say WHY the list is short, rather than
-                                 leaving somebody to wonder where the options
-                                 went. A control that silently offers less than
-                                 it did yesterday reads as broken. --}}
-                            @if($pipelineOwned)
-                                <div class="alert alert-secondary py-2 mb-2">
-                                    <small>
-                                        <i class="fas fa-robot"></i>&nbsp;
-                                        <strong>{{ $training->status->label() }}</strong> is set by the
-                                        training pipeline, from the student\'s Moodle enrolment, their
-                                        theory result and whether a mentor is assigned. It cannot be
-                                        changed by hand — the next cycle would move them straight back.
-                                        <span class="d-block mt-1">
-                                            Pausing still works, and closing is still available if the
-                                            student has dropped out.
-                                        </span>
-                                    </small>
-                                </div>
-                            @endif
-
-                            <label class="form-label" for="trainingStateSelect">Select training state</label>
-                            <select class="form-select" name="status" id="trainingStateSelect" @if(Auth::user()->cannot('update', $training)) disabled @endif>
-                                {{-- Lifecycle order, not declaration order:
-                                     AWAITING_MENTOR is stored as 4 so nothing
-                                     had to be renumbered, and cases() would
-                                     put it last in the list. --}}
-                                @foreach(\App\Helpers\TrainingStatus::inLifecycleOrder() as $status)
-                                    {{-- VATSSA: context-aware. The pipeline owns in-queue,
-                                         pre-training and awaiting-mentor; the one manual move
-                                         is active training back to awaiting a mentor. --}}
-                                    @if($status->isAssignableFrom($training->status))
-                                        <option value="{{ $status->value }}" @selected($training->status === $status)>{{ $status->label() }}</option>
-                                    @endif
-                                @endforeach
-                            </select>
-                        </div>
-
-                        <div class="mb-3" id="closedReasonInput" style="display: none">
-                            <label class="form-label" for="trainingCloseReason">Closed reason</label>
-                            <input type="text" id="trainingCloseReason" class="form-control" name="closed_reason" placeholder="{{ $training->closed_reason }}" maxlength="65">
-                        </div>
-
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" id="check1" name="paused_at" {{ $training->paused_at ? "checked" : "" }} @if(Auth::user()->cannot('update', $training)) disabled @endif>
-                            <label class="form-check-label" for="check1">
-                                Paused
-                                @if(isset($training->paused_at))
-                                    <span class='badge bg-danger'>{{ \Carbon\Carbon::create($training->paused_at)->diffForHumans(['parts' => 2]) }}</span>
-                                @endif
-                            </label>
-                        </div>
-
-                        <hr>
-
-                        @can('update', $training)
-                        <div class="mb-3">
-                            <label class="form-label" for="assignMentors">Assigned mentors: <span class="badge bg-secondary">Ctrl/Cmd+Click</span> to select multiple</label>
-                            <select multiple class="form-select" name="mentors[]" id="assignMentors">
-                                @foreach($trainingMentors as $mentor)
-                                    <option value="{{ $mentor->id }}" {{ ($training->mentors->contains($mentor->id)) ? "selected" : "" }}>{{ $mentor->name }}</option>
-                                @endforeach
-                            </select>
-                        </div>
-                        @endcan
-
-                        <button type="submit" id="training-submit-btn" class="btn btn-primary" onclick="handleSubmit(event)">Save
-                            <div class="submit-spinner spinner-border spinner-border-sm" role="status" style="display: none;">&nbsp;</div>
-                        </button>
-
-                    </form>
-                </div>
-            </div>
-        @endcan
-
-    </div>
-
-    <div class="col-xl-4 col-md-6 col-sm-12 mb-12">
-
-        <div class="card shadow mb-4">
-            <div class="card-header bg-primary py-3 d-flex flex-row align-items-center justify-content-between">
-                <h6 class="m-0 fw-bold text-white">
-                    Timeline
-                </h6>
-            </div>
-            @can('comment', [\App\Models\TrainingActivity::class, \App\Models\Training::find($training->id)])
-                <form action="{{ route('training.activity.comment') }}" method="POST">
-                    @csrf
-                    <div class="input-group">
-                        <input type="hidden" name="training_id" value="{{ $training->id }}">
-                        <input type="hidden" name="update_id" id="activity_update_id" value="">
-                        <input type="text" name="comment" id="activity_comment" class="form-control border" placeholder="Your internal comment ..." maxlength="512">
-                        <button class="btn btn-outline-primary" id="activity_button" type="submit">Comment</button>
-                    </div>
-                </form>
-            @endcan
-            <div class="timeline">
-                <ul class="sessions">
-                    @foreach($activities as $activity)
-                        @can('view', [\App\Models\TrainingActivity::class, \App\Models\Training::find($training->id), $activity->type])
-                            <li data-id="{{ $activity->id }}">
-                                <div class="time">
-                                    @if($activity->type == "STATUS" || $activity->type == "TYPE")
-                                        <i class="fas fa-right-left"></i>
-                                    @elseif($activity->type == "MENTOR")
-                                        @if($activity->new_data)
-                                            <i class="fas fa-user-plus"></i>
-                                        @elseif($activity->old_data)
-                                            <i class="fas fa-user-minus"></i>
-                                        @endif
-                                    @elseif($activity->type == "PAUSE")
-                                        <i class="fas fa-circle-pause"></i>
-                                    @elseif($activity->type == "ENDORSEMENT")
-                                        <i class="fas fa-check-square"></i>
-                                    @elseif($activity->type == "RATING")
-                                        <i class="fas fa-list-check"></i>
-                                    @elseif($activity->type == "COMMENT")
-                                        <i class="fas fa-comment"></i>
-                                    @elseif($activity->type == 'PRETRAINING')
-                                        <i class="fas fa-graduation-cap"></i>
-                                    @endif
-
-                                    {{-- VATSSA: say SYSTEM out loud.
-
-                                         A null actor is how the pipeline signs its work --
-                                         BridgeController::comment() and close() both pass null
-                                         deliberately, so a reader in a year can tell the bot moved
-                                         somebody rather than a person.
-
-                                         But this printed a name only when there WAS one, so those
-                                         rows rendered with no author at all: just a date. The
-                                         distinction the null carries never reached the page. --}}
-                                    @isset($activity->triggered_by_id)
-                                        {{ \App\Models\User::find($activity->triggered_by_id)?->name ?? "Deleted account" }} —
-                                    @else
-                                        <span class="badge bg-secondary">System</span> —
-                                    @endisset
-
-                                    {{ $activity->created_at->toEuropeanDateTime() }}
-                                    @can('comment', [\App\Models\TrainingActivity::class, \App\Models\Training::find($training->id)])
-                                        @if($activity->type == "COMMENT" && now() <= $activity->created_at->addDays(1) && $activity->triggered_by_id == \Auth::user()->id)
-                                            <button class="btn btn-sm float-end" onclick="updateComment({{ $activity->id }}, '{{ $activity->comment }}')"><i class="fas fa-pencil"></i></button>
-                                        @endif
-                                    @endcan
-                                </div>
-                                <p>
-
-                                    @if($activity->type == "STATUS")
-                                        @if(($activity->new_data == -2 || $activity->new_data == -4) && isset($activity->comment))
-                                            Status changed from <span class="badge text-bg-light">{{ \App\Helpers\TrainingStatus::from((int) $activity->old_data)->label() }}</span>
-                                        to <span class="badge text-bg-light">{{ \App\Helpers\TrainingStatus::from((int) $activity->new_data)->label() }}</span>
-                                        with reason <span class="badge text-bg-light">{{ $activity->comment }}</span>
-                                        @else
-                                            Status changed from <span class="badge text-bg-light">{{ \App\Helpers\TrainingStatus::from((int) $activity->old_data)->label() }}</span>
-                                        to <span class="badge text-bg-light">{{ \App\Helpers\TrainingStatus::from((int) $activity->new_data)->label() }}</span>
-                                        @endif
-                                    @elseif($activity->type == "TYPE")
-                                        Training type changed from <span class="badge text-bg-light">{{ \App\Http\Controllers\TrainingController::$types[$activity->old_data]["text"] }}</span>
-                                        to <span class="badge text-bg-light">{{ \App\Http\Controllers\TrainingController::$types[$activity->new_data]["text"] }}</span>
-                                    @elseif($activity->type == "MENTOR")
-                                        @if($activity->new_data)
-                                            <span class="badge text-bg-light">{{ \App\Models\User::find($activity->new_data)->name }}</span> assigned as mentor
-                                        @elseif($activity->old_data)
-                                        <span class="badge text-bg-light">{{ \App\Models\User::find($activity->old_data)->name }}</span> removed as mentor
-                                        @endif
-                                    @elseif($activity->type == "PAUSE")
-                                        @if($activity->new_data)
-                                            Training paused
-                                        @else
-                                            Training unpaused
-                                        @endif
-                                    @elseif($activity->type == "ENDORSEMENT")
-                                        @if(\App\Models\Endorsement::find($activity->new_data) !== null)
-                                            @empty($activity->comment)
-                                                <span class="badge text-bg-light">
-                                                    {{ str(\App\Models\Endorsement::find($activity->new_data)->type)->lower()->ucfirst() }} endorsement
-                                                </span> granted, valid to
-                                                <span class="badge text-bg-light">
-                                                    @isset(\App\Models\Endorsement::find($activity->new_data)->valid_to)
-                                                        {{ \App\Models\Endorsement::find($activity->new_data)->valid_to->toEuropeanDateTime() }}
-                                                    @else
-                                                        Forever
-                                                    @endisset
-                                                </span>
-                                            @else
-                                                <span class="badge text-bg-light">
-                                                    {{ str(\App\Models\Endorsement::find($activity->new_data)->type)->lower()->ucfirst() }} endorsement
-                                                </span> granted, valid to
-                                                <span class="badge text-bg-light">
-                                                    @isset(\App\Models\Endorsement::find($activity->new_data)->valid_to)
-                                                        {{ \App\Models\Endorsement::find($activity->new_data)->valid_to->toEuropeanDateTime() }}
-                                                    @else
-                                                        Forever
-                                                    @endisset
-                                                </span>
-                                                for positions:
-                                                @foreach(explode(',', $activity->comment) as $p)
-                                                    <span class="badge text-bg-light">{{ $p }}</span>
-                                                @endforeach
-                                            @endempty
-                                        @endif
-                                    @elseif($activity->type == "RATING")
-                                        @isset($activity->rating)
-                                            <span class="badge text-bg-light">{{ $activity->rating->name }}</span> part completed
-                                        @endisset
-                                    @elseif($activity->type == "COMMENT")
-                                        {!! nl2br(e($activity->comment)) !!}
-
-                                        @if($activity->created_at != $activity->updated_at)
-                                            <span class="text-muted">(edited)</span>
-                                        @endif
-                                    @elseif($activity->type == "PRETRAINING")
-                                        Pre-training marked as
-                                        <span class="badge text-bg-light">
-                                            @if($activity->new_data)
-                                                <i class="fas fa-check"></i>
-                                                Completed
-                                            @else
-                                                <i class="fas fa-xmark"></i>
-                                                Not completed
-                                            @endif
-                                        </span>
-                                    @endif
-
-                                </p>
-                            </li>
-                        @endcan
-                    @endforeach
-                    <li>
-                        <div class="time">
-                            <i class="fas fa-flag"></i>
-                            @isset($training->created_by)
-                                {{ \App\Models\User::find($training->created_by)->name }} —
-                            @endisset
-                            {{ $training->created_at->toEuropeanDateTime() }}
-                        </div>
-                        <p>
-                            Training created
-                        </p>
-                    </li>
-                </ul>
-            </div>
-        </div>
-
-        <div class="card shadow mb-4">
-            <div class="card-header bg-primary py-3 d-flex flex-row align-items-center justify-content-between">
-                <h6 class="m-0 fw-bold text-white">
-                    Application
-                </h6>
-            </div>
-            <div class="card-body p-0">
-                <div class="card bg-light mb-3">
-                    <div class="card-body">
-
-                        @if($training->english_only_training)
-                            <i class="fas fa-flag-usa"></i>&nbsp;&nbsp;Requesting training in English only<br>
-                        @else
-                            <i class="fas fa-flag"></i>&nbsp;&nbsp;Requesting training in local language or English<br>
-                        @endif
-
-                        @isset($training->experience)
-                            <i class="fas fa-book"></i>&nbsp;&nbsp;{{ $experiences[$training->experience]["text"] }}
-                        @endisset
-
-                    </div>
-                </div>
-            </div>
-
-            <div class="p-4">
-                <p class="fw-bold text-primary-emphasis">
-                    <i class="fas fa-envelope-open-text"></i>&nbsp;Letter of motivation
-                </p>
-
-                @if(empty($training->motivation))
-                    <p><i>Not provided / relevant</i></p>
-                @else
-                    <p>{{ $training->motivation }}</p>
-                @endif
-            </div>
-        </div>
-
-    </div>
-
-    <div class="col-xl-5 col-md-6 col-sm-12 mb-12">
-
-        <div class="card shadow mb-4 ">
-            <div class="card-header bg-primary py-3 d-flex flex-row align-items-center justify-content-between">
-
-                @if($training->status->isInProgress())
-                    <h6 class="m-0 fw-bold text-white">
-                @else
-                    <h6 class="m-0 mt-1 mb-2 fw-bold text-white">
-                @endif
-                    Training Reports
-                </h6>
-
-                @if(
-                    \Auth::user()->can('create', [\App\Models\OneTimeLink::class, $training, \App\Models\OneTimeLink::TRAINING_REPORT_TYPE]) ||
-                    \Auth::user()->can('create', [\App\Models\OneTimeLink::class, $training, \App\Models\OneTimeLink::TRAINING_EXAMINATION_TYPE]) ||
-                    $training->status->isInProgress()
-                )
-                    <div class="dropdown" style="display: inline;">
-                        <button class="btn btn-light btn-icon dropdown-toggle" type="button" id="dropdownMenuButton" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
-                            <i class="fas fa-plus"></i> Create
-                        </button>
-
-                        <div class="dropdown-menu" aria-labelledby="dropdownMenuButton">
-                            @can('create', [\App\Models\TrainingReport::class, $training])
-                                @if($training->status->isInProgress())
-                                    <a class="dropdown-item" href="{{ route('training.report.create', ['training' => $training->id]) }}"><i class="fas fa-file"></i> Training Report</a>
-                                @endif
-                            @else
-                                <a class="dropdown-item disabled" href="#"><i class="fas fa-lock"></i>&nbsp;Training Report</a>
-                            @endcan
-
-                            @can('create', [\App\Models\TrainingExamination::class, $training])
-                                @if($training->status === \App\Helpers\TrainingStatus::AWAITING_EXAM)
-                                    <a class="dropdown-item" href="{{ route('training.examination.create', ['training' => $training->id]) }}"><i class="fas fa-file"></i> Exam Report</a>
-                                @endif
-                            @else
-                                <a class="dropdown-item disabled" href="#"><i class="fas fa-lock"></i>&nbsp;Exam Report</a>
-                            @endcan
-
-                            @can('create', [\App\Models\OneTimeLink::class, $training, \App\Models\OneTimeLink::TRAINING_REPORT_TYPE])
-                                <button class="dropdown-item" id="getOneTimeLinkReport"><i class="fas fa-link"></i> Report one-time link</button>
-                            @endif
-                            @can('create', [\App\Models\OneTimeLink::class, $training, \App\Models\OneTimeLink::TRAINING_EXAMINATION_TYPE])
-                                <button class="dropdown-item" id="getOneTimeLinkExam"><i class="fas fa-link"></i> Examination one-time link</button>
-                            @endif
-                        </div>
-                    </div>
-                @endif
-            </div>
-            <div class="card-body p-0">
-
-                @can('viewAny', [\App\Models\TrainingReport::class, $training])
-                    <div class="accordion" id="reportAccordion">
-                        @if ($reportsAndExams->count() == 0)
-                            <div class="card-text text-primary p-3">
-                                No training reports yet.
-                            </div>
-                        @else
-
-                            @foreach($reportsAndExams as $reportModel)
-                                @if(is_a($reportModel, '\App\Models\TrainingReport'))
-                                    <x-training.training-report :report="$reportModel" />
-                                @else
-                                    <x-training.exam-report :report="$reportModel" />
-                                @endif
-                            @endforeach
-                        @endif
-                    </div>
-                @else
-                    <div class="card-text text-primary p-3">
-                        You don't have access to see the training reports.
-                    </div>
-                @endcan
-
-            </div>
-        </div>
-
-        {{-- The interest-confirmation table used to be here, showing one of
-             the four deadlines a student is given and calling itself the
-             confirmation history. It is now `vatssa.parts.confirmations`, in
-             the narrow column beside the theory panel, unioned with the three
-             platform deadlines the pipeline enforces.
-
-             Showing a quarter of the picture was worse than showing none: a
-             coordinator read an empty-looking history and concluded nobody had
-             been chased. --}}
-        <div class="card shadow mb-4">
-            <div class="card-header bg-primary py-3 d-flex flex-row align-items-center justify-content-between">
-                <h6 class="m-0 fw-bold text-white">
-                    Related Tasks
-                </h6>
-            </div>
-            <div class="card-body {{ $relatedTasks->count() == 0 ? '' : 'p-0' }}">
-
-                @if($relatedTasks->count() == 0)
-                    <p class="mb-0">No related task history</p>
-                @else
-                    <div class="table-responsive">
-                        <table class="table table-sm table-leftpadded mb-0" width="100%" cellspacing="0">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>Task</th>
-                                    <th>Creator</th>
-                                    <th>Assignee</th>
-                                    <th>Status</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach($relatedTasks as $task)
-                                <tr>
-                                    <td>
-                                        <i class="fas {{ $task->type()->getIcon() }}" data-bs-toggle="tooltip" data-bs-placement="top"></i>
-                                        {{ $task->type()->getText($task) }}
-                                    </td>
-                                    <td>
-                                        {{-- VATSSA: nullable, and now actually
-                                             null -- the automation raises
-                                             requests with no creator. --}}
-                                        {{ $task->creator?->name ?? 'System' }}
-                                    </td>
-                                    <td>
-                                        {{ $task->assignee->name }}
-                                    </td>
-                                    <td>
-                                        @if($task->status == \App\Helpers\TaskStatus::COMPLETED)
-                                            <i class="fas fa-check text-success"></i>
-                                        @elseif($task->status == \App\Helpers\TaskStatus::DECLINED)
-                                            <i class="fas fa-times text-danger"></i>
-                                        @elseif($task->status == \App\Helpers\TaskStatus::PENDING)
-                                            <i class="fas fa-hourglass text-warning"></i>
-                                        @endif
-
-                                        @if($task->status == \App\Helpers\TaskStatus::COMPLETED || $task->status == \App\Helpers\TaskStatus::DECLINED)
-                                            <span class="text-muted" title="{{ $task->closed_at->toEuropeanDateTime() }}">{{ $task->closed_at->diffForHumans() }}</span>
-                                        @else
-                                            <span class="text-muted" title="{{ $task->created_at->toEuropeanDateTime() }}">{{ $task->created_at->diffForHumans() }}</span>
-                                        @endif
-
-                                    </td>
-                                </tr>
-                                @endforeach
-                            </tbody>
-                        </table>
-                    </div>
-                @endif
-
-            </div>
-        </div>
-
-    </div>
-</div>
-
-{{-- VATSSA: the three things about this student that Control Center could not
-     answer before -- can we reach them, have they passed the theory for THIS
-     rating, and what have they actually been told.
-
-     The theory block is filtered to the training's own ratings. Results are
-     keyed to person plus rating rather than to a training, so an S2 training
-     shows the S2 history and not this person's whole exam record. --}}
-{{-- Two rows of two, not four stacked full-width blocks.
-
-     Every one of these was its own full-page row, so a training ran on for
-     screens with a lot of air in it. Paired, they fill the width and the page
-     ends where the information does.
-
-     Platforms is narrow because it is two badges. Theory, the email log and the
-     notes all hold tables or a text box and need the room. --}}
-<div class="row">
-    <div class="col-xl-8 col-lg-12 col-md-12">
-        {{-- VATSSA: the practical exam being arranged, if there is one.
-             A coordinator opening a training asks "where is this person up
-             to", and an exam in flight is most of that answer. Summary and a
-             link only -- every action lives on the exam page, because two
-             places to do the same thing is one place that goes stale. --}}
-
-
-        @include('vatssa.parts.theory', [
-            'user' => $training->user,
-            'onlyRatings' => $training->ratings->pluck('name')->all(),
-            'panelTitle' => 'Theory for this rating',
-            // Only the Standard track sits theory. Refresh, transfer,
-            // fast-track and familiarisation students already hold the rating.
-            'needsNoTheory' => $training->type != 1,
-        ])
-    </div>
-    <div class="col-xl-4 col-lg-12 col-md-12">
+    <div class="col-xl-12">
         {{-- The Platforms CARD is gone from this page. Its facts moved up into
              the summary above, where they are read as part of the record
              rather than as a separate errand. Two panels showing the same two
@@ -700,23 +70,588 @@
     </div>
 </div>
 
-<div class="row">
-    <div class="col-xl-8 col-lg-12 col-md-12">
-        @include('vatssa.parts.message-log', ['training' => $training])
-    </div>
+{{-- ---------------------------------------------------- the training file --}}
+{{--
+    One box with tabs, the same shape as a member profile.
 
-    {{-- Notes about this training, for the ATC training manager and admins --
-         not the student and not their mentor. Upstream's own comment is an
-         activity-log entry visible to everybody who can see the training, which
-         is exactly why it cannot carry anything sensitive. --}}
-    <div class="col-xl-4 col-lg-12 col-md-12">
-        @include('vatssa.parts.internal-notes', [
-            'scope' => \App\Models\Vatssa\InternalNote::SCOPE_TRAINING,
-            'notes' => \App\Models\Vatssa\InternalNote::where('training_id', $training->id)
-                ->where('scope', \App\Models\Vatssa\InternalNote::SCOPE_TRAINING)
-                ->with('author')->latest()->get(),
-            'action' => route('vatssa.notes.training', $training),
-        ])
+    Upstream ran this as three columns of cards, so the page had three reading
+    orders and the timeline -- the thing a coordinator actually opens a training
+    for -- was a third of the width with reports and tasks competing beside it.
+
+    THE TAB LIST IS BUILT ONCE and both the strip and the panes read from it.
+    Two hand-kept lists drift into a tab that opens nothing, or a pane with no
+    tab, and the second is content rendered for somebody meant never to reach
+    it.
+--}}
+@php
+    // Fully qualified, no `use`. Blade compiles a view into a method scope, so
+    // a `use` statement inside @php is a fatal error rather than an import.
+    $viewer = Auth::user();
+
+    // The timeline first: it is what a coordinator opens a training to read.
+    $tabs = ['timeline' => ['label' => 'Timeline', 'icon' => 'fa-stream']];
+
+    // Reports is NOT gated here, deliberately. The card already gates its list
+    // on `viewAny` and its buttons on `create`, and those are not the same
+    // people -- a mentor who may file a report but not read the history would
+    // lose the button along with the tab. Restructuring a layout must not move
+    // a permission boundary.
+    $tabs['reports'] = ['label' => 'Reports', 'icon' => 'fa-file-lines'];
+
+    $tabs['application'] = ['label' => 'Application', 'icon' => 'fa-file-signature'];
+    $tabs['theory'] = ['label' => 'Theory', 'icon' => 'fa-book'];
+    $tabs['tasks'] = ['label' => 'Tasks', 'icon' => 'fa-list-check'];
+    $tabs['messages'] = ['label' => 'Messages', 'icon' => 'fa-envelope'];
+
+    if ($viewer->can(\App\Models\Vatssa\InternalNote::permissionFor(\App\Models\Vatssa\InternalNote::SCOPE_TRAINING))) {
+        $tabs['notes'] = ['label' => 'Internal notes', 'icon' => 'fa-lock'];
+    }
+
+    // Last, because it is the only tab that CHANGES the training rather than
+    // reporting on it.
+    if ($viewer->can('update', $training)) {
+        $tabs['manage'] = ['label' => 'Manage', 'icon' => 'fa-sliders'];
+    }
+
+    $firstTab = array_key_first($tabs);
+@endphp
+
+<div class="card shadow mb-4">
+    <div class="card-body">
+        {{-- The strip is in the BODY, not a card-header: this fork restyles
+             .nav-tabs as flat underlines, so there is no notch to cut into a
+             header, and its own underline is the separator. --}}
+        <ul class="nav nav-tabs mb-3" role="tablist">
+            @foreach($tabs as $key => $tab)
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link @if($key === $firstTab) active @endif"
+                            id="tab-{{ $key }}"
+                            data-bs-toggle="tab"
+                            data-bs-target="#pane-{{ $key }}"
+                            type="button"
+                            role="tab"
+                            aria-controls="pane-{{ $key }}"
+                            aria-selected="{{ $key === $firstTab ? 'true' : 'false' }}">
+                        <i class="fas {{ $tab['icon'] }}"></i>&nbsp;{{ $tab['label'] }}
+                    </button>
+                </li>
+            @endforeach
+        </ul>
+
+        <div class="tab-content">
+            {{-- Timeline --}}
+            @isset($tabs['timeline'])
+                <div class="tab-pane fade @if($firstTab === 'timeline') show active @endif"
+                     id="pane-timeline" role="tabpanel" aria-labelledby="tab-timeline" tabindex="0">
+                    <div class="card shadow mb-4">
+                        <div class="card-header bg-primary py-3 d-flex flex-row align-items-center justify-content-between">
+                            <h6 class="m-0 fw-bold text-white">
+                                Timeline
+                            </h6>
+                        </div>
+                        @can('comment', [\App\Models\TrainingActivity::class, \App\Models\Training::find($training->id)])
+                            <form action="{{ route('training.activity.comment') }}" method="POST">
+                                @csrf
+                                <div class="input-group">
+                                    <input type="hidden" name="training_id" value="{{ $training->id }}">
+                                    <input type="hidden" name="update_id" id="activity_update_id" value="">
+                                    <input type="text" name="comment" id="activity_comment" class="form-control border" placeholder="Your internal comment ..." maxlength="512">
+                                    <button class="btn btn-outline-primary" id="activity_button" type="submit">Comment</button>
+                                </div>
+                            </form>
+                        @endcan
+                        <div class="timeline">
+                            <ul class="sessions">
+                                @foreach($activities as $activity)
+                                    @can('view', [\App\Models\TrainingActivity::class, \App\Models\Training::find($training->id), $activity->type])
+                                        <li data-id="{{ $activity->id }}">
+                                            <div class="time">
+                                                @if($activity->type == "STATUS" || $activity->type == "TYPE")
+                                                    <i class="fas fa-right-left"></i>
+                                                @elseif($activity->type == "MENTOR")
+                                                    @if($activity->new_data)
+                                                        <i class="fas fa-user-plus"></i>
+                                                    @elseif($activity->old_data)
+                                                        <i class="fas fa-user-minus"></i>
+                                                    @endif
+                                                @elseif($activity->type == "PAUSE")
+                                                    <i class="fas fa-circle-pause"></i>
+                                                @elseif($activity->type == "ENDORSEMENT")
+                                                    <i class="fas fa-check-square"></i>
+                                                @elseif($activity->type == "RATING")
+                                                    <i class="fas fa-list-check"></i>
+                                                @elseif($activity->type == "COMMENT")
+                                                    <i class="fas fa-comment"></i>
+                                                @elseif($activity->type == 'PRETRAINING')
+                                                    <i class="fas fa-graduation-cap"></i>
+                                                @endif
+
+                                                {{-- VATSSA: say SYSTEM out loud.
+
+                                                     A null actor is how the pipeline signs its work --
+                                                     BridgeController::comment() and close() both pass null
+                                                     deliberately, so a reader in a year can tell the bot moved
+                                                     somebody rather than a person.
+
+                                                     But this printed a name only when there WAS one, so those
+                                                     rows rendered with no author at all: just a date. The
+                                                     distinction the null carries never reached the page. --}}
+                                                @isset($activity->triggered_by_id)
+                                                    {{ \App\Models\User::find($activity->triggered_by_id)?->name ?? "Deleted account" }} —
+                                                @else
+                                                    <span class="badge bg-secondary">System</span> —
+                                                @endisset
+
+                                                {{ $activity->created_at->toEuropeanDateTime() }}
+                                                @can('comment', [\App\Models\TrainingActivity::class, \App\Models\Training::find($training->id)])
+                                                    @if($activity->type == "COMMENT" && now() <= $activity->created_at->addDays(1) && $activity->triggered_by_id == \Auth::user()->id)
+                                                        <button class="btn btn-sm float-end" onclick="updateComment({{ $activity->id }}, '{{ $activity->comment }}')"><i class="fas fa-pencil"></i></button>
+                                                    @endif
+                                                @endcan
+                                            </div>
+                                            <p>
+
+                                                @if($activity->type == "STATUS")
+                                                    @if(($activity->new_data == -2 || $activity->new_data == -4) && isset($activity->comment))
+                                                        Status changed from <span class="badge text-bg-light">{{ \App\Helpers\TrainingStatus::from((int) $activity->old_data)->label() }}</span>
+                                                    to <span class="badge text-bg-light">{{ \App\Helpers\TrainingStatus::from((int) $activity->new_data)->label() }}</span>
+                                                    with reason <span class="badge text-bg-light">{{ $activity->comment }}</span>
+                                                    @else
+                                                        Status changed from <span class="badge text-bg-light">{{ \App\Helpers\TrainingStatus::from((int) $activity->old_data)->label() }}</span>
+                                                    to <span class="badge text-bg-light">{{ \App\Helpers\TrainingStatus::from((int) $activity->new_data)->label() }}</span>
+                                                    @endif
+                                                @elseif($activity->type == "TYPE")
+                                                    Training type changed from <span class="badge text-bg-light">{{ \App\Http\Controllers\TrainingController::$types[$activity->old_data]["text"] }}</span>
+                                                    to <span class="badge text-bg-light">{{ \App\Http\Controllers\TrainingController::$types[$activity->new_data]["text"] }}</span>
+                                                @elseif($activity->type == "MENTOR")
+                                                    @if($activity->new_data)
+                                                        <span class="badge text-bg-light">{{ \App\Models\User::find($activity->new_data)->name }}</span> assigned as mentor
+                                                    @elseif($activity->old_data)
+                                                    <span class="badge text-bg-light">{{ \App\Models\User::find($activity->old_data)->name }}</span> removed as mentor
+                                                    @endif
+                                                @elseif($activity->type == "PAUSE")
+                                                    @if($activity->new_data)
+                                                        Training paused
+                                                    @else
+                                                        Training unpaused
+                                                    @endif
+                                                @elseif($activity->type == "ENDORSEMENT")
+                                                    @if(\App\Models\Endorsement::find($activity->new_data) !== null)
+                                                        @empty($activity->comment)
+                                                            <span class="badge text-bg-light">
+                                                                {{ str(\App\Models\Endorsement::find($activity->new_data)->type)->lower()->ucfirst() }} endorsement
+                                                            </span> granted, valid to
+                                                            <span class="badge text-bg-light">
+                                                                @isset(\App\Models\Endorsement::find($activity->new_data)->valid_to)
+                                                                    {{ \App\Models\Endorsement::find($activity->new_data)->valid_to->toEuropeanDateTime() }}
+                                                                @else
+                                                                    Forever
+                                                                @endisset
+                                                            </span>
+                                                        @else
+                                                            <span class="badge text-bg-light">
+                                                                {{ str(\App\Models\Endorsement::find($activity->new_data)->type)->lower()->ucfirst() }} endorsement
+                                                            </span> granted, valid to
+                                                            <span class="badge text-bg-light">
+                                                                @isset(\App\Models\Endorsement::find($activity->new_data)->valid_to)
+                                                                    {{ \App\Models\Endorsement::find($activity->new_data)->valid_to->toEuropeanDateTime() }}
+                                                                @else
+                                                                    Forever
+                                                                @endisset
+                                                            </span>
+                                                            for positions:
+                                                            @foreach(explode(',', $activity->comment) as $p)
+                                                                <span class="badge text-bg-light">{{ $p }}</span>
+                                                            @endforeach
+                                                        @endempty
+                                                    @endif
+                                                @elseif($activity->type == "RATING")
+                                                    @isset($activity->rating)
+                                                        <span class="badge text-bg-light">{{ $activity->rating->name }}</span> part completed
+                                                    @endisset
+                                                @elseif($activity->type == "COMMENT")
+                                                    {!! nl2br(e($activity->comment)) !!}
+
+                                                    @if($activity->created_at != $activity->updated_at)
+                                                        <span class="text-muted">(edited)</span>
+                                                    @endif
+                                                @elseif($activity->type == "PRETRAINING")
+                                                    Pre-training marked as
+                                                    <span class="badge text-bg-light">
+                                                        @if($activity->new_data)
+                                                            <i class="fas fa-check"></i>
+                                                            Completed
+                                                        @else
+                                                            <i class="fas fa-xmark"></i>
+                                                            Not completed
+                                                        @endif
+                                                    </span>
+                                                @endif
+
+                                            </p>
+                                        </li>
+                                    @endcan
+                                @endforeach
+                                <li>
+                                    <div class="time">
+                                        <i class="fas fa-flag"></i>
+                                        @isset($training->created_by)
+                                            {{ \App\Models\User::find($training->created_by)->name }} —
+                                        @endisset
+                                        {{ $training->created_at->toEuropeanDateTime() }}
+                                    </div>
+                                    <p>
+                                        Training created
+                                    </p>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            @endisset
+
+            {{-- Reports and examinations --}}
+            @isset($tabs['reports'])
+                <div class="tab-pane fade @if($firstTab === 'reports') show active @endif"
+                     id="pane-reports" role="tabpanel" aria-labelledby="tab-reports" tabindex="0">
+                    <div class="card shadow mb-4 ">
+                        <div class="card-header bg-primary py-3 d-flex flex-row align-items-center justify-content-between">
+
+                            @if($training->status->isInProgress())
+                                <h6 class="m-0 fw-bold text-white">
+                            @else
+                                <h6 class="m-0 mt-1 mb-2 fw-bold text-white">
+                            @endif
+                                Training Reports
+                            </h6>
+
+                            @if(
+                                \Auth::user()->can('create', [\App\Models\OneTimeLink::class, $training, \App\Models\OneTimeLink::TRAINING_REPORT_TYPE]) ||
+                                \Auth::user()->can('create', [\App\Models\OneTimeLink::class, $training, \App\Models\OneTimeLink::TRAINING_EXAMINATION_TYPE]) ||
+                                $training->status->isInProgress()
+                            )
+                                <div class="dropdown" style="display: inline;">
+                                    <button class="btn btn-light btn-icon dropdown-toggle" type="button" id="dropdownMenuButton" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                                        <i class="fas fa-plus"></i> Create
+                                    </button>
+
+                                    <div class="dropdown-menu" aria-labelledby="dropdownMenuButton">
+                                        @can('create', [\App\Models\TrainingReport::class, $training])
+                                            @if($training->status->isInProgress())
+                                                <a class="dropdown-item" href="{{ route('training.report.create', ['training' => $training->id]) }}"><i class="fas fa-file"></i> Training Report</a>
+                                            @endif
+                                        @else
+                                            <a class="dropdown-item disabled" href="#"><i class="fas fa-lock"></i>&nbsp;Training Report</a>
+                                        @endcan
+
+                                        @can('create', [\App\Models\TrainingExamination::class, $training])
+                                            @if($training->status === \App\Helpers\TrainingStatus::AWAITING_EXAM)
+                                                <a class="dropdown-item" href="{{ route('training.examination.create', ['training' => $training->id]) }}"><i class="fas fa-file"></i> Exam Report</a>
+                                            @endif
+                                        @else
+                                            <a class="dropdown-item disabled" href="#"><i class="fas fa-lock"></i>&nbsp;Exam Report</a>
+                                        @endcan
+
+                                        @can('create', [\App\Models\OneTimeLink::class, $training, \App\Models\OneTimeLink::TRAINING_REPORT_TYPE])
+                                            <button class="dropdown-item" id="getOneTimeLinkReport"><i class="fas fa-link"></i> Report one-time link</button>
+                                        @endif
+                                        @can('create', [\App\Models\OneTimeLink::class, $training, \App\Models\OneTimeLink::TRAINING_EXAMINATION_TYPE])
+                                            <button class="dropdown-item" id="getOneTimeLinkExam"><i class="fas fa-link"></i> Examination one-time link</button>
+                                        @endif
+                                    </div>
+                                </div>
+                            @endif
+                        </div>
+                        <div class="card-body p-0">
+
+                            @can('viewAny', [\App\Models\TrainingReport::class, $training])
+                                <div class="accordion" id="reportAccordion">
+                                    @if ($reportsAndExams->count() == 0)
+                                        <div class="card-text text-primary p-3">
+                                            No training reports yet.
+                                        </div>
+                                    @else
+
+                                        @foreach($reportsAndExams as $reportModel)
+                                            @if(is_a($reportModel, '\App\Models\TrainingReport'))
+                                                <x-training.training-report :report="$reportModel" />
+                                            @else
+                                                <x-training.exam-report :report="$reportModel" />
+                                            @endif
+                                        @endforeach
+                                    @endif
+                                </div>
+                            @else
+                                <div class="card-text text-primary p-3">
+                                    You don't have access to see the training reports.
+                                </div>
+                            @endcan
+
+                        </div>
+                    </div>
+                </div>
+            @endisset
+
+            {{-- Application --}}
+            @isset($tabs['application'])
+                <div class="tab-pane fade @if($firstTab === 'application') show active @endif"
+                     id="pane-application" role="tabpanel" aria-labelledby="tab-application" tabindex="0">
+                    <div class="card shadow mb-4">
+                        <div class="card-header bg-primary py-3 d-flex flex-row align-items-center justify-content-between">
+                            <h6 class="m-0 fw-bold text-white">
+                                Application
+                            </h6>
+                        </div>
+                        <div class="card-body p-0">
+                            <div class="card bg-light mb-3">
+                                <div class="card-body">
+
+                                    @if($training->english_only_training)
+                                        <i class="fas fa-flag-usa"></i>&nbsp;&nbsp;Requesting training in English only<br>
+                                    @else
+                                        <i class="fas fa-flag"></i>&nbsp;&nbsp;Requesting training in local language or English<br>
+                                    @endif
+
+                                    @isset($training->experience)
+                                        <i class="fas fa-book"></i>&nbsp;&nbsp;{{ $experiences[$training->experience]["text"] }}
+                                    @endisset
+
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="p-4">
+                            <p class="fw-bold text-primary-emphasis">
+                                <i class="fas fa-envelope-open-text"></i>&nbsp;Letter of motivation
+                            </p>
+
+                            @if(empty($training->motivation))
+                                <p><i>Not provided / relevant</i></p>
+                            @else
+                                <p>{{ $training->motivation }}</p>
+                            @endif
+                        </div>
+                    </div>
+                </div>
+            @endisset
+
+            {{-- Theory --}}
+            @isset($tabs['theory'])
+                <div class="tab-pane fade @if($firstTab === 'theory') show active @endif"
+                     id="pane-theory" role="tabpanel" aria-labelledby="tab-theory" tabindex="0">
+                    {{-- VATSSA: the practical exam being arranged, if there is one.
+                         A coordinator opening a training asks "where is this person up
+                         to", and an exam in flight is most of that answer. Summary and a
+                         link only -- every action lives on the exam page, because two
+                         places to do the same thing is one place that goes stale. --}}
+
+
+                    @include('vatssa.parts.theory', [
+                        'user' => $training->user,
+                        'onlyRatings' => $training->ratings->pluck('name')->all(),
+                        'panelTitle' => 'Theory for this rating',
+                        // Only the Standard track sits theory. Refresh, transfer,
+                        // fast-track and familiarisation students already hold the rating.
+                        'needsNoTheory' => $training->type != 1,
+                    ])
+                </div>
+            @endisset
+
+            {{-- Related tasks --}}
+            @isset($tabs['tasks'])
+                <div class="tab-pane fade @if($firstTab === 'tasks') show active @endif"
+                     id="pane-tasks" role="tabpanel" aria-labelledby="tab-tasks" tabindex="0">
+                    <div class="card shadow mb-4">
+                        <div class="card-header bg-primary py-3 d-flex flex-row align-items-center justify-content-between">
+                            <h6 class="m-0 fw-bold text-white">
+                                Related Tasks
+                            </h6>
+                        </div>
+                        <div class="card-body {{ $relatedTasks->count() == 0 ? '' : 'p-0' }}">
+
+                            @if($relatedTasks->count() == 0)
+                                <p class="mb-0">No related task history</p>
+                            @else
+                                <div class="table-responsive">
+                                    <table class="table table-sm table-leftpadded mb-0" width="100%" cellspacing="0">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th>Task</th>
+                                                <th>Creator</th>
+                                                <th>Assignee</th>
+                                                <th>Status</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach($relatedTasks as $task)
+                                            <tr>
+                                                <td>
+                                                    <i class="fas {{ $task->type()->getIcon() }}" data-bs-toggle="tooltip" data-bs-placement="top"></i>
+                                                    {{ $task->type()->getText($task) }}
+                                                </td>
+                                                <td>
+                                                    {{-- VATSSA: nullable, and now actually
+                                                         null -- the automation raises
+                                                         requests with no creator. --}}
+                                                    {{ $task->creator?->name ?? 'System' }}
+                                                </td>
+                                                <td>
+                                                    {{ $task->assignee->name }}
+                                                </td>
+                                                <td>
+                                                    @if($task->status == \App\Helpers\TaskStatus::COMPLETED)
+                                                        <i class="fas fa-check text-success"></i>
+                                                    @elseif($task->status == \App\Helpers\TaskStatus::DECLINED)
+                                                        <i class="fas fa-times text-danger"></i>
+                                                    @elseif($task->status == \App\Helpers\TaskStatus::PENDING)
+                                                        <i class="fas fa-hourglass text-warning"></i>
+                                                    @endif
+
+                                                    @if($task->status == \App\Helpers\TaskStatus::COMPLETED || $task->status == \App\Helpers\TaskStatus::DECLINED)
+                                                        <span class="text-muted" title="{{ $task->closed_at->toEuropeanDateTime() }}">{{ $task->closed_at->diffForHumans() }}</span>
+                                                    @else
+                                                        <span class="text-muted" title="{{ $task->created_at->toEuropeanDateTime() }}">{{ $task->created_at->diffForHumans() }}</span>
+                                                    @endif
+
+                                                </td>
+                                            </tr>
+                                            @endforeach
+                                        </tbody>
+                                    </table>
+                                </div>
+                            @endif
+
+                        </div>
+                    </div>
+                </div>
+            @endisset
+
+            {{-- Messages sent --}}
+            @isset($tabs['messages'])
+                <div class="tab-pane fade @if($firstTab === 'messages') show active @endif"
+                     id="pane-messages" role="tabpanel" aria-labelledby="tab-messages" tabindex="0">
+                    @include('vatssa.parts.message-log', ['training' => $training])
+                </div>
+            @endisset
+
+            {{-- Internal notes --}}
+            @isset($tabs['notes'])
+                <div class="tab-pane fade @if($firstTab === 'notes') show active @endif"
+                     id="pane-notes" role="tabpanel" aria-labelledby="tab-notes" tabindex="0">
+                    @include('vatssa.parts.internal-notes', [
+                        'scope' => \App\Models\Vatssa\InternalNote::SCOPE_TRAINING,
+                        'notes' => \App\Models\Vatssa\InternalNote::where('training_id', $training->id)
+                            ->where('scope', \App\Models\Vatssa\InternalNote::SCOPE_TRAINING)
+                            ->with('author')->latest()->get(),
+                        'action' => route('vatssa.notes.training', $training),
+                    ])
+                </div>
+            @endisset
+
+            {{-- Manage --}}
+            @isset($tabs['manage'])
+                <div class="tab-pane fade @if($firstTab === 'manage') show active @endif"
+                     id="pane-manage" role="tabpanel" aria-labelledby="tab-manage" tabindex="0">
+                    @can('update', $training)
+                        <div class="card shadow mb-4">
+
+                            <div class="card-body">
+                                <form action="{{ route('training.update.details', ['training' => $training->id]) }}" method="POST">
+                                    @method('PATCH')
+                                    @csrf
+
+                                    <div class="mb-3">
+
+                                        @if($activeTrainingInterest)
+                                            <div class="alert alert-warning" role="alert">
+                                                <i class="fas fa-exclamation-triangle"></i>&nbsp;This training has an active interest request pending.
+                                            </div>
+                                        @endif
+
+                                        @php
+                                            $pipelineOwned = in_array($training->status, [
+                                                \App\Helpers\TrainingStatus::IN_QUEUE,
+                                                \App\Helpers\TrainingStatus::PRE_TRAINING,
+                                                \App\Helpers\TrainingStatus::AWAITING_MENTOR,
+                                            ], true);
+                                        @endphp
+
+                                        {{-- VATSSA: say WHY the list is short, rather than
+                                             leaving somebody to wonder where the options
+                                             went. A control that silently offers less than
+                                             it did yesterday reads as broken. --}}
+                                        @if($pipelineOwned)
+                                            <div class="alert alert-secondary py-2 mb-2">
+                                                <small>
+                                                    <i class="fas fa-robot"></i>&nbsp;
+                                                    <strong>{{ $training->status->label() }}</strong> is set by the
+                                                    training pipeline, from the student\'s Moodle enrolment, their
+                                                    theory result and whether a mentor is assigned. It cannot be
+                                                    changed by hand — the next cycle would move them straight back.
+                                                    <span class="d-block mt-1">
+                                                        Pausing still works, and closing is still available if the
+                                                        student has dropped out.
+                                                    </span>
+                                                </small>
+                                            </div>
+                                        @endif
+
+                                        <label class="form-label" for="trainingStateSelect">Select training state</label>
+                                        <select class="form-select" name="status" id="trainingStateSelect" @if(Auth::user()->cannot('update', $training)) disabled @endif>
+                                            {{-- Lifecycle order, not declaration order:
+                                                 AWAITING_MENTOR is stored as 4 so nothing
+                                                 had to be renumbered, and cases() would
+                                                 put it last in the list. --}}
+                                            @foreach(\App\Helpers\TrainingStatus::inLifecycleOrder() as $status)
+                                                {{-- VATSSA: context-aware. The pipeline owns in-queue,
+                                                     pre-training and awaiting-mentor; the one manual move
+                                                     is active training back to awaiting a mentor. --}}
+                                                @if($status->isAssignableFrom($training->status))
+                                                    <option value="{{ $status->value }}" @selected($training->status === $status)>{{ $status->label() }}</option>
+                                                @endif
+                                            @endforeach
+                                        </select>
+                                    </div>
+
+                                    <div class="mb-3" id="closedReasonInput" style="display: none">
+                                        <label class="form-label" for="trainingCloseReason">Closed reason</label>
+                                        <input type="text" id="trainingCloseReason" class="form-control" name="closed_reason" placeholder="{{ $training->closed_reason }}" maxlength="65">
+                                    </div>
+
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="check1" name="paused_at" {{ $training->paused_at ? "checked" : "" }} @if(Auth::user()->cannot('update', $training)) disabled @endif>
+                                        <label class="form-check-label" for="check1">
+                                            Paused
+                                            @if(isset($training->paused_at))
+                                                <span class='badge bg-danger'>{{ \Carbon\Carbon::create($training->paused_at)->diffForHumans(['parts' => 2]) }}</span>
+                                            @endif
+                                        </label>
+                                    </div>
+
+                                    <hr>
+
+                                    @can('update', $training)
+                                    <div class="mb-3">
+                                        <label class="form-label" for="assignMentors">Assigned mentors: <span class="badge bg-secondary">Ctrl/Cmd+Click</span> to select multiple</label>
+                                        <select multiple class="form-select" name="mentors[]" id="assignMentors">
+                                            @foreach($trainingMentors as $mentor)
+                                                <option value="{{ $mentor->id }}" {{ ($training->mentors->contains($mentor->id)) ? "selected" : "" }}>{{ $mentor->name }}</option>
+                                            @endforeach
+                                        </select>
+                                    </div>
+                                    @endcan
+
+                                    <button type="submit" id="training-submit-btn" class="btn btn-primary" onclick="handleSubmit(event)">Save
+                                        <div class="submit-spinner spinner-border spinner-border-sm" role="status" style="display: none;">&nbsp;</div>
+                                    </button>
+
+                                </form>
+                            </div>
+                        </div>
+                    @endcan
+                </div>
+            @endisset
+        </div>
     </div>
 </div>
 
@@ -738,6 +673,33 @@
 @endsection
 
 @section('js')
+
+    {{-- Remember which tab was open, exactly as the member profile does.
+
+         A training is a page people reload constantly -- after filing a report,
+         after a status change -- and landing back on the Timeline every time
+         makes the tabs feel like they lost your place. replaceState rather than
+         assigning location.hash, which would scroll the page off the masthead. --}}
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            var strip = document.querySelector('[role="tablist"]');
+            if (!strip || !window.bootstrap) return;
+
+            var wanted = window.location.hash.replace('#tab-', '');
+            if (wanted) {
+                var trigger = document.getElementById('tab-' + wanted);
+                // Only a tab that exists for THIS reader.
+                if (trigger) {
+                    bootstrap.Tab.getOrCreateInstance(trigger).show();
+                }
+            }
+
+            strip.addEventListener('shown.bs.tab', function (event) {
+                history.replaceState(null, '', '#' + event.target.id);
+            });
+        });
+    </script>
+
 
     <!-- One Time Links -->
     <script>
