@@ -158,9 +158,10 @@ return [
             'endorsements.solo.*',
             'fir.positions.view',
             'fir.management.reports.view',      // ALSO the training-request queue — never remove
-            'users.manage',                     // UserPolicy::view/index require it; without it
-                                                // users.access.view is unreachable and a Pipeline
-                                                // Coordinator cannot open a member profile at all
+            // UserPolicy::view/index require users.manage, so without it
+            // users.access.view is unreachable and a Pipeline Coordinator
+            // cannot open a member profile at all.
+            'users.manage',
             'users.access.view',
             'users.workmail.use',
             'tasks.**',
