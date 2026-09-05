@@ -23,9 +23,9 @@ underneath an added file. So each section below names its own detector, and
 
 ## Modified upstream files
 
-Twelve, but they are two different things and should be read as such.
+Thirteen, but they are two different things and should be read as such.
 
-**Two are code and configuration.** These are the real divergence. Each one is
+**Three are code and configuration.** These are the real divergence. Each one is
 a conflict on some future release, each needs judgement to resolve, and this
 list growing is the thing to resist.
 
@@ -36,7 +36,7 @@ they carry risk.
 
 | | Count |
 |---|---|
-| Code and configuration | 2 |
+| Code and configuration | 3 |
 | Brand assets | 10 |
 | Added files | 32 |
 | Force-added past `.gitignore` | 3 |
@@ -240,6 +240,22 @@ workflow went green.
 
 ---
 
+### `resources/views/layouts/sidebar.blade.php`
+
+Two items in the Reports section render with no `@can` guard while every other
+item in that section has one: **Mentors** and **Feedback**. Their controllers
+authorise `viewMentors` and `viewFeedback` on `ManagementReport`, so anyone who
+can see the Reports section at all sees two links that answer 403. A Pipeline
+Coordinator hit this on the first day in production.
+
+Wrapped both in the same `@can` their controller checks, matching the Access
+item directly above them.
+
+**This should not stay a fork patch.** It is an upstream bug with no VATSSA
+semantics attached, and the fix is four lines. See
+`upstream-contrib/sidebar-report-guards` below. Drop this entry the moment that
+lands.
+
 ## Upstream contributions in flight
 
 Branches cut from `upstream-mirror` with a PR open at Vatsim-Scandinavia. When
@@ -254,6 +270,7 @@ upstream's side wholesale, then delete the local branch and this entry.**
 | `upstream-contrib/sh-eol` | `.gitattributes` has `* text=auto` and no rule for `*.sh`. On a Windows checkout the six shell scripts, `container/entrypoint.sh` included, become CRLF, and the Dockerfile copies them straight into a Linux image. One line: `*.sh text eol=lf`. | not opened yet |
 | `upstream-contrib/flex-logo-width` | `.front-cover .content-title img, svg` is sized by `height` alone. `front.blade.php` inlines the SVG, so its intrinsic width drives the flex layout; any mark with a large `width` attribute blows the login page apart. `.content` is `width: fit-content` so it inherits, and the Login button (`width: 100%`) spans the viewport. Needs an explicit width. | not opened yet |
 | `upstream-contrib/logo-centring` | `_global.scss` centres the login wordmark with `left: calc(50vw - (14.5rem / 2))`, hardcoding VATSCA's logo width. Every other division's mark sits off-centre. `left: 50%` plus `translateX(-50%)` is width-independent. | not opened yet |
+| `upstream-contrib/sidebar-report-guards` | `layouts/sidebar.blade.php` renders the Mentors and Feedback report links with no `@can`, while their controllers authorise `viewMentors` / `viewFeedback` on `ManagementReport`. Any role that can see the Reports section sees two links that 403. | not opened yet |
 | `upstream-contrib/button-padding` | `_global.scss` `.content a { padding-top: 0.375; }` — **no unit**. Invalid CSS, dropped by every browser, so the Login button loses its top padding. | not opened yet |
 
 ---

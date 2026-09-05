@@ -129,13 +129,17 @@
                     <x-sidebar.item :href="route('reports.activities')" title="Training Activities" collapse />
                 @endcan
 
-                <x-sidebar.item :href="route('reports.mentors')" title="Mentors" collapse />
+                @can('viewMentors', \App\Models\ManagementReport::class)
+                    <x-sidebar.item :href="route('reports.mentors')" title="Mentors" collapse />
+                @endcan
 
                 @can('viewAccessReport', \App\Models\ManagementReport::class)
                     <x-sidebar.item :href="route('reports.access')" title="Access" collapse />
                 @endcan
 
-                <x-sidebar.item :href="route('reports.feedback')" title="Feedback" collapse />
+                @can('viewFeedback', \App\Models\ManagementReport::class)
+                    <x-sidebar.item :href="route('reports.feedback')" title="Feedback" collapse />
+                @endcan
 
             </x-sidebar.section>
         @endif
