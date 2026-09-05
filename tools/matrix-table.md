@@ -31,7 +31,7 @@
 | `fir.positions.view` | O | O | O |  | O |  |
 | `fir.positions.manage` | O |  |  |  | O |  |
 | `fir.management.reports.view` | O | O | O |  |  |  |
-| `users.manage` | O | O |  |  |  |  |
+| `users.manage` | O | O | O |  |  |  |
 | `users.access.view` | O | O | O |  |  |  |
 | `users.workmail.use` | O | O | O |  |  |  |
 | `tasks.manage` | O | O | O | O |  |  |
@@ -57,4 +57,4 @@
 | `roles.mentor.manage` | O | O |  |  |  |  |
 | `roles.feedback-team.manage` | O |  |  |  |  |  |
 
-**Totals:** admin **52** · atc-training-manager **37** · pipeline-coordinator **28** · mentor **8** · nav-editor **2** · feedback-team **3**
+**Totals:** admin **52** · atc-training-manager **37** · pipeline-coordinator **29** · mentor **8** · nav-editor **2** · feedback-team **3**
