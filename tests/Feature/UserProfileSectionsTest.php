@@ -86,6 +86,65 @@ class UserProfileSectionsTest extends TestCase
         $this->assertStringContainsString('Not on the roster', $html);
     }
 
+    // ------------------------------------------------------------- the tabs
+
+    #[Test]
+    public function every_tab_has_a_pane_and_every_pane_has_a_tab(): void
+    {
+        // The invariant the whole tab list exists to hold. Two hand-kept lists
+        // drift, and the two ways they drift are both bad: a tab that opens
+        // nothing, or a pane with no tab -- which is content rendered for a
+        // reader who was never meant to reach it.
+        $html = $this->profileOf(User::factory()->create(), $this->withRole('admin'));
+
+        preg_match_all('/data-bs-target="#pane-([a-z]+)"/', $html, $tabs);
+        preg_match_all('/id="pane-([a-z]+)"/', $html, $panes);
+
+        $this->assertNotEmpty($tabs[1], 'no tabs rendered at all');
+        $this->assertEqualsCanonicalizing($tabs[1], $panes[1]);
+    }
+
+    #[Test]
+    public function the_page_closes_every_div_it_opens(): void
+    {
+        // This page is a dozen includes inside a tab pane inside a card. Every
+        // assertion in this file passes just as happily against markup with a
+        // stray </div> in it, and the symptom of that is not an error -- it is
+        // half the page rendering inside the wrong box, which only a person
+        // looking at it would notice.
+        $html = $this->profileOf(User::factory()->create(), $this->withRole('admin'));
+
+        $this->assertSame(
+            substr_count($html, '<div'),
+            substr_count($html, '</div>'),
+            'the profile opens and closes a different number of divs'
+        );
+    }
+
+    #[Test]
+    public function exactly_one_tab_opens_on_load(): void
+    {
+        // Zero leaves the reader looking at an empty box and wondering whether
+        // the page failed; two is a Bootstrap state that renders both panes
+        // stacked, which is the layout this replaced.
+        $html = $this->profileOf(User::factory()->create(), $this->withRole('admin'));
+
+        preg_match_all('/class="tab-pane fade[^"]*\bshow active\b/', $html, $open);
+
+        $this->assertCount(1, $open[0]);
+    }
+
+    #[Test]
+    public function a_reader_who_loses_the_first_tab_still_opens_on_something(): void
+    {
+        // `$firstTab` is whichever survived the gating, not a hard-coded name.
+        // A reader for whom the first few tabs are gated away must still land
+        // on an open pane rather than a blank body.
+        $html = $this->profileOf(User::factory()->create(), $this->withRole('pipeline-coordinator'));
+
+        $this->assertStringContainsString('show active', $html);
+    }
+
     // -------------------------------------------------------- it stays gated
 
     #[Test]

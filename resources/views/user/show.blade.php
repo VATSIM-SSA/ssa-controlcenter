@@ -115,16 +115,6 @@
     </div>
 </div>
 
-{{-- ------------------------------------------------------- 1. Standing --}}
-<x-vatssa.section title="Divisional history" icon="fa-id-card">
-    @include('vatssa.parts.divisional-history', [
-        'user' => $user,
-        'relationship' => $relationship,
-        'approvedController' => $approvedController,
-        'statusHistory' => $statusHistory,
-    ])
-</x-vatssa.section>
-
 {{-- ------------------------------------------------------- 2. Training --}}
 {{-- VATSSA: the theory panel on a PROFILE is unfiltered -- every rating this
      person has ever sat. Your own is always yours; somebody else's is
@@ -140,446 +130,553 @@
         || Auth::user()->can('training.results.history.view');
 @endphp
 
-<x-vatssa.section title="Training" icon="fa-graduation-cap">
-    <div class="row">
-        <div class="col-xl-12">
+
+{{-- ------------------------------------------------------ the member file --}}
+{{--
+    One box with tabs, rather than eight stacked sections.
+
+    Stacked, the page was four screens deep and every visit meant scrolling
+    past seven things to reach the eighth. The sections were already named and
+    ordered; making them tabs keeps that and costs one click, which is cheaper
+    than a scroll you have to aim.
+
+    THE TAB LIST IS BUILT ONCE, above, and both the strip and the panes read
+    from it. Two hand-kept lists is how a page ends up with a tab that opens
+    nothing, or a pane nobody can reach -- and the second is a silent
+    permissions leak waiting to happen.
+
+    Gating is per tab. A reader who may not see the Terminal log has no
+    Terminal tab at all, rather than a tab that opens an empty box.
+--}}
+@php
+    // Fully qualified, no `use`. Blade compiles a view into a method scope, so
+    // a `use` statement inside @php is a fatal error rather than an import --
+    // which is why every other blade in this fork names classes in full.
+    $viewer = Auth::user();
+
+    $tabs = [
+        'standing' => ['label' => 'Divisional history', 'icon' => 'fa-id-card'],
+        'training' => ['label' => 'Training', 'icon' => 'fa-graduation-cap'],
+        'roster' => ['label' => 'Roster', 'icon' => 'fa-headset'],
+    ];
+
+    if ($viewer->can('viewFeedback', \App\Models\ManagementReport::class)) {
+        $tabs['feedback'] = ['label' => 'Feedback', 'icon' => 'fa-comment-dots'];
+    }
+
+    // EITHER note permission earns the tab, because the two partials inside it
+    // have different audiences and each renders nothing without its own. A
+    // reader holding one of the two still has something to open.
+    if ($viewer->can(\App\Models\Vatssa\InternalNote::permissionFor(\App\Models\Vatssa\InternalNote::SCOPE_USER))
+        || $viewer->can(\App\Models\Vatssa\InternalNote::permissionFor(\App\Models\Vatssa\InternalNote::SCOPE_TRAINING))) {
+        $tabs['notes'] = ['label' => 'Internal notes', 'icon' => 'fa-lock'];
+    }
+
+    $tabs['membership'] = ['label' => 'Visiting & transferring', 'icon' => 'fa-right-left'];
+
+    if ($viewer->can('membership.terminal.view')) {
+        $tabs['terminal'] = ['label' => 'Terminal log', 'icon' => 'fa-terminal'];
+    }
+
+    if ($viewer->can('viewAccess', $user)) {
+        $tabs['access'] = ['label' => 'Access', 'icon' => 'fa-key'];
+    }
+
+    // Whichever tab survived the gating first, so the page always opens on
+    // something rather than on a blank body.
+    $firstTab = array_key_first($tabs);
+@endphp
+
+<div class="card shadow mb-4">
+    <div class="card-body">
+        {{-- The strip is in the BODY, not in a card-header.
+
+             This fork already restyles .nav-tabs as flat underlines rather than
+             Bootstrap's bordered notch, so there is no notch that needs to be
+             cut into the card header for the active tab to read as open. Put in
+             a header, the strip would have drawn its own rule two pixels above
+             the header's, and fought the header's !important padding for the
+             room to sit in. Its own underline is the separator. --}}
+        <ul class="nav nav-tabs mb-3" role="tablist">
+            @foreach($tabs as $key => $tab)
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link @if($key === $firstTab) active @endif"
+                            id="tab-{{ $key }}"
+                            data-bs-toggle="tab"
+                            data-bs-target="#pane-{{ $key }}"
+                            type="button"
+                            role="tab"
+                            aria-controls="pane-{{ $key }}"
+                            aria-selected="{{ $key === $firstTab ? 'true' : 'false' }}">
+                        <i class="fas {{ $tab['icon'] }}"></i>&nbsp;{{ $tab['label'] }}
+                    </button>
+                </li>
+            @endforeach
+        </ul>
+
+        <div class="tab-content">
+            {{-- Divisional history --}}
+            @isset($tabs['standing'])
+                <div class="tab-pane fade @if($firstTab === 'standing') show active @endif"
+                     id="pane-standing" role="tabpanel" aria-labelledby="tab-standing" tabindex="0">
+            @include('vatssa.parts.divisional-history', [
+                'user' => $user,
+                'relationship' => $relationship,
+                'approvedController' => $approvedController,
+                'statusHistory' => $statusHistory,
+            ])
+                </div>
+            @endisset
+
+            {{-- Training --}}
+            @isset($tabs['training'])
+                <div class="tab-pane fade @if($firstTab === 'training') show active @endif"
+                     id="pane-training" role="tabpanel" aria-labelledby="tab-training" tabindex="0">
+            <div class="row">
+                <div class="col-xl-12">
+                    <div class="card shadow mb-4">
+                        <div class="card-header bg-primary py-3 d-flex flex-row align-items-center justify-content-between">
+                            <h6 class="m-0 fw-bold text-white">
+                                Trainings
+                            </h6>
+                            @can('create', \App\Models\Training::class)
+                                <a href="{{ route('training.create.id', $user->id) }}" class="btn btn-icon btn-light"><i class="fas fa-plus"></i> Add new training</a>
+                            @endcan
+                        </div>
+                        <div class="card-body {{ $trainings->count() == 0 ? '' : 'p-0' }}">
+
+                            @if($trainings->count() == 0)
+                                <p class="mb-0">No registered trainings</p>
+                            @else
+                                <div class="table-responsive">
+                                    <table class="table table-sm table-leftpadded mb-0" width="100%" cellspacing="0">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th>State</th>
+                                                <th>Level</th>
+                                                <th>Area</th>
+                                                <th>Type</th>
+                                                <th>Applied</th>
+                                                <th>Ended</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach($trainings as $training)
+                                            <tr>
+                                                <td>
+                                                    <i class="{{ $training->status->icon() }} text-{{ $training->status->color() }}"></i>&ensp;<a href="/training/{{ $training->id }}">{{ $training->status->label() }}</a>{{ isset($training->paused_at) ? ' (PAUSED)' : '' }}
+                                                </td>
+                                                <td>
+                                                    @if ( is_iterable($ratings = $training->ratings->toArray()) )
+                                                        @for( $i = 0; $i < sizeof($ratings); $i++ )
+                                                            @if ( $i == (sizeof($ratings) - 1) )
+                                                                {{ $ratings[$i]["name"] }}
+                                                            @else
+                                                                {{ $ratings[$i]["name"] . " + " }}
+                                                            @endif
+                                                        @endfor
+                                                    @else
+                                                        {{ $ratings["name"] }}
+                                                    @endif
+                                                </td>
+                                                <td>
+                                                    {{ $training->area->name }}
+                                                </td>
+                                                <td>
+                                                    <i class="{{ $types[$training->type]["icon"] }}"></i>&ensp;{{ $types[$training->type]["text"] }}
+                                                </td>
+                                                <td>
+                                                    {{ $training->created_at->toEuropeanDate() }}
+                                                </td>
+                                                <td>
+                                                    @if ($training->closed_at != null)
+                                                        {{ $training->closed_at->toEuropeanDate() }}
+                                                    @else
+                                                        N/A
+                                                    @endif
+                                                </td>
+                                            </tr>
+                                            @endforeach
+                                        </tbody>
+                                    </table>
+                                </div>
+                            @endif
+
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row">
+                @if($showTheoryHistory)
+                    <div class="col-xl-8 col-lg-12 col-md-12">
+                        @include('vatssa.parts.theory', ['user' => $user])
+                    </div>
+                @endif
+
+                {{-- Mentoring, where Division Exams used to be.
+
+                     That card fetched VATEUD's theory record over HTTP on every profile
+                     view, answered the same question as the Moodle theory panel beside
+                     it, and never showed a VATSSA CPT at all -- our practicals never
+                     reach VATEUD. See the partial.
+
+                     Full width when theory is not shown, or it sits in a third of a row
+                     with two thirds of nothing beside it. --}}
+                <div class="{{ $showTheoryHistory ? 'col-xl-4' : 'col-xl-12' }} col-lg-12 col-md-12">
+                    @include('vatssa.parts.mentoring-summary', ['user' => $user])
+                </div>
+            </div>
+                </div>
+            @endisset
+
+            {{-- Roster --}}
+            @isset($tabs['roster'])
+                <div class="tab-pane fade @if($firstTab === 'roster') show active @endif"
+                     id="pane-roster" role="tabpanel" aria-labelledby="tab-roster" tabindex="0">
+            @include('vatssa.parts.roster-status', [
+                'user' => $user,
+                'approvedController' => $approvedController,
+                'rosterHistory' => $rosterHistory,
+            ])
+
             <div class="card shadow mb-4">
                 <div class="card-header bg-primary py-3 d-flex flex-row align-items-center justify-content-between">
                     <h6 class="m-0 fw-bold text-white">
-                        Trainings
+                        Endorsements
                     </h6>
-                    @can('create', \App\Models\Training::class)
-                        <a href="{{ route('training.create.id', $user->id) }}" class="btn btn-icon btn-light"><i class="fas fa-plus"></i> Add new training</a>
+                    @can('create', \App\Models\Endorsement::class)
+                        <a href="{{ route('endorsements.create.id', $user->id) }}" class="btn btn-icon btn-light"><i class="fas fa-plus"></i> Add new endorsement</a>
                     @endcan
                 </div>
-                <div class="card-body {{ $trainings->count() == 0 ? '' : 'p-0' }}">
+                <div class="card-body d-flex flex-wrap gap-3">
 
-                    @if($trainings->count() == 0)
-                        <p class="mb-0">No registered trainings</p>
-                    @else
-                        <div class="table-responsive">
-                            <table class="table table-sm table-leftpadded mb-0" width="100%" cellspacing="0">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th>State</th>
-                                        <th>Level</th>
-                                        <th>Area</th>
-                                        <th>Type</th>
-                                        <th>Applied</th>
-                                        <th>Ended</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @foreach($trainings as $training)
-                                    <tr>
-                                        <td>
-                                            <i class="{{ $training->status->icon() }} text-{{ $training->status->color() }}"></i>&ensp;<a href="/training/{{ $training->id }}">{{ $training->status->label() }}</a>{{ isset($training->paused_at) ? ' (PAUSED)' : '' }}
-                                        </td>
-                                        <td>
-                                            @if ( is_iterable($ratings = $training->ratings->toArray()) )
-                                                @for( $i = 0; $i < sizeof($ratings); $i++ )
-                                                    @if ( $i == (sizeof($ratings) - 1) )
-                                                        {{ $ratings[$i]["name"] }}
-                                                    @else
-                                                        {{ $ratings[$i]["name"] . " + " }}
-                                                    @endif
-                                                @endfor
-                                            @else
-                                                {{ $ratings["name"] }}
-                                            @endif
-                                        </td>
-                                        <td>
-                                            {{ $training->area->name }}
-                                        </td>
-                                        <td>
-                                            <i class="{{ $types[$training->type]["icon"] }}"></i>&ensp;{{ $types[$training->type]["text"] }}
-                                        </td>
-                                        <td>
-                                            {{ $training->created_at->toEuropeanDate() }}
-                                        </td>
-                                        <td>
-                                            @if ($training->closed_at != null)
-                                                {{ $training->closed_at->toEuropeanDate() }}
-                                            @else
-                                                N/A
-                                            @endif
-                                        </td>
-                                    </tr>
-                                    @endforeach
-                                </tbody>
-                            </table>
-                        </div>
+                    @if($endorsements->count() == 0)
+                        <p class="mb-0">No registered endorsements</p>
                     @endif
 
+                    @foreach($endorsements as $endorsement)
+                        <div class="card bg-light mb-3 endorsement-card" data-endorsement-id="{{ $endorsement['id'] }}">
+                            <div class="card-header fw-bold">
+
+                                @if($endorsement->revoked)
+                                    <i class="fas fa-circle-xmark text-danger" data-bs-toggle="tooltip" data-bs-placement="top" title="Revoked"></i>
+                                @elseif($endorsement->expired)
+                                    <i class="fas fa-circle-minus text-danger" data-bs-toggle="tooltip" data-bs-placement="top" title="Expired"></i>
+                                @else
+                                    <i class="fas fa-circle-check text-success" data-bs-toggle="tooltip" data-bs-placement="top" title="Active"></i>
+                                @endif
+
+                                {{ ucfirst(strtolower($endorsement->type)) }} Endorsement
+
+                                @can('delete', [\App\Models\Endorsement::class, $endorsement])
+                                    <a href="{{ route('endorsements.delete', $endorsement->id) }}" class="text-muted float-end hover-red" data-bs-toggle="tooltip" data-bs-placement="top" title="Revoke" onclick="return confirm('Are you sure you want to revoke this endorsement?')"><i class="fas fa-trash"></i></a>
+                                @endcan
+
+                                @if($endorsement->type == 'SOLO' && isset($endorsement->valid_to))
+                                    @can('shorten', [\App\Models\Endorsement::class, $endorsement])
+                                        <span class="flatpickr">
+                                            <input type="text" style="width: 1px; height: 1px; visibility: hidden;" data-endorsement-id="{{ $endorsement['id'] }}" data-date="{{ $endorsement->valid_to->format('Y-m-d') }}" data-input>
+                                            <a role="button" class="input-button text-muted float-end hover-red text-decoration-none" data-bs-toggle="tooltip" data-bs-placement="top" title="Shorten expire date" data-toggle>
+                                                <i class="fas fa-calendar-minus"></i>&nbsp;
+                                            </a>
+                                        </span>
+                                    @endcan
+                                @endif
+                            </div>
+                            <div class="card-body">
+                                <table class="table-card">
+                                    @if($endorsement->type == "FACILITY")
+                                        <tr class="spacing">
+                                            <th>Position</th>
+                                            <td>{{ $endorsement->ratings->first()->endorsement_type }} {{ $endorsement->ratings->first()->name }}</td>
+                                        </tr>
+                                        <tr>
+                                            <th>Issued</th>
+                                            <td>{{ $endorsement->valid_from->toEuropeanDate() }}</td>
+                                        </tr>
+                                        <tr class="spacing">
+                                            <th>Expire</th>
+                                            <td>{{ isset($endorsement->valid_to) ? $endorsement->valid_to->toEuropeanDateTime() : 'Never' }}</td>
+                                        </tr>
+                                        <tr>
+                                            <th>Issued by</th>
+                                            <td>{{ $endorsement->issuedBy?->name ?? 'System' }}</td>
+                                        </tr>
+                                        @if($endorsement->revoked)
+                                            <tr>
+                                                <th>Revoked by</th>
+                                                <td>{{ $endorsement->revokedBy?->name ?? 'System' }}</td>
+                                            </tr>
+                                        @endif
+                                    @elseif($endorsement->type == 'SOLO')
+                                        <tr class="spacing">
+                                            <th>Rating</th>
+                                            <td>{{ implode(', ', $endorsement->positions->pluck('callsign')->toArray()) }}</td>
+                                        </tr>
+                                        <tr>
+                                            <th>Issued</th>
+                                            <td>{{ $endorsement->valid_from->toEuropeanDate() }}</td>
+                                        </tr>
+                                        <tr class="spacing">
+                                            <th>Expire</th>
+                                            <td>{{ isset($endorsement->valid_to) ? $endorsement->valid_to->toEuropeanDateTime() : 'Never' }}</td>
+                                        </tr>
+                                        <tr>
+                                            <th>Issued by</th>
+                                            <td>{{ $endorsement->issuedBy?->name ?? 'System' }}</td>
+                                        </tr>
+                                        @if($endorsement->revoked)
+                                            <tr>
+                                                <th>Revoked by</th>
+                                                <td>{{ $endorsement->revokedBy?->name ?? 'System' }}</td>
+                                            </tr>
+                                        @endif
+                                    @elseif($endorsement->type == "VISITING")
+                                        <tr>
+                                            <th>Rating</th>
+                                            <td>{{ $endorsement->ratings->first()->name }}</td>
+                                        </tr>
+                                        <tr>
+                                            <th>Areas</th>
+                                            <td>{{ implode(', ', $endorsement->areas->pluck('name')->toArray()) }}</td>
+                                        </tr>
+                                        <tr>
+                                            <th>Issued</th>
+                                            <td>{{ $endorsement->valid_from->toEuropeanDate() }}</td>
+                                        </tr>
+                                        <tr class="spacing">
+                                            <th>Expire</th>
+                                            <td>{{ isset($endorsement->valid_to) ? $endorsement->valid_to->toEuropeanDateTime() : 'Never' }}</td>
+                                        </tr>
+                                        <tr>
+                                            <th>Issued by</th>
+                                            <td>{{ $endorsement->issuedBy?->name ?? 'System' }}</td>
+                                        </tr>
+                                        @if($endorsement->revoked)
+                                            <tr>
+                                                <th>Revoked by</th>
+                                                <td>{{ $endorsement->revokedBy?->name ?? 'System' }}</td>
+                                            </tr>
+                                        @endif
+                                    @elseif($endorsement->type == "EXAMINER")
+                                        <tr>
+                                            <th>Examining</th>
+                                            <td>{{ $endorsement->ratings->first()->name }}</td>
+                                        </tr>
+                                        <tr class="spacing">
+                                            <th>Areas</th>
+                                            <td>{{ implode(', ', $endorsement->areas->pluck('name')->toArray()) }}</td>
+                                        </tr>
+                                        <tr>
+                                            <th>Issued</th>
+                                            <td>{{ $endorsement->valid_from->toEuropeanDate() }}</td>
+                                        </tr>
+                                        <tr class="spacing">
+                                            <th>Expire</th>
+                                            <td>{{ isset($endorsement->valid_to) ? $endorsement->valid_to->toEuropeanDateTime() : 'Never' }}</td>
+                                        </tr>
+                                        <tr>
+                                            <th>Issued by</th>
+                                            <td>{{ $endorsement->issuedBy?->name ?? 'System' }}</td>
+                                        </tr>
+                                        @if($endorsement->revoked)
+                                            <tr>
+                                                <th>Revoked by</th>
+                                                <td>{{ $endorsement->revokedBy?->name ?? 'System' }}</td>
+                                            </tr>
+                                        @endif
+                                    @endif
+                                </table>
+                            </div>
+                        </div>
+                    @endforeach
                 </div>
             </div>
-        </div>
-    </div>
+                </div>
+            @endisset
 
-    <div class="row">
-        @if($showTheoryHistory)
-            <div class="col-xl-8 col-lg-12 col-md-12">
-                @include('vatssa.parts.theory', ['user' => $user])
-            </div>
-        @endif
-
-        {{-- Mentoring, where Division Exams used to be.
-
-             That card fetched VATEUD's theory record over HTTP on every profile
-             view, answered the same question as the Moodle theory panel beside
-             it, and never showed a VATSSA CPT at all -- our practicals never
-             reach VATEUD. See the partial.
-
-             Full width when theory is not shown, or it sits in a third of a row
-             with two thirds of nothing beside it. --}}
-        <div class="{{ $showTheoryHistory ? 'col-xl-4' : 'col-xl-12' }} col-lg-12 col-md-12">
-            @include('vatssa.parts.mentoring-summary', ['user' => $user])
-        </div>
-    </div>
-</x-vatssa.section>
-
-{{-- --------------------------------------------------------- 3. Roster --}}
-{{-- Endorsements belong under the roster rather than beside training: they are
-     what somebody may do once they are ON the roster, not what they are
-     learning. The roster box comes first because an endorsement list means
-     nothing for somebody who may not control at all. --}}
-<x-vatssa.section title="Roster" icon="fa-headset">
-    @include('vatssa.parts.roster-status', [
-        'user' => $user,
-        'approvedController' => $approvedController,
-        'rosterHistory' => $rosterHistory,
-    ])
-
-    <div class="card shadow mb-4">
-        <div class="card-header bg-primary py-3 d-flex flex-row align-items-center justify-content-between">
-            <h6 class="m-0 fw-bold text-white">
-                Endorsements
-            </h6>
-            @can('create', \App\Models\Endorsement::class)
-                <a href="{{ route('endorsements.create.id', $user->id) }}" class="btn btn-icon btn-light"><i class="fas fa-plus"></i> Add new endorsement</a>
-            @endcan
-        </div>
-        <div class="card-body d-flex flex-wrap gap-3">
-
-            @if($endorsements->count() == 0)
-                <p class="mb-0">No registered endorsements</p>
-            @endif
-
-            @foreach($endorsements as $endorsement)
-                <div class="card bg-light mb-3 endorsement-card" data-endorsement-id="{{ $endorsement['id'] }}">
-                    <div class="card-header fw-bold">
-
-                        @if($endorsement->revoked)
-                            <i class="fas fa-circle-xmark text-danger" data-bs-toggle="tooltip" data-bs-placement="top" title="Revoked"></i>
-                        @elseif($endorsement->expired)
-                            <i class="fas fa-circle-minus text-danger" data-bs-toggle="tooltip" data-bs-placement="top" title="Expired"></i>
-                        @else
-                            <i class="fas fa-circle-check text-success" data-bs-toggle="tooltip" data-bs-placement="top" title="Active"></i>
-                        @endif
-
-                        {{ ucfirst(strtolower($endorsement->type)) }} Endorsement
-
-                        @can('delete', [\App\Models\Endorsement::class, $endorsement])
-                            <a href="{{ route('endorsements.delete', $endorsement->id) }}" class="text-muted float-end hover-red" data-bs-toggle="tooltip" data-bs-placement="top" title="Revoke" onclick="return confirm('Are you sure you want to revoke this endorsement?')"><i class="fas fa-trash"></i></a>
-                        @endcan
-
-                        @if($endorsement->type == 'SOLO' && isset($endorsement->valid_to))
-                            @can('shorten', [\App\Models\Endorsement::class, $endorsement])
-                                <span class="flatpickr">
-                                    <input type="text" style="width: 1px; height: 1px; visibility: hidden;" data-endorsement-id="{{ $endorsement['id'] }}" data-date="{{ $endorsement->valid_to->format('Y-m-d') }}" data-input>
-                                    <a role="button" class="input-button text-muted float-end hover-red text-decoration-none" data-bs-toggle="tooltip" data-bs-placement="top" title="Shorten expire date" data-toggle>
-                                        <i class="fas fa-calendar-minus"></i>&nbsp;
-                                    </a>
-                                </span>
-                            @endcan
-                        @endif
+            {{-- Feedback --}}
+            @isset($tabs['feedback'])
+                <div class="tab-pane fade @if($firstTab === 'feedback') show active @endif"
+                     id="pane-feedback" role="tabpanel" aria-labelledby="tab-feedback" tabindex="0">
+            @if($feedbackReceived->isEmpty())
+                <div class="card shadow mb-4">
+                    <div class="card-header bg-primary py-3">
+                        <h6 class="m-0 fw-bold text-white">Feedback received</h6>
                     </div>
                     <div class="card-body">
-                        <table class="table-card">
-                            @if($endorsement->type == "FACILITY")
-                                <tr class="spacing">
-                                    <th>Position</th>
-                                    <td>{{ $endorsement->ratings->first()->endorsement_type }} {{ $endorsement->ratings->first()->name }}</td>
-                                </tr>
-                                <tr>
-                                    <th>Issued</th>
-                                    <td>{{ $endorsement->valid_from->toEuropeanDate() }}</td>
-                                </tr>
-                                <tr class="spacing">
-                                    <th>Expire</th>
-                                    <td>{{ isset($endorsement->valid_to) ? $endorsement->valid_to->toEuropeanDateTime() : 'Never' }}</td>
-                                </tr>
-                                <tr>
-                                    <th>Issued by</th>
-                                    <td>{{ $endorsement->issuedBy?->name ?? 'System' }}</td>
-                                </tr>
-                                @if($endorsement->revoked)
-                                    <tr>
-                                        <th>Revoked by</th>
-                                        <td>{{ $endorsement->revokedBy?->name ?? 'System' }}</td>
-                                    </tr>
-                                @endif
-                            @elseif($endorsement->type == 'SOLO')
-                                <tr class="spacing">
-                                    <th>Rating</th>
-                                    <td>{{ implode(', ', $endorsement->positions->pluck('callsign')->toArray()) }}</td>
-                                </tr>
-                                <tr>
-                                    <th>Issued</th>
-                                    <td>{{ $endorsement->valid_from->toEuropeanDate() }}</td>
-                                </tr>
-                                <tr class="spacing">
-                                    <th>Expire</th>
-                                    <td>{{ isset($endorsement->valid_to) ? $endorsement->valid_to->toEuropeanDateTime() : 'Never' }}</td>
-                                </tr>
-                                <tr>
-                                    <th>Issued by</th>
-                                    <td>{{ $endorsement->issuedBy?->name ?? 'System' }}</td>
-                                </tr>
-                                @if($endorsement->revoked)
-                                    <tr>
-                                        <th>Revoked by</th>
-                                        <td>{{ $endorsement->revokedBy?->name ?? 'System' }}</td>
-                                    </tr>
-                                @endif
-                            @elseif($endorsement->type == "VISITING")
-                                <tr>
-                                    <th>Rating</th>
-                                    <td>{{ $endorsement->ratings->first()->name }}</td>
-                                </tr>
-                                <tr>
-                                    <th>Areas</th>
-                                    <td>{{ implode(', ', $endorsement->areas->pluck('name')->toArray()) }}</td>
-                                </tr>
-                                <tr>
-                                    <th>Issued</th>
-                                    <td>{{ $endorsement->valid_from->toEuropeanDate() }}</td>
-                                </tr>
-                                <tr class="spacing">
-                                    <th>Expire</th>
-                                    <td>{{ isset($endorsement->valid_to) ? $endorsement->valid_to->toEuropeanDateTime() : 'Never' }}</td>
-                                </tr>
-                                <tr>
-                                    <th>Issued by</th>
-                                    <td>{{ $endorsement->issuedBy?->name ?? 'System' }}</td>
-                                </tr>
-                                @if($endorsement->revoked)
-                                    <tr>
-                                        <th>Revoked by</th>
-                                        <td>{{ $endorsement->revokedBy?->name ?? 'System' }}</td>
-                                    </tr>
-                                @endif
-                            @elseif($endorsement->type == "EXAMINER")
-                                <tr>
-                                    <th>Examining</th>
-                                    <td>{{ $endorsement->ratings->first()->name }}</td>
-                                </tr>
-                                <tr class="spacing">
-                                    <th>Areas</th>
-                                    <td>{{ implode(', ', $endorsement->areas->pluck('name')->toArray()) }}</td>
-                                </tr>
-                                <tr>
-                                    <th>Issued</th>
-                                    <td>{{ $endorsement->valid_from->toEuropeanDate() }}</td>
-                                </tr>
-                                <tr class="spacing">
-                                    <th>Expire</th>
-                                    <td>{{ isset($endorsement->valid_to) ? $endorsement->valid_to->toEuropeanDateTime() : 'Never' }}</td>
-                                </tr>
-                                <tr>
-                                    <th>Issued by</th>
-                                    <td>{{ $endorsement->issuedBy?->name ?? 'System' }}</td>
-                                </tr>
-                                @if($endorsement->revoked)
-                                    <tr>
-                                        <th>Revoked by</th>
-                                        <td>{{ $endorsement->revokedBy?->name ?? 'System' }}</td>
-                                    </tr>
-                                @endif
-                            @endif
-                        </table>
+                        <p class="mb-0 text-muted">No feedback received.</p>
                     </div>
                 </div>
-            @endforeach
-        </div>
-    </div>
-</x-vatssa.section>
-
-{{-- ------------------------------------------------------- 4. Feedback --}}
-{{-- Feedback about this controller.
-
-     #1467 asks for it here so staff can see how much feedback somebody has
-     received without going to the report and filtering. The rows come through
-     the same `visibleTo()` scope that report uses, so this can never be a way
-     around the area scope.
-
-     The submitter is named, unlike the controller-facing page: this is the
-     staff view, and knowing who said what is half of deciding what to do about
-     it.
-
-     The SECTION is gated, not the card. A staff member who may read feedback
-     and finds none has learnt something; the same person finding no section at
-     all cannot tell whether there is none or whether they may not see it. --}}
-@can('viewFeedback', \App\Models\ManagementReport::class)
-    <x-vatssa.section title="Feedback" icon="fa-comment-dots">
-        @if($feedbackReceived->isEmpty())
-            <div class="card shadow mb-4">
-                <div class="card-header bg-primary py-3">
-                    <h6 class="m-0 fw-bold text-white">Feedback received</h6>
-                </div>
-                <div class="card-body">
-                    <p class="mb-0 text-muted">No feedback received.</p>
-                </div>
-            </div>
-        @else
-            <div class="card shadow mb-4">
-                <div class="card-header bg-primary py-3 d-flex flex-row align-items-center justify-content-between">
-                    <h6 class="m-0 fw-bold text-white">Feedback received</h6>
-                    <a href="{{ route('reports.feedback', ['controller' => $user->id, 'status' => '']) }}"
-                       class="btn btn-icon btn-light btn-sm">
-                        <i class="fas fa-list"></i> All
-                    </a>
-                </div>
-                <div class="card-body">
-                    @foreach($feedbackReceived as $item)
-                        <div class="mb-3 pb-3 {{ ! $loop->last ? 'border-bottom' : '' }}">
-                            <div class="d-flex justify-content-between align-items-start gap-2">
-                                <span class="small text-muted">
-                                    {{ $item->referencePosition?->callsign ?? 'No position' }}
-                                    &middot; {{ $item->created_at->toEuropeanDate() }}
-                                </span>
-                                <span class="text-nowrap">
-                                    @if($item->sentiment)
-                                        <span class="badge text-bg-{{ $item->sentiment->color() }}">{{ $item->sentiment->label() }}</span>
-                                    @endif
-                                    <span class="badge text-bg-{{ $item->status->color() }}">{{ $item->status->label() }}</span>
-                                </span>
+            @else
+                <div class="card shadow mb-4">
+                    <div class="card-header bg-primary py-3 d-flex flex-row align-items-center justify-content-between">
+                        <h6 class="m-0 fw-bold text-white">Feedback received</h6>
+                        <a href="{{ route('reports.feedback', ['controller' => $user->id, 'status' => '']) }}"
+                           class="btn btn-icon btn-light btn-sm">
+                            <i class="fas fa-list"></i> All
+                        </a>
+                    </div>
+                    <div class="card-body">
+                        @foreach($feedbackReceived as $item)
+                            <div class="mb-3 pb-3 {{ ! $loop->last ? 'border-bottom' : '' }}">
+                                <div class="d-flex justify-content-between align-items-start gap-2">
+                                    <span class="small text-muted">
+                                        {{ $item->referencePosition?->callsign ?? 'No position' }}
+                                        &middot; {{ $item->created_at->toEuropeanDate() }}
+                                    </span>
+                                    <span class="text-nowrap">
+                                        @if($item->sentiment)
+                                            <span class="badge text-bg-{{ $item->sentiment->color() }}">{{ $item->sentiment->label() }}</span>
+                                        @endif
+                                        <span class="badge text-bg-{{ $item->status->color() }}">{{ $item->status->label() }}</span>
+                                    </span>
+                                </div>
+                                <div class="mt-1" style="white-space: pre-wrap;">{{ Str::limit($item->feedback, 240) }}</div>
                             </div>
-                            <div class="mt-1" style="white-space: pre-wrap;">{{ Str::limit($item->feedback, 240) }}</div>
-                        </div>
-                    @endforeach
+                        @endforeach
+                    </div>
                 </div>
-            </div>
-        @endif
-    </x-vatssa.section>
-@endcan
-
-{{-- -------------------------------------------------- 5. Internal notes --}}
-{{-- Two lists, deliberately.
-
-     Member notes are admins only; training notes are the ATC training manager
-     and admins. One combined list would either leak the first to the training
-     manager or hide the second from them. The partials render nothing at all
-     without their permission -- not an empty card, not a locked one -- so a
-     reader with neither sees an empty section rather than a hint that notes
-     exist. --}}
-<x-vatssa.section title="Internal notes" icon="fa-lock">
-    @include('vatssa.parts.internal-notes', [
-        'scope' => \App\Models\Vatssa\InternalNote::SCOPE_USER,
-        'notes' => \App\Models\Vatssa\InternalNote::where('user_id', $user->id)
-            ->where('scope', \App\Models\Vatssa\InternalNote::SCOPE_USER)
-            ->with('author')->latest()->get(),
-        'action' => route('vatssa.notes.user', $user),
-    ])
-
-    @include('vatssa.parts.training-notes-collected', ['trainingNotes' => $trainingNotes])
-</x-vatssa.section>
-
-{{-- ------------------------------------------ 6. Visiting & transferring --}}
-<x-vatssa.section title="Visiting &amp; transferring" icon="fa-right-left">
-    @include('vatssa.parts.membership-history', ['membershipRequests' => $membershipRequests])
-</x-vatssa.section>
-
-{{-- --------------------------------------------------- 7. Terminal log --}}
-{{-- VATSSA: every Terminal action taken about this person.
-
-     Membership staff and admins only. It carries CERT queries and disciplinary
-     findings, which is the same sensitivity class as a member note -- and
-     member notes are admin-only for exactly that reason.
-
-     Gated on the permission rather than on the rows, for the same reason as
-     Feedback above: "nothing has been done about this member" and "you may not
-     see what was done" are different answers and must not look alike. --}}
-@can('membership.terminal.view')
-    <x-vatssa.section title="Terminal log" icon="fa-terminal">
-        @if($terminalHistory->isEmpty())
-            <div class="card shadow mb-4">
-                <div class="card-header bg-primary py-3 d-flex flex-row align-items-center justify-content-between">
-                    <h6 class="m-0 fw-bold text-white">Terminal history</h6>
-                    <a href="{{ route('vatssa.terminal.index', ['cid' => $user->id]) }}"
-                       class="btn btn-icon btn-light btn-sm">
-                        <i class="fas fa-list"></i> All
-                    </a>
+            @endif
                 </div>
-                <div class="card-body">
-                    <p class="mb-0 text-muted">Nothing recorded on Terminal for this member.</p>
+            @endisset
+
+            {{-- Internal notes --}}
+            @isset($tabs['notes'])
+                <div class="tab-pane fade @if($firstTab === 'notes') show active @endif"
+                     id="pane-notes" role="tabpanel" aria-labelledby="tab-notes" tabindex="0">
+            @include('vatssa.parts.internal-notes', [
+                'scope' => \App\Models\Vatssa\InternalNote::SCOPE_USER,
+                'notes' => \App\Models\Vatssa\InternalNote::where('user_id', $user->id)
+                    ->where('scope', \App\Models\Vatssa\InternalNote::SCOPE_USER)
+                    ->with('author')->latest()->get(),
+                'action' => route('vatssa.notes.user', $user),
+            ])
+
+            @include('vatssa.parts.training-notes-collected', ['trainingNotes' => $trainingNotes])
                 </div>
-            </div>
-        @else
-            <div class="card shadow mb-4">
-                <div class="card-header bg-primary py-3 d-flex flex-row align-items-center justify-content-between">
-                    <h6 class="m-0 fw-bold text-white">Terminal history</h6>
-                    <a href="{{ route('vatssa.terminal.index', ['cid' => $user->id]) }}"
-                       class="btn btn-icon btn-light btn-sm">
-                        <i class="fas fa-list"></i> All
-                    </a>
+            @endisset
+
+            {{-- Visiting and transferring --}}
+            @isset($tabs['membership'])
+                <div class="tab-pane fade @if($firstTab === 'membership') show active @endif"
+                     id="pane-membership" role="tabpanel" aria-labelledby="tab-membership" tabindex="0">
+            @include('vatssa.parts.membership-history', ['membershipRequests' => $membershipRequests])
                 </div>
-                <div class="card-body">
-                    @foreach($terminalHistory as $entry)
-                        <div class="mb-3 pb-3 {{ ! $loop->last ? 'border-bottom' : '' }}">
-                            <div class="d-flex justify-content-between align-items-start gap-2">
-                                <span class="badge text-bg-{{ $entry->type->color() }}">
-                                    <i class="fas {{ $entry->type->icon() }}"></i>&nbsp;{{ $entry->type->label() }}
-                                </span>
-                                <span class="small text-muted">{{ $entry->performed_at->toEuropeanDate() }}</span>
-                            </div>
-                            <div class="fs-sm mt-1">
-                                {{ $entry->reason->label() }}
-                                @if($entry->ratingFrom || $entry->ratingTo)
-                                    &middot; {{ $entry->ratingFrom->name ?? '—' }} &rarr; {{ $entry->ratingTo->name ?? '—' }}
-                                @endif
-                            </div>
-                            @if($entry->isDisciplinaryCheck())
+            @endisset
+
+            {{-- Terminal log --}}
+            @isset($tabs['terminal'])
+                <div class="tab-pane fade @if($firstTab === 'terminal') show active @endif"
+                     id="pane-terminal" role="tabpanel" aria-labelledby="tab-terminal" tabindex="0">
+            @if($terminalHistory->isEmpty())
+                <div class="card shadow mb-4">
+                    <div class="card-header bg-primary py-3 d-flex flex-row align-items-center justify-content-between">
+                        <h6 class="m-0 fw-bold text-white">Terminal history</h6>
+                        <a href="{{ route('vatssa.terminal.index', ['cid' => $user->id]) }}"
+                           class="btn btn-icon btn-light btn-sm">
+                            <i class="fas fa-list"></i> All
+                        </a>
+                    </div>
+                    <div class="card-body">
+                        <p class="mb-0 text-muted">Nothing recorded on Terminal for this member.</p>
+                    </div>
+                </div>
+            @else
+                <div class="card shadow mb-4">
+                    <div class="card-header bg-primary py-3 d-flex flex-row align-items-center justify-content-between">
+                        <h6 class="m-0 fw-bold text-white">Terminal history</h6>
+                        <a href="{{ route('vatssa.terminal.index', ['cid' => $user->id]) }}"
+                           class="btn btn-icon btn-light btn-sm">
+                            <i class="fas fa-list"></i> All
+                        </a>
+                    </div>
+                    <div class="card-body">
+                        @foreach($terminalHistory as $entry)
+                            <div class="mb-3 pb-3 {{ ! $loop->last ? 'border-bottom' : '' }}">
+                                <div class="d-flex justify-content-between align-items-start gap-2">
+                                    <span class="badge text-bg-{{ $entry->type->color() }}">
+                                        <i class="fas {{ $entry->type->icon() }}"></i>&nbsp;{{ $entry->type->label() }}
+                                    </span>
+                                    <span class="small text-muted">{{ $entry->performed_at->toEuropeanDate() }}</span>
+                                </div>
                                 <div class="fs-sm mt-1">
-                                    @if($entry->discipline_found)
-                                        <span class="badge text-bg-danger">History found</span>
-                                    @else
-                                        {{-- A clean check is a RESULT. "We looked and
-                                             there was nothing" is what you need six
-                                             months later. --}}
-                                        <span class="badge text-bg-success">Checked, clean</span>
+                                    {{ $entry->reason->label() }}
+                                    @if($entry->ratingFrom || $entry->ratingTo)
+                                        &middot; {{ $entry->ratingFrom->name ?? '—' }} &rarr; {{ $entry->ratingTo->name ?? '—' }}
                                     @endif
                                 </div>
-                            @endif
-                            <div class="fs-sm text-muted mt-1">by {{ $entry->actorLabel() }}</div>
-                        </div>
-                    @endforeach
+                                @if($entry->isDisciplinaryCheck())
+                                    <div class="fs-sm mt-1">
+                                        @if($entry->discipline_found)
+                                            <span class="badge text-bg-danger">History found</span>
+                                        @else
+                                            {{-- A clean check is a RESULT. "We looked and
+                                                 there was nothing" is what you need six
+                                                 months later. --}}
+                                            <span class="badge text-bg-success">Checked, clean</span>
+                                        @endif
+                                    </div>
+                                @endif
+                                <div class="fs-sm text-muted mt-1">by {{ $entry->actorLabel() }}</div>
+                            </div>
+                        @endforeach
+                    </div>
+                </div>
+            @endif
+                </div>
+            @endisset
+
+            {{-- Access --}}
+            @isset($tabs['access'])
+                <div class="tab-pane fade @if($firstTab === 'access') show active @endif"
+                     id="pane-access" role="tabpanel" aria-labelledby="tab-access" tabindex="0">
+            <div class="row">
+                <div class="col-xl-4 col-lg-6 col-md-12">
+                    @livewire('user-roles', ['user' => $user])
                 </div>
             </div>
-        @endif
-    </x-vatssa.section>
-@endcan
-
-{{-- --------------------------------------------------------- 8. Access --}}
-{{-- Last, because it is the only section about what this person can do in
-     Control Center rather than what they do on the network.
-
-     VATSSA: the Request desks card is GONE, folded into the Access card. Two
-     cards answered one question -- what access does this person have -- and the
-     half you could act on lived on a third page. See App\Livewire\UserRoles. --}}
-@can('viewAccess', $user)
-    <x-vatssa.section title="Access" icon="fa-key">
-        <div class="row">
-            <div class="col-xl-4 col-lg-6 col-md-12">
-                @livewire('user-roles', ['user' => $user])
-            </div>
+                </div>
+            @endisset
         </div>
-    </x-vatssa.section>
-@endcan
+    </div>
+</div>
 
 @endsection
 
 @section('js')
+
+    {{-- Remember which tab was open.
+
+         A profile is a page people reload -- after granting a role, after
+         writing a note -- and landing back on Divisional history every time
+         makes the tabs feel like they lost your place. The fragment is written
+         with replaceState rather than by setting location.hash, because
+         assigning the hash makes the browser jump to the element and the page
+         scrolls itself away from the masthead. --}}
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            var strip = document.querySelector('[role="tablist"]');
+            if (!strip || !window.bootstrap) return;
+
+            var wanted = window.location.hash.replace('#tab-', '');
+            if (wanted) {
+                var trigger = document.getElementById('tab-' + wanted);
+                // Only a tab that exists for THIS reader. A stale or hand-typed
+                // fragment naming a tab they may not see must do nothing.
+                if (trigger) {
+                    bootstrap.Tab.getOrCreateInstance(trigger).show();
+                }
+            }
+
+            strip.addEventListener('shown.bs.tab', function (event) {
+                var id = event.target.id.replace('tab-', '');
+                history.replaceState(null, '', '#tab-' + id);
+            });
+        });
+    </script>
+
 
     <!-- Flatpickr -->
     @include('scripts.tooltips')
