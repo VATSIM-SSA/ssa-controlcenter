@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use anlutro\LaravelSettings\Facade as Setting;
 use App\Exceptions\StatisticsApiException;
 use App\Helpers\Vatsim;
+use App\Helpers\Vatssa\MembershipRequestType;
+use App\Helpers\Vatssa\StatusAxis;
 use App\Http\Requests\StatisticsSessionsRequest;
 use App\Models\Area;
 use App\Models\AtcActivity;
@@ -13,8 +15,11 @@ use App\Models\ManagementReport;
 use App\Models\TrainingExamination;
 use App\Models\TrainingReport;
 use App\Models\User;
+use App\Models\Vatssa\InternalNote;
+use App\Models\Vatssa\MembershipRequest;
 use App\Models\Vatssa\TerminalLogEntry;
 use App\Services\StatisticsService;
+use App\Services\Vatssa\MemberStatus;
 use Carbon\Carbon;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\ClientException;
@@ -125,7 +130,7 @@ class UserController extends Controller
      *
      * @throws AuthorizationException
      */
-    public function show(User $user, StatisticsService $statisticsService)
+    public function show(User $user, StatisticsService $statisticsService, MemberStatus $memberStatus)
     {
         $this->authorize('view', $user);
 
@@ -235,7 +240,59 @@ class UserController extends Controller
                 ->get()
             : collect();
 
-        return view('user.show', compact('user', 'roles', 'areas', 'trainings', 'types', 'endorsements', 'areas', 'atcActivityHours', 'totalHours', 'recentAtcSessions', 'feedbackReceived', 'terminalHistory'));
+        // VATSSA: what this member is to the division, and since when.
+        //
+        // Derived, never stored as a decision: the division field, the roster
+        // and the transfer/visit system between them answer it, so the profile
+        // reports rather than asserts and cannot disagree with the systems it
+        // draws from. See App\Services\Vatssa\MemberStatus.
+        //
+        // Two axes rather than one label. A visiting controller can hold
+        // approved-controller permissions, so a single field could not have
+        // represented an ordinary member.
+        $relationship = $memberStatus->relationshipFor($user);
+        $approvedController = $memberStatus->isApprovedController($user);
+
+        // "Since when" is the one thing the derivation cannot produce, so it
+        // comes from the recorded history -- and is null until the sync has
+        // seen a change, which the view says plainly rather than guessing.
+        $relationshipSince = $memberStatus->currentSince($user, StatusAxis::RELATIONSHIP);
+        $rosterSince = $memberStatus->currentSince($user, StatusAxis::ROSTER);
+
+        $statusHistory = $memberStatus->historyFor($user);
+        $rosterHistory = $memberStatus->historyForAxis($user, StatusAxis::ROSTER);
+
+        // The requests that PRODUCE a change of standing.
+        //
+        // Visiting and transferring only. A rating upgrade is a membership
+        // request too, but it says nothing about where somebody belongs and it
+        // already appears in the training section -- listing it here would put
+        // one fact on the page twice under two headings.
+        $membershipRequests = MembershipRequest::where('user_id', $user->id)
+            ->whereIn('type', [MembershipRequestType::VISITING, MembershipRequestType::TRANSFER])
+            ->with('rating')
+            ->latest()
+            ->get();
+
+        // Every training note about this member, gathered from their trainings.
+        //
+        // Gated on the TRAINING note permission, which is the same audience
+        // that could already read each of these on the training page.
+        // Collecting notes somewhere new must not widen who can read them: an
+        // internal note is only worth writing if the author knew the audience
+        // before they typed.
+        //
+        // Resolved to an empty collection otherwise, so the view has one thing
+        // to check rather than a permission call inside it.
+        $trainingNotes = auth()->user()->can(InternalNote::permissionFor(InternalNote::SCOPE_TRAINING))
+            ? InternalNote::where('user_id', $user->id)
+                ->where('scope', InternalNote::SCOPE_TRAINING)
+                ->with(['author', 'training.ratings'])
+                ->latest()
+                ->get()
+            : collect();
+
+        return view('user.show', compact('user', 'roles', 'areas', 'trainings', 'types', 'endorsements', 'areas', 'atcActivityHours', 'totalHours', 'recentAtcSessions', 'feedbackReceived', 'terminalHistory', 'relationship', 'approvedController', 'relationshipSince', 'rosterSince', 'statusHistory', 'rosterHistory', 'membershipRequests', 'trainingNotes'));
     }
 
     /**

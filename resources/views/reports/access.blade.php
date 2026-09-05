@@ -69,6 +69,15 @@
                                                  "Atc-training-manager". --}}
                                             <span class="badge bg-secondary">{{ $roleNames[$role] ?? $role }}</span>
                                         @endforeach
+
+                                        {{-- Examiner, read off the endorsement rather
+                                             than the role table, and outlined so the
+                                             difference stays visible in a column where
+                                             everything else was granted by hand. --}}
+                                        @if($user->isExaminer())
+                                            <span class="badge bg-transparent border border-secondary text-body"
+                                                  title="From an active examiner endorsement, not a role">Examiner</span>
+                                        @endif
                                     </td>
                                     <td>
                                         @forelse($desks[$user->id] as $desk)

@@ -35,9 +35,22 @@
          every area-scoped grant -- so the area sections could only ever be an
          empty "No area roles assigned", and the word "Global" only means
          something next to an "Area" it is being distinguished from. --}}
+    {{-- VATSSA: Examiner appears in this list and is granted somewhere else.
+
+         It is read off an active examiner endorsement rather than being a role
+         anybody can tick. The endorsement is what actually decides whether
+         somebody may examine, so a role beside it would be a second answer to
+         the same question, and the two would disagree within a month of the
+         first person granting one and forgetting the other.
+
+         Resolved before the list so "No roles assigned" can account for it --
+         that line printed under an Examiner badge would contradict the badge
+         directly above it. --}}
+    @php($isExaminer = $user->isExaminer())
+
     <div class="mb-3">
         <strong>Roles</strong>
-        @forelse ($globalAssignments as $a)
+        @foreach ($globalAssignments as $a)
             @php($manageable = $this->canManage($a->role, null))
             <span class="badge {{ $manageable ? 'bg-primary' : 'bg-secondary' }} d-flex justify-content-between align-items-center w-100 mt-1"
                   wire:key="g-{{ $a->role }}">
@@ -52,9 +65,21 @@
                             wire:click="confirmRemoval('{{ $a->role }}', null)"></button>
                 @endif
             </span>
-        @empty
+        @endforeach
+
+        {{-- Outlined rather than filled, and with no remove button, because
+             neither is available here: this reports a fact owned elsewhere. --}}
+        @if ($isExaminer)
+            <span class="badge bg-transparent border border-primary text-primary d-flex justify-content-between align-items-center w-100 mt-1">
+                <span>Examiner</span>
+                <i class="fas fa-award" data-bs-toggle="tooltip"
+                   title="From an active examiner endorsement, not a role"></i>
+            </span>
+        @endif
+
+        @if ($globalAssignments->isEmpty() && ! $isExaminer)
             <div class="text-muted mt-1">No roles assigned</div>
-        @endforelse
+        @endif
     </div>
 
     {{-- VATSSA: desks, in the same card as roles and still a separate list.
@@ -158,6 +183,19 @@
                               </div>
                           @endforeach
                       </div>
+
+                      {{-- VATSSA: said here, where somebody goes looking for it.
+
+                           Examiner is absent from this list on purpose, and an
+                           absence explains nothing on its own -- the reader
+                           concludes the list is broken, or grants some other
+                           role to compensate. --}}
+                      <p class="text-muted small mb-0">
+                          <i class="fas fa-circle-info"></i>
+                          Examiners are not assigned here. An examiner endorsement
+                          is what makes somebody an examiner, and the profile shows
+                          it automatically.
+                      </p>
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" wire:click="closeAddModal">Cancel</button>

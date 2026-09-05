@@ -78,6 +78,19 @@ class VatssaServiceProvider extends ServiceProvider
             $schedule->command('vatssa:mentor-watch')
                 ->dailyAt('06:15')
                 ->withoutOverlapping();
+
+            // Notice when a member's standing changed, and write the date down.
+            //
+            // The standing itself is derived and needs no job. The DATE it
+            // changed cannot be derived from anything -- it has to be noticed
+            // by something running whether or not anybody opens the profile.
+            //
+            // 01:30, half an hour behind update:atc:status, so a member who
+            // came off the roster overnight is recorded as having done so on
+            // the day it happened rather than the day after.
+            $schedule->command('vatssa:sync:member-status')
+                ->dailyAt('01:30')
+                ->withoutOverlapping();
         });
 
         // VATSSA: training types come from the table, not from upstream's

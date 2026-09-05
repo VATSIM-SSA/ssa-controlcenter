@@ -53,7 +53,23 @@ class ReportController extends Controller
         // answered by roles alone -- a role grants permissions, a desk decides
         // who receives the work -- and until now the second half lived on a
         // different page entirely.
-        $users = User::has('roleAssignments')->with('roleAssignments')->get();
+        //
+        // Examiners come with it too. Examiner is shown as a role on a profile
+        // but granted by endorsement, so an examiner holding no other role has
+        // real standing and would have been absent from the one report that
+        // exists to list it. `has('roleAssignments')` answered "who has been
+        // granted something", which stopped being the same question as "who has
+        // access" the moment the examiner tag appeared.
+        $users = User::where(fn (Builder $query) => $query
+            ->has('roleAssignments')
+            ->orWhereHas('endorsements', fn (Builder $endorsement) => $endorsement
+                ->where('type', 'EXAMINER')
+                ->where('revoked', false)
+                ->where('expired', false)
+            )
+        )
+            ->with(['roleAssignments', 'endorsements'])
+            ->get();
 
         // Catalogue order, so this report agrees with the roles box and the
         // grant picker without a third sort. See config/roles.php.
