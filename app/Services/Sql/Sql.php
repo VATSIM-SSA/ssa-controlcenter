@@ -44,4 +44,30 @@ class Sql
 
         return SQL::as($sql, $alias);
     }
+
+    /**
+     * Build an ANSI-standard COALESCE expression over the given columns,
+     * returning the first non-null value. Portable across sqlite/MySQL/Postgres.
+     */
+    public static function coalesce(string ...$columns): string
+    {
+        return 'COALESCE(' . implode(', ', $columns) . ')';
+    }
+
+    /**
+     * Concatenate the given SQL expressions into a single string. Sqlite and
+     * Postgres use the ANSI `||` operator; MySQL, where `||` means logical OR
+     * by default, uses its `concat()` function. String literals must be quoted
+     * by the caller, e.g. `Sql::concat('first_name', "' '", 'last_name')`.
+     */
+    public static function concat(string ...$expressions): string
+    {
+        $grammar = DB::getQueryGrammar();
+
+        if ($grammar instanceof PostgresGrammar || $grammar instanceof SQLiteGrammar) {
+            return '(' . implode(' || ', $expressions) . ')';
+        }
+
+        return 'concat(' . implode(', ', $expressions) . ')';
+    }
 }

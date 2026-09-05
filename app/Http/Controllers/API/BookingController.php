@@ -3,15 +3,20 @@
 namespace App\Http\Controllers\API;
 
 use App;
+use App\Helpers\LogName;
 use App\Helpers\TrainingStatus;
-use App\Http\Controllers\ActivityLogController;
+use App\Helpers\VatsimRating;
 use App\Http\Controllers\Controller;
 use App\Models\Booking;
 use App\Models\Position;
 use App\Models\User;
+use App\Services\ActivityLogService;
 use Carbon\Carbon;
+use GuzzleHttp\Client;
+use GuzzleHttp\Exception\ClientException;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 
 class BookingController extends Controller
 {
@@ -21,9 +26,11 @@ class BookingController extends Controller
     }*/
 
     /**
-     * Display a listing of the resource.
+     * List bookings.
      *
-     * @return \Illuminate\Http\Response
+     * Returns a reduced payload when the request is unauthenticated.
+     *
+     * @return Response
      */
     public function index(Request $request)
     {
@@ -39,19 +46,67 @@ class BookingController extends Controller
     }
 
     /**
-     * Store a newly created resource in storage.
+     * Create a booking.
      *
-     * @return \Illuminate\Http\Response
+     * Validates CID, date, start/end time, position, and optional tag, then persists a
+     * new booking, forcing a training tag when the controller or position rating requires it.
+     *
+     * @return Response
      */
+    #[\Dedoc\Scramble\Attributes\Response(
+        status: 200,
+        description: 'The booking was created. `tag` is only present when a training tag was forced.',
+        type: 'array{success: string, booking: array{id: int, source: string, vatsim_booking: int|null, callsign: string, position_id: int, name: string, time_start: string, time_end: string, user_id: int, training: int, event: int, exam: int, deleted: int, created_at: string, updated_at: string}, tag?: string}',
+    )]
+    #[\Dedoc\Scramble\Attributes\Response(
+        status: 400,
+        description: 'The booking could not be created — for example the start and end time are equal, the start time is in the past, or it overlaps an existing booking.',
+        type: 'array{message: string}',
+    )]
     public function store(Request $request)
     {
         $data = $request->validate([
+            /**
+             * The VATSIM CID (user ID) to create the booking for.
+             *
+             * @example 10000001
+             */
             'cid' => 'required|integer',
+            /**
+             * The booking date, in `d/m/Y` format.
+             *
+             * @example 15/02/2024
+             */
             'date' => 'required|date_format:d/m/Y|after_or_equal:today',
+            /**
+             * The booking start time, in 24-hour `H:i` format.
+             *
+             * @example 12:00
+             */
             'start_at' => 'required|date_format:H:i',
+            /**
+             * The booking end time, in 24-hour `H:i` format.
+             *
+             * @example 13:00
+             */
             'end_at' => 'required|date_format:H:i',
+            /**
+             * The callsign of the position to book.
+             *
+             * @example EKCH_TWR
+             */
             'position' => 'required|exists:positions,callsign',
+            /**
+             * The booking type: `1` for training, `2` for exam, `3` for event.
+             *
+             * @example 1
+             */
             'tag' => 'nullable|integer|between:1,3',
+            /**
+             * The booking source; use `CC` for Control Center bookings.
+             *
+             * @example CC
+             */
             'source' => 'required',
         ]);
 
@@ -103,10 +158,10 @@ class BookingController extends Controller
 
         $forcedTrainingTag = false;
 
-        if (($booking->position->rating > $user->rating) && ! $user->isModeratorOrAbove()) {
+        if ($booking->position->rating->isGreaterThan($user->rating) && ! $user->hasPermission('bookings.bypass-restrictions')) {
             $booking->training = 1;
             $forcedTrainingTag = true;
-        } elseif ($position->requiredRating && ! $user->hasEndorsementRating($position->requiredRating) && ! $user->isModeratorOrAbove()) {
+        } elseif ($position->requiredRating && ! $user->hasEndorsementRating($position->requiredRating) && ! $user->hasPermission('bookings.bypass-restrictions')) {
             $booking->training = 1;
             $forcedTrainingTag = true;
         } else {
@@ -143,7 +198,7 @@ class BookingController extends Controller
         }
 
         if (App::environment('production')) {
-            $client = new \GuzzleHttp\Client();
+            $client = new Client();
 
             $url = $this->getVatsimBookingUrl('post');
             $response = $this->makeHttpRequest($client, $url, 'post', [
@@ -161,7 +216,7 @@ class BookingController extends Controller
 
         $booking->save();
 
-        ActivityLogController::info('BOOKING', 'Created booking booking' . $booking->id . ' via API' .
+        ActivityLogService::info(LogName::Booking, 'Created booking booking' . $booking->id . ' via API' .
             ' ― from ' . Carbon::parse($booking->time_start)->toEuropeanDateTime() .
             ' → ' . Carbon::parse($booking->time_end)->toEuropeanDateTime() .
             ' ― Position: ' . Position::find($booking->position_id)->callsign);
@@ -181,23 +236,29 @@ class BookingController extends Controller
     }
 
     /**
-     * Display the specified resource.
+     * Display a single booking.
      *
-     * @return \Illuminate\Http\Response
+     * @return Response
      */
-    public function show(booking $booking)
+    public function show(Booking $booking)
     {
         $user = User::findorFail($booking->user_id);
         $positions = new Collection();
-        if ($user->rating >= 3) {
+        if ($user->rating->isGreaterThanOrEqual(VatsimRating::S2)) {
             $positions = Position::where('rating', '<=', $user->rating)->get();
         }
 
-        if ($user->getActiveTraining(TrainingStatus::PRE_TRAINING->value)) {
-            $positions = $positions->merge($user->getActiveTraining()->area->positions->where('rating', '<=', $user->getActiveTraining()->first()->vatsim_rating));
+        if ($user->getActiveTraining(TrainingStatus::PRE_TRAINING)) {
+            $training = $user->getActiveTraining(TrainingStatus::PRE_TRAINING);
+            $highestRating = $training->getHighestVatsimRating()?->vatsim_rating;
+            $positions = $positions->merge(
+                $training->area->positions->filter(
+                    fn (Position $position) => $highestRating !== null && $position->rating->isLessThanOrEqual($highestRating)
+                )
+            );
         }
 
-        if ($user->isModeratorOrAbove()) {
+        if ($user->hasPermission('bookings.bypass-restrictions')) {
             $positions = Position::all();
         }
 
@@ -207,18 +268,51 @@ class BookingController extends Controller
     }
 
     /**
-     * Update the specified resource in storage.
+     * Update an existing booking.
      *
-     * @return \Illuminate\Http\Response
+     * Revalidates CID, date, start/end time, position, and optional tag, re-checks for
+     * overlapping bookings, and re-evaluates whether a training tag must be forced.
+     *
+     * @return Response
      */
-    public function update(Request $request, booking $booking)
+    public function update(Request $request, Booking $booking)
     {
         $data = $request->validate([
+            /**
+             * The VATSIM CID (user ID) the booking belongs to.
+             *
+             * @example 10000001
+             */
             'cid' => 'required|integer',
+            /**
+             * The booking date, in `d/m/Y` format.
+             *
+             * @example 15/02/2024
+             */
             'date' => 'required|date_format:d/m/Y|after_or_equal:today',
+            /**
+             * The booking start time, in 24-hour `H:i` format.
+             *
+             * @example 12:00
+             */
             'start_at' => 'required|date_format:H:i',
+            /**
+             * The booking end time, in 24-hour `H:i` format.
+             *
+             * @example 13:00
+             */
             'end_at' => 'required|date_format:H:i',
+            /**
+             * The callsign of the position to book.
+             *
+             * @example EKCH_TWR
+             */
             'position' => 'required|exists:positions,callsign',
+            /**
+             * The booking type: `1` for training, `2` for exam, `3` for event.
+             *
+             * @example 1
+             */
             'tag' => 'nullable|integer|between:1,3',
         ]);
 
@@ -268,10 +362,10 @@ class BookingController extends Controller
 
         $forcedTrainingTag = false;
 
-        if (($booking->position->rating > $user->rating) && ! $user->isModeratorOrAbove()) {
+        if ($booking->position->rating->isGreaterThan($user->rating) && ! $user->hasPermission('bookings.bypass-restrictions')) {
             $booking->training = 1;
             $forcedTrainingTag = true;
-        } elseif ($position->requiredRating && ! $user->hasEndorsementRating($position->requiredRating) && ! $user->isModeratorOrAbove()) {
+        } elseif ($position->requiredRating && ! $user->hasEndorsementRating($position->requiredRating) && ! $user->hasPermission('bookings.bypass-restrictions')) {
             $booking->training = 1;
             $forcedTrainingTag = true;
         } else {
@@ -308,7 +402,7 @@ class BookingController extends Controller
         }
 
         if (App::environment('production')) {
-            $client = new \GuzzleHttp\Client();
+            $client = new Client();
             $url = $this->getVatsimBookingUrl('put', $booking->vatsim_booking);
             $response = $this->makeHttpRequest($client, $url, 'put', [
                 'callsign' => (string) $booking->callsign,
@@ -325,7 +419,7 @@ class BookingController extends Controller
 
         $booking->save();
 
-        ActivityLogController::info('BOOKING', 'Updated booking booking ' . $booking->id . ' via API' .
+        ActivityLogService::info(LogName::Booking, 'Updated booking booking ' . $booking->id . ' via API' .
             ' ― from ' . Carbon::parse($booking->time_start)->toEuropeanDateTime() .
             ' → ' . Carbon::parse($booking->time_end)->toEuropeanDateTime() .
             ' ― Position: ' . Position::find($booking->position_id)->callsign);
@@ -345,20 +439,22 @@ class BookingController extends Controller
     }
 
     /**
-     * Remove the specified resource from storage.
+     * Delete a booking.
      *
-     * @return \Illuminate\Http\Response
+     * Soft-deletes the booking and cancels the corresponding VATSIM booking.
+     *
+     * @return Response
      */
-    public function destroy(booking $booking)
+    public function destroy(Booking $booking)
     {
         $booking->deleted = true;
-        $client = new \GuzzleHttp\Client();
+        $client = new Client();
         $url = $this->getVatsimBookingUrl('delete', $booking->vatsim_booking);
         $response = $this->makeHttpRequest($client, $url, 'delete');
 
         $booking->save();
 
-        ActivityLogController::warning('BOOKING', 'Deleted booking booking ' . $booking->id . ' via API' .
+        ActivityLogService::warning(LogName::Booking, 'Deleted booking booking ' . $booking->id . ' via API' .
             ' ― from ' . Carbon::parse($booking->time_start)->toEuropeanDateTime() .
             ' → ' . Carbon::parse($booking->time_end)->toEuropeanDateTime() .
             ' ― Position: ' . Position::find($booking->position_id)->callsign);
@@ -382,7 +478,7 @@ class BookingController extends Controller
         return $url;
     }
 
-    private function makeHttpRequest(\GuzzleHttp\Client $client, string $url, string $type, ?array $data = null)
+    private function makeHttpRequest(Client $client, string $url, string $type, ?array $data = null)
     {
         try {
             $headers = [
@@ -400,7 +496,7 @@ class BookingController extends Controller
             } elseif ($type == 'delete') {
                 $response = $client->request('DELETE', $url, ['headers' => $headers]);
             }
-        } catch (\GuzzleHttp\Exception\ClientException $e) {
+        } catch (ClientException $e) {
             return response()->json([
                 'message' => 'VATSIM API error: ' . $e->getMessage(),
             ], 400);

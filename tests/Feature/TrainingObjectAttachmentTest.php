@@ -38,7 +38,7 @@ class TrainingObjectAttachmentTest extends TestCase
             ])->id,
         ]);
 
-        $this->report->author->groups()->attach(2, ['area_id' => $this->report->training->area->id]);
+        $this->report->author->roleAssignments()->create(['role' => 'moderator', 'area_id' => $this->report->training->area->id]);
     }
 
     /**
@@ -126,5 +126,24 @@ class TrainingObjectAttachmentTest extends TestCase
         $this->actingAs($mentor)->followingRedirects()
             ->get(route('training.object.attachment.show', ['attachment' => $id]))
             ->assertStatus(200);
+    }
+
+    #[Test]
+    public function test_director_can_delete_attachment(): void
+    {
+        $mentor = $this->report->author;
+        $file = UploadedFile::fake()->image($this->faker->word . '.jpg');
+
+        $id = $this->actingAs($mentor)
+            ->postJson(route('training.object.attachment.store', ['trainingObjectType' => 'report', 'trainingObject' => $this->report]), ['file' => $file])
+            ->json('id')[0];
+
+        $attachment = TrainingObjectAttachment::findOrFail($id);
+
+        $director = User::factory()->create();
+        $director->roleAssignments()->create(['role' => 'director', 'area_id' => null]);
+
+        $this->assertTrue($director->can('delete', $attachment));
+        $this->assertTrue($director->can('create', TrainingObjectAttachment::class));
     }
 }

@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers\Auth;
 
-use App\Http\Controllers\ActivityLogController;
+use App\Helpers\LogName;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\OAuthController;
 use App\Models\User;
-use Illuminate\Foundation\Auth\AuthenticatesUsers;
+use App\Services\ActivityLogService;
+use Carbon\Carbon;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use League\OAuth2\Client\Provider\Exception\IdentityProviderException;
 
@@ -17,8 +19,6 @@ use League\OAuth2\Client\Provider\Exception\IdentityProviderException;
  */
 class LoginController extends Controller
 {
-    use AuthenticatesUsers;
-
     protected $provider;
 
     /**
@@ -34,7 +34,7 @@ class LoginController extends Controller
     /**
      * Login the user
      *
-     * @param  \Illuminate\Http\Request  $request  request to proccess
+     * @param  Request  $request  request to proccess
      * @return mixed
      */
     public function login(Request $request)
@@ -57,8 +57,8 @@ class LoginController extends Controller
     /**
      * Verify the login of the user's request before proceeding
      *
-     * @param  \Illuminate\Http\Request  $request  request to proccess
-     * @return \Illuminate\Http\RedirectResponse
+     * @param  Request  $request  request to proccess
+     * @return RedirectResponse
      */
     protected function verifyLogin(Request $request)
     {
@@ -91,12 +91,11 @@ class LoginController extends Controller
         // Login the user and don't remember the session forever
         auth()->login($account, false);
 
-        $authLevel = 'User';
-        if (\Auth::user()->groups->count() > 0) {
-            $authLevel = User::find(\Auth::user()->id)->groups->sortBy('id')->first()->name;
-            ActivityLogController::warning('ACCESS', 'Logged in with ' . $authLevel . ' access');
+        $roles = \Auth::user()->roleAssignments->pluck('role')->unique();
+        if ($roles->isNotEmpty()) {
+            ActivityLogService::warning(LogName::Access, 'Logged in with ' . $roles->join(', ') . ' access');
         } else {
-            ActivityLogController::info('ACCESS', 'Logged in with ' . $authLevel . ' access');
+            ActivityLogService::info(LogName::Access, 'Logged in with User access');
         }
 
         return redirect()->intended(route('dashboard'))->withSuccess('Login Successful');
@@ -106,7 +105,7 @@ class LoginController extends Controller
      * Complete the login by creating or updating the existing account and last login timestamp
      *
      * @param  mixed  $token
-     * @return \App\Models\User User's account data
+     * @return User User's account data
      */
     protected function completeLogin(array $data, $token)
     {
@@ -127,7 +126,7 @@ class LoginController extends Controller
                 'access_token' => $token->getToken(),
                 'refresh_token' => $token->getRefreshToken(),
                 'token_expires' => $token->getExpires(),
-                'last_login' => \Carbon\Carbon::now(),
+                'last_login' => Carbon::now(),
             ]
         );
 
@@ -139,11 +138,11 @@ class LoginController extends Controller
     /**
      * Log out he user and redirect to front page
      *
-     * @return \Illuminate\Http\RedirectResponse
+     * @return RedirectResponse
      */
     public function logout()
     {
-        ActivityLogController::info('ACCESS', 'Logged out.');
+        ActivityLogService::info(LogName::Access, 'Logged out.');
         auth()->logout();
 
         return redirect(route('front'))->withSuccess('You have been successfully logged out');

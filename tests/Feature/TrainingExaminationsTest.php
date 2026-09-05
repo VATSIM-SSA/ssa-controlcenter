@@ -2,6 +2,8 @@
 
 namespace Tests\Feature;
 
+use App\Helpers\TrainingStatus;
+use App\Helpers\VatsimRating;
 use App\Models\Area;
 use App\Models\Endorsement;
 use App\Models\OneTimeLink;
@@ -13,6 +15,7 @@ use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Foundation\Testing\WithFaker;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Notification;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
@@ -132,7 +135,7 @@ class TrainingExaminationsTest extends TestCase
         $examination = TrainingExamination::create($this->examination->getAttributes());
 
         $moderator = User::factory()->create();
-        $moderator->groups()->attach(2, ['area_id' => $this->training->area->id]);
+        $moderator->roleAssignments()->create(['role' => 'moderator', 'area_id' => $this->training->area->id]);
 
         $this->actingAs($moderator)->followingRedirects()
             ->getJson(route('training.examination.delete', ['examination' => $examination]))
@@ -149,7 +152,7 @@ class TrainingExaminationsTest extends TestCase
         $examination = TrainingExamination::create($this->examination->getAttributes());
 
         $mentor = User::factory()->create();
-        $mentor->groups()->attach(3, ['area_id' => $this->training->area->id]);
+        $mentor->roleAssignments()->create(['role' => 'mentor', 'area_id' => $this->training->area->id]);
 
         $this->actingAs($mentor)->followingRedirects()
             ->get(route('training.examination.delete', ['examination' => $examination]))
@@ -165,7 +168,7 @@ class TrainingExaminationsTest extends TestCase
         $examination = TrainingExamination::create($this->examination->getAttributes());
 
         $buddy = User::factory()->create();
-        $buddy->groups()->attach(4, ['area_id' => $this->training->area->id]);
+        $buddy->roleAssignments()->create(['role' => 'buddy', 'area_id' => $this->training->area->id]);
 
         $this->actingAs($buddy)->followingRedirects()
             ->get(route('training.examination.delete', ['examination' => $examination]))
@@ -395,5 +398,96 @@ class TrainingExaminationsTest extends TestCase
             ->get(route('training.examination.create', ['training' => $this->training]));
 
         $response->assertStatus(403);
+    }
+
+    #[Test]
+    public function test_director_can_update_and_delete_examination_in_their_area(): void
+    {
+        $examination = TrainingExamination::create($this->examination->getAttributes());
+        $area = $this->training->area;
+
+        $director = User::factory()->create();
+        $director->roleAssignments()->create(['role' => 'director', 'area_id' => $area->id]);
+
+        $this->assertTrue($director->can('update', $examination));
+        $this->assertTrue($director->can('delete', $examination));
+        $this->assertTrue($director->can('view', $examination));
+    }
+
+    #[Test]
+    public function test_moderator_of_other_area_cannot_view_examination(): void
+    {
+        $examination = TrainingExamination::create($this->examination->getAttributes());
+
+        $otherArea = Area::factory()->create();
+        $moderator = User::factory()->create();
+        $moderator->roleAssignments()->create(['role' => 'moderator', 'area_id' => $otherArea->id]);
+
+        $this->assertFalse($moderator->can('view', $examination));
+    }
+
+    #[Test]
+    public function create_exam_is_accessible_when_training_awaiting_exam(): void
+    {
+        $this->training->update(['status' => TrainingStatus::AWAITING_EXAM->value]);
+
+        $response = $this->actingAs($this->examiner)
+            ->get(route('training.examination.create', $this->training));
+
+        $response->assertStatus(200);
+    }
+
+    #[Test]
+    public function create_exam_is_blocked_when_training_not_awaiting_exam(): void
+    {
+        $this->training->update(['status' => TrainingStatus::ACTIVE_TRAINING->value]);
+
+        $response = $this->actingAs($this->examiner)
+            ->get(route('training.examination.create', $this->training));
+
+        $response->assertRedirect();
+        $response->assertSessionHas('success', 'Training examination cannot be created for a training not awaiting exam.');
+    }
+
+    #[Test]
+    public function store_exam_does_not_crash_for_s2_rated_training(): void
+    {
+        // Ensure training is in AWAITING_EXAM status and has an S2 VATSIM rating
+        $this->training->update(['status' => TrainingStatus::AWAITING_EXAM->value]);
+
+        // Attach an S2 rating to the training
+        $rating = Rating::factory()->create(['vatsim_rating' => VatsimRating::S2->value]);
+        $this->training->ratings()->attach($rating->id);
+
+        $file = UploadedFile::fake()->create('exam.pdf', 100, 'application/pdf');
+
+        // Create a position belonging to the same area as the training
+        $position = Position::factory()->create(['area_id' => $this->training->area_id]);
+
+        $response = $this->actingAs($this->examiner)
+            ->post(route('training.examination.store', $this->training), [
+                'examination_date' => now()->format('d/m/Y'),
+                'position' => $position->callsign,
+                'result' => 'FAILED',
+                'files' => [$file],
+            ]);
+
+        // Should not throw a TypeError — any redirect (pass or fail) is acceptable
+        $response->assertRedirect();
+    }
+
+    #[Test]
+    public function examiner_can_create_examination_link_for_awaiting_exam_training(): void
+    {
+        $this->training->update(['status' => TrainingStatus::AWAITING_EXAM->value]);
+        $this->training->mentors()->attach($this->examiner->id, ['expire_at' => now()->addMonths(6)]);
+
+        $response = $this->actingAs($this->examiner)
+            ->post(route('training.onetimelink.store', $this->training), [
+                'type' => OneTimeLink::TRAINING_EXAMINATION_TYPE,
+            ]);
+
+        // Should not be forbidden — the policy gate should pass
+        $response->assertRedirect();
     }
 }

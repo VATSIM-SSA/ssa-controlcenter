@@ -3,10 +3,14 @@
 namespace App\Http\Controllers\API;
 
 use anlutro\LaravelSettings\Facade as Setting;
+use App\Helpers\TrainingStatus;
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\TrainingController;
 use App\Models\Area;
 use App\Models\Endorsement;
 use App\Models\User;
+use Dedoc\Scramble\Attributes\Api;
+use Dedoc\Scramble\Attributes\Response;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -14,10 +18,30 @@ use Illuminate\Support\Collection;
 class UserController extends Controller
 {
     /**
-     * Return data based on request parameters
+     * Return the authenticated API user.
+     *
+     * Assigned to the `internal` API spec, so it is intentionally excluded from the public docs.
+     */
+    #[Api('internal')]
+    public function authenticated(Request $request)
+    {
+        return $request->user();
+    }
+
+    /**
+     * List users.
+     *
+     * Returns users filtered by the `onlyAtcActive` query parameter, with relations and
+     * fields (name, email, divisions, active areas, endorsements, roles, training) added
+     * only when requested via the `include[]` query parameter.
      *
      * @return array
      */
+    #[Response(
+        status: 200,
+        description: 'The matching users, wrapped in a `data` array. Each user always includes `id`, `rating`, and `atc_active`; all other fields and relations appear only when requested via the `include[]` query parameter.',
+        type: "array{data: array<int, array{id: int, rating: 'INA'|'SUS'|'OBS'|'S1'|'S2'|'S3'|'C1'|'C3'|'I1'|'I3'|'SUP'|'ADM', atc_active: bool, email?: string, first_name?: string, last_name?: string, region?: string, division?: string, subdivision?: string, atc_active_areas?: array<string, bool>, endorsements?: mixed, roles?: mixed, training?: mixed}>}",
+    )]
     public function index(Request $request)
     {
         $returnUsers = collect();
@@ -26,7 +50,17 @@ class UserController extends Controller
         // Validate data and set paramters to defaults
         //
         $parameters = $request->validate([
+            /**
+             * Restrict results to users who are currently ATC active.
+             *
+             * @example true
+             */
             'onlyAtcActive' => 'sometimes|boolean',
+            /**
+             * Additional data to include in the response. Allowed values: allUsers, endorsements, roles, training, name, email, divisions, activeAreas.
+             *
+             * @example ["endorsements", "roles", "training"]
+             */
             'include' => 'sometimes|array',
         ]);
 
@@ -43,7 +77,7 @@ class UserController extends Controller
         // Gather which data to include in queries for optimisation
         $queryInclude = [];
         ($paramIncludeEndorsements) ? array_push($queryInclude, 'endorsements', 'endorsements.areas', 'endorsements.ratings', 'endorsements.positions') : null;
-        ($paramIncludeRoles) ? array_push($queryInclude, 'groups') : null;
+        ($paramIncludeRoles) ? array_push($queryInclude, 'roleAssignments') : null;
         ($paramIncludeTraining) ? array_push($queryInclude, 'trainings', 'trainings.ratings', 'trainings.area') : null;
 
         //
@@ -81,7 +115,7 @@ class UserController extends Controller
         }
 
         if ($paramIncludeRoles) {
-            $roleUsers = User::whereHas('groups')->whereNotIn('id', $returnUsers->pluck('id'));
+            $roleUsers = User::whereHas('roleAssignments')->whereNotIn('id', $returnUsers->pluck('id'));
             if ($paramOnlyActive) {
                 $roleUsers = $roleUsers->whereHas('atcActivity', function ($query) {
                     $query->where('atc_active', true);
@@ -94,7 +128,7 @@ class UserController extends Controller
 
         if ($paramIncludeTraining) {
             $trainingUsers = User::whereHas('trainings', function (Builder $q) {
-                $q->where('status', '>=', 0);
+                $q->where('status', '>=', TrainingStatus::IN_QUEUE);
             })->whereNotIn('id', $returnUsers->pluck('id'));
             if ($paramOnlyActive) {
                 $trainingUsers = $trainingUsers->whereHas('atcActivity', function ($query) {
@@ -123,10 +157,10 @@ class UserController extends Controller
                 $user->roles = collect();
 
                 foreach (Area::all() as $area) {
-                    $areaRoles = $user->groups->where('pivot.area_id', $area->id)->pluck('name');
+                    $areaRoles = $user->roleAssignments->where('area_id', $area->id)->pluck('role');
 
                     if ($areaRoles->count()) {
-                        $user->roles[$area->name] = ($user->groups->where('pivot.area_id', $area->id)->pluck('name'));
+                        $user->roles[$area->name] = $areaRoles;
                     } else {
                         $user->roles[$area->name] = null;
                     }
@@ -137,7 +171,7 @@ class UserController extends Controller
         // Trainings
         if ($paramIncludeTraining) {
             foreach ($returnUsers as $user) {
-                $user->training = $this->mapTrainings($user->trainings->where('status', '>=', 0));
+                $user->training = $this->mapTrainings($user->trainings->filter(fn ($t) => $t->status->isOpen()));
             }
         }
 
@@ -272,9 +306,9 @@ class UserController extends Controller
         return $trainings->map(function ($training) {
             return [
                 'area' => $training->area->name,
-                'type' => \App\Http\Controllers\TrainingController::$types[$training->type]['text'],
-                'status' => $training->status,
-                'status_description' => \App\Http\Controllers\TrainingController::$statuses[$training->status]['text'],
+                'type' => TrainingController::$types[$training->type]['text'],
+                'status' => $training->status->value,
+                'status_description' => $training->status->label(),
                 'created_at' => $training->created_at,
                 'started_at' => $training->started_at,
                 'ratings' => $training->ratings->pluck('name'),

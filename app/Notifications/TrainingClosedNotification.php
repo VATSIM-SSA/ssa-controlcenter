@@ -3,7 +3,6 @@
 namespace App\Notifications;
 
 use App\Helpers\TrainingStatus;
-use App\Http\Controllers\TrainingController;
 use App\Mail\TrainingMail;
 use App\Models\Area;
 use App\Models\Feedback;
@@ -26,16 +25,13 @@ class TrainingClosedNotification extends Notification implements ShouldQueue
     private $reason;
 
     /**
-     * Create a new notification instance.
-     *
-     * @param  int|null  $closedBy  the training status code that indicates who closed it
      * @param  string|null  $reason  optional reason of closure communicated to the receiver
      */
-    public function __construct(Training $training, int $trainingStatus, ?string $reason = null)
+    public function __construct(Training $training, TrainingStatus $trainingStatus, ?string $reason = null)
     {
         $this->training = $training;
         $this->trainingStatus = $trainingStatus;
-        $this->closedBy = strtolower(TrainingController::$statuses[$trainingStatus]['text']);
+        $this->closedBy = strtolower($trainingStatus->label());
         $this->reason = $reason;
     }
 
@@ -69,7 +65,7 @@ class TrainingClosedNotification extends Notification implements ShouldQueue
         $feedback = $area->feedback_url;
 
         // If the training was completed and the area has a readme or feedback url to be added.
-        if ($this->trainingStatus == TrainingStatus::COMPLETED->value) {
+        if ($this->trainingStatus === TrainingStatus::COMPLETED) {
             if (isset($readme)) {
                 $textLines[] = 'Please familiarise yourself with [these instructions](' . $readme . ') prior to your first connection with your new rating.';
             }
@@ -80,13 +76,8 @@ class TrainingClosedNotification extends Notification implements ShouldQueue
         }
 
         // Find staff who wants notification of new training request
-        $bcc = User::allWithGroup(2, '<=')->where('setting_notify_closedreq', true);
-
-        foreach ($bcc as $key => $user) {
-            if (! $user->isModeratorOrAbove($this->training->area)) {
-                $bcc->pull($key);
-            }
-        }
+        $bcc = User::allWithPermission('training.notifications.receive', $this->training->area)
+            ->where('setting_notify_closedreq', true);
 
         return (new TrainingMail('Training Request Closed', $this->training, $textLines, $contactMail))
             ->to($this->training->user->personalNotificationEmail, $this->training->user->name)

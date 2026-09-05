@@ -3,9 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Facades\DivisionApi;
+use App\Helpers\LogName;
 use App\Helpers\TrainingStatus;
 use App\Helpers\VatsimRating;
-use App\Models\Group;
 use App\Models\OneTimeLink;
 use App\Models\Position;
 use App\Models\Task;
@@ -14,10 +14,17 @@ use App\Models\TrainingExamination;
 use App\Models\User;
 use App\Notifications\MentorExaminationNotification;
 use App\Notifications\TrainingExamNotification;
+use App\Services\ActivityLogService;
+use App\Tasks\Types\RatingUpgrade;
 use Carbon\Carbon;
+use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Contracts\View\Factory;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\Rule;
+use Illuminate\View\View;
 
 /**
  * Controller for training examinations
@@ -27,19 +34,21 @@ class TrainingExaminationController extends Controller
     /**
      * Show view to create an examination
      *
-     * @return \Illuminate\Contracts\View\Factory|\Illuminate\View\View
+     * @return Factory|View
      *
-     * @throws \Illuminate\Auth\Access\AuthorizationException
+     * @throws AuthorizationException
      */
     public function create(Request $request, Training $training)
     {
         $this->authorize('create', [TrainingExamination::class, $training]);
-        if ($training->status != TrainingStatus::AWAITING_EXAM->value) {
+        if ($training->status !== TrainingStatus::AWAITING_EXAM) {
             return redirect(null, 400)->to($training->path())->withSuccess('Training examination cannot be created for a training not awaiting exam.');
         }
 
         $positions = Position::all();
-        $taskRecipients = collect(Group::admins()->merge(Group::moderators()));
+        $taskRecipients = collect(User::whereHas('roleAssignments', function ($q) {
+            $q->whereIn('role', ['admin', 'moderator']);
+        })->get());
         $taskPopularAssignees = TaskController::getPopularAssignees($training->area);
 
         return view('training.exam.create', compact('training', 'positions', 'taskRecipients', 'taskPopularAssignees'));
@@ -48,9 +57,9 @@ class TrainingExaminationController extends Controller
     /**
      * Store the examination in the database
      *
-     * @return \Illuminate\Http\JsonResponse|\Illuminate\Http\RedirectResponse
+     * @return JsonResponse|RedirectResponse
      *
-     * @throws \Illuminate\Auth\Access\AuthorizationException
+     * @throws AuthorizationException
      */
     public function store(Request $request, Training $training)
     {
@@ -61,7 +70,7 @@ class TrainingExaminationController extends Controller
         $pass = strtolower($data['result']) == 'passed' ? true : false;
 
         // Attempt Division API sync first if the training has VATSIM ratings and it's an S2+ examination
-        if ($request->file('files') && $training->hasVatsimRatings() && $training->getHighestVatsimRating()->vatsim_rating >= VatsimRating::S2->value) {
+        if ($request->file('files') && $training->hasVatsimRatings() && $training->getHighestVatsimRating()->vatsim_rating->isGreaterThanOrEqual(VatsimRating::S2)) {
             foreach ($request->file('files') as $file) {
                 $response = DivisionApi::uploadExamResults($training->user->id, Auth::id(), $pass, $position->callsign, $file->getRealPath());
                 if ($response && $response->failed()) {
@@ -100,7 +109,7 @@ class TrainingExaminationController extends Controller
             $taskRating = isset($data['subject_training_rating_id']) ? (int) $data['subject_training_rating_id'] : null;
             if ($taskAsignee->can('receive', Task::class)) {
                 $task = Task::create([
-                    'type' => \App\Tasks\Types\RatingUpgrade::class,
+                    'type' => RatingUpgrade::class,
                     'subject_user_id' => $training->user->id,
                     'subject_training_id' => $training->id,
                     'subject_training_rating_id' => $taskRating,
@@ -138,9 +147,9 @@ class TrainingExaminationController extends Controller
     }
 
     /**
-     * @return \Illuminate\Http\JsonResponse|\Illuminate\Http\RedirectResponse
+     * @return JsonResponse|RedirectResponse
      *
-     * @throws \Illuminate\Auth\Access\AuthorizationException
+     * @throws AuthorizationException
      */
     public function update(Request $request, TrainingExamination $examination)
     {
@@ -156,16 +165,16 @@ class TrainingExaminationController extends Controller
     }
 
     /**
-     * @return \Illuminate\Http\JsonResponse|\Illuminate\Http\RedirectResponse
+     * @return JsonResponse|RedirectResponse
      *
-     * @throws \Illuminate\Auth\Access\AuthorizationException
+     * @throws AuthorizationException
      */
     public function destroy(Request $request, TrainingExamination $examination)
     {
         $this->authorize('delete', $examination);
 
         $examination->delete();
-        ActivityLogController::danger('TRAINING', 'Deleted training examination ' . $examination->id . ' ― From Training ' . $examination->training->id);
+        ActivityLogService::danger(LogName::Training, 'Deleted training examination ' . $examination->id . ' ― From Training ' . $examination->training->id);
 
         if ($request->wantsJson()) {
             return response()->json(['message' => 'Examination successfully deleted']);

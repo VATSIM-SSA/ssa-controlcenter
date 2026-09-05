@@ -2,13 +2,17 @@
 
 namespace Tests\Feature;
 
+use anlutro\LaravelSettings\Facade as Setting;
 use App\Helpers\VatsimRating;
+use App\Http\Middleware\ApiToken;
+use App\Models\Area;
 use App\Models\Booking;
 use App\Models\Endorsement;
 use App\Models\Position;
 use App\Models\Rating;
 use App\Models\Training;
 use App\Models\User;
+use App\Services\BookingService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Foundation\Testing\WithFaker;
@@ -63,7 +67,7 @@ class BookingTest extends TestCase
     public function controllers_with_activity_can_create_bookings(VatsimRating $rating, callable $setup): void
     {
         $controller = User::factory()->create([
-            'rating' => $rating->value,
+            'rating' => $rating,
         ]);
 
         $controller->atcActivity()->create([
@@ -79,21 +83,79 @@ class BookingTest extends TestCase
         // If there's training available, let's try to create a booking for the training
         if ($highestTraining) {
             $rating = $highestTraining->getHighestVatsimRating()->vatsim_rating;
-            $position = Position::with('area')->where('rating', '<=', $rating)
+            $position = Position::with('area')->where('rating', '<=', $rating->value)
                 ->whereBelongsTo($controller->atcActivity->first()->area)
                 ->whereNotNull('name')->orderByDesc('rating')->first();
-            $this->assertGreaterThan($controller->rating, $rating);
+            $this->assertTrue($rating->isGreaterThan($controller->rating));
             $this->assertCreateBookingAvailable($controller, $position);
             $this->createBooking($controller, $position)->assertValid()->assertSeeText('training tag');
         }
 
         $rating = $controller->rating;
         // Select a high position given the status we have
-        $position = Position::with('area')->where('rating', '<=', $rating)
+        $position = Position::with('area')->where('rating', '<=', $rating->value)
             ->whereBelongsTo($controller->atcActivity->first()->area)
             ->whereNotNull('name')->inRandomOrder()->orderByDesc('rating')->first();
         $this->assertCreateBookingAvailable($controller, $position);
         $this->createBooking($controller, $position)->assertValid()->assertDontSeeText('training tag');
+    }
+
+    #[Test]
+    public function student_with_combined_training_can_book_position_for_highest_rating(): void
+    {
+        $student = User::factory()->create([
+            'rating' => VatsimRating::S1->value,
+        ]);
+
+        // Combined S1+S2+facility training: the lower rating is attached first
+        // so an unordered ratings query would return S1 instead of S2.
+        $training = Training::factory()
+            ->has(Rating::factory(['vatsim_rating' => VatsimRating::S1]))
+            ->create(['user_id' => $student->id, 'type' => 1, 'status' => 2, 'area_id' => TEST_USER_TRAINING_AREA]);
+        $training->ratings()->save(Rating::factory()->create(['vatsim_rating' => VatsimRating::S2]));
+        $training->ratings()->save(Rating::factory()->create(['vatsim_rating' => null]));
+
+        $position = Position::factory()->create([
+            'rating' => VatsimRating::S2->value,
+            'callsign' => 'TEST_TWR',
+            'name' => 'Test Tower',
+            'area_id' => TEST_USER_TRAINING_AREA,
+        ]);
+
+        $this->assertCreateBookingAvailable($student, $position);
+        $this->createBooking($student, $position)->assertValid();
+    }
+
+    #[Test]
+    public function student_with_facility_training_cannot_book_position_above_their_rating(): void
+    {
+        $student = User::factory()->create([
+            'rating' => VatsimRating::S1->value,
+        ]);
+
+        // Facility (MAE) training: no VATSIM rating attached
+        Training::factory()
+            ->has(Rating::factory(['vatsim_rating' => null]))
+            ->create(['user_id' => $student->id, 'type' => 1, 'status' => 2, 'area_id' => TEST_USER_TRAINING_AREA]);
+
+        $position = Position::factory()->create([
+            'rating' => VatsimRating::C1->value,
+            'callsign' => 'TEST_APP',
+            'name' => 'Test Approach',
+            'area_id' => TEST_USER_TRAINING_AREA,
+        ]);
+
+        $startDate = Carbon::tomorrow()->addHours(2);
+        $bookingRequest = [
+            'date' => $startDate->format('d/m/Y'),
+            'start_at' => $startDate->format('H:i'),
+            'end_at' => $startDate->copy()->addHours(2)->format('H:i'),
+            'position' => $position->callsign,
+        ];
+
+        $this->actingAs($student)->post(route('booking.store'), $bookingRequest)
+            ->assertStatus(403);
+        $this->assertNull(Booking::first());
     }
 
     #[Test]
@@ -182,7 +244,7 @@ class BookingTest extends TestCase
     public function controller_cannot_create_booking_with_same_start_and_end_time(): void
     {
         $controller = User::factory()->create([
-            'rating' => VatsimRating::C1->value,
+            'rating' => VatsimRating::C1,
         ]);
 
         $controller->atcActivity()->create([
@@ -226,6 +288,139 @@ class BookingTest extends TestCase
 
         $this->actingAs($user)->followingRedirects()->postJson(route('booking.store', ['id' => $booking->id]), $booking->getAttributes())
             ->assertStatus(403);
+    }
+
+    #[Test]
+    public function test_director_can_update_other_users_booking(): void
+    {
+        $director = User::factory()->create();
+        $director->roleAssignments()->create(['role' => 'director', 'area_id' => null]);
+        $booking = Booking::factory()->create(['user_id' => User::factory()->create()->id, 'source' => 'CC']);
+
+        $this->assertTrue($director->can('update', $booking));
+    }
+
+    #[Test]
+    public function test_mentor_cannot_update_other_users_booking(): void
+    {
+        $area = Area::factory()->create();
+        $mentor = User::factory()->create();
+        $mentor->roleAssignments()->create(['role' => 'mentor', 'area_id' => $area->id]);
+        $booking = Booking::factory()->create(['user_id' => User::factory()->create()->id, 'source' => 'CC']);
+
+        $this->assertFalse($mentor->can('update', $booking));
+    }
+
+    #[Test]
+    public function should_force_training_tag_returns_true_when_position_rating_exceeds_user_rating(): void
+    {
+        $area = Area::factory()->create();
+
+        $position = Position::factory()->create([
+            'area_id' => $area->id,
+            'rating' => VatsimRating::S2->value,
+        ]);
+
+        $booking = Booking::factory()->create([
+            'position_id' => $position->id,
+        ]);
+
+        $user = User::factory()->create(['rating' => VatsimRating::S1->value]);
+
+        $service = new BookingService();
+        $result = $service->shouldForceTrainingTag($booking, $position, $user);
+
+        $this->assertTrue($result);
+    }
+
+    #[Test]
+    public function get_bookable_positions_returns_positions_for_s1_rated_user(): void
+    {
+        Setting::set('atcActivityBasedOnTotalHours', false);
+
+        $area = Area::factory()->create();
+        $position = Position::factory()->create([
+            'area_id' => $area->id,
+            'rating' => VatsimRating::S1->value,
+        ]);
+
+        $user = User::factory()->create(['rating' => VatsimRating::S1->value]);
+        $user->atcActivity()->create([
+            'user_id' => $user->id,
+            'area_id' => $area->id,
+            'atc_active' => true,
+            'hours' => 20,
+        ]);
+
+        $service = new BookingService();
+        $positions = $service->getBookablePositions($user);
+
+        $this->assertNotEmpty($positions);
+        $this->assertTrue($positions->contains('id', $position->id));
+    }
+
+    #[Test]
+    public function api_store_booking_forces_training_tag_when_position_rating_exceeds_user(): void
+    {
+        $area = Area::factory()->create();
+        $s2Position = Position::factory()->create([
+            'area_id' => $area->id,
+            'rating' => VatsimRating::S2->value,
+            'callsign' => 'TEST_GND',
+        ]);
+        $s1User = User::factory()->create(['rating' => VatsimRating::S1->value]);
+
+        $startDate = Carbon::tomorrow()->addHours(10);
+        $response = $this->withoutMiddleware(ApiToken::class)->postJson(route('api.booking.store'), [
+            'cid' => $s1User->id,
+            'date' => $startDate->format('d/m/Y'),
+            'start_at' => '10:00',
+            'end_at' => '12:00',
+            'position' => $s2Position->callsign,
+            'source' => 'TEST',
+        ]);
+
+        $response->assertSuccessful();
+        $this->assertDatabaseHas('bookings', [
+            'position_id' => $s2Position->id,
+            'training' => 1,
+        ]);
+    }
+
+    #[Test]
+    public function api_update_booking_forces_training_tag_when_position_rating_exceeds_user(): void
+    {
+        $area = Area::factory()->create();
+        $s2Position = Position::factory()->create([
+            'area_id' => $area->id,
+            'rating' => VatsimRating::S2->value,
+            'callsign' => 'TEST_TWR',
+        ]);
+        $s1User = User::factory()->create(['rating' => VatsimRating::S1->value]);
+
+        $startDate = Carbon::tomorrow()->addHours(10);
+        $booking = Booking::factory()->create([
+            'user_id' => $s1User->id,
+            'position_id' => $s2Position->id,
+            'callsign' => $s2Position->callsign,
+            'time_start' => $startDate->copy()->subHours(3),
+            'time_end' => $startDate->copy()->subHours(1),
+        ]);
+
+        $response = $this->withoutMiddleware(ApiToken::class)->patchJson(route('api.booking.update', $booking), [
+            'cid' => $s1User->id,
+            'date' => $startDate->format('d/m/Y'),
+            'start_at' => '10:00',
+            'end_at' => '12:00',
+            'position' => $s2Position->callsign,
+        ]);
+
+        $response->assertSuccessful();
+        $this->assertDatabaseHas('bookings', [
+            'id' => $booking->id,
+            'position_id' => $s2Position->id,
+            'training' => 1,
+        ]);
     }
 
     #[Test]

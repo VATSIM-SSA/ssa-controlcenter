@@ -11,24 +11,28 @@ This is the most reliable way to make changes over time, as well as regularly sy
 ## Custom Image
 
 ```Dockerfile title="Custom derivation of Control Center"
-FROM ghcr.io/vatsim-scandinavia/control-center:6.4.3
+FROM %%image_tag%%
 
 # Make your customisations here
 ...
 ```
 
+!!! tip
+    The `v%%major%%` tag follows the latest release of that major version.
+    Pin an exact tag, such as `%%version%%`, if you'd rather decide for
+    yourself when to pick up a new release.
+
 ## Example
 
 ### Custom Theme
 
-You can customise the theme by [copying your modified theme files and running `/container/theme/build.sh`](./theme.md):
+You can customise the theme by [creating a `_custom.scss` override](./theme.md#customizing-theme) and running `container/theme/build.sh` to recompile the assets:
 
 ```Dockerfile title="Custom theme in Control Center"
-FROM ghcr.io/vatsim-scandinavia/control-center:6.4.3
+FROM %%image_tag%%
 
-# Copy your custom theme files
-COPY _light.scss /app/resources/sass/themes/_light.scss
-COPY _dark.scss /app/resources/sass/themes/_dark.scss
+# Copy your theme override
+COPY _custom.scss /app/resources/sass/themes/_custom.scss
 
 # Make the theme build script executable and run it
 RUN chmod +x container/theme/build.sh && container/theme/build.sh

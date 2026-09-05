@@ -1,5 +1,12 @@
 <?php
 
+use App\Providers\AppServiceProvider;
+use App\Providers\AuthServiceProvider;
+use App\Providers\CarbonServiceProvider;
+use App\Providers\DivisionApiServiceProvider;
+use App\Providers\EventServiceProvider;
+use App\Providers\RouteServiceProvider;
+use App\Providers\VatsimBookingApiServiceProvider;
 use Illuminate\Support\Facades\Facade;
 use Illuminate\Support\ServiceProvider;
 
@@ -20,6 +27,18 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Application Tagline
+    |--------------------------------------------------------------------------
+    |
+    | A short description of the application, displayed beneath the name on
+    | the front page. Customise it to describe your deployment.
+    |
+    */
+
+    'tagline' => env('APP_TAGLINE') ?: 'Training Administration',
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Version
     |--------------------------------------------------------------------------
     |
@@ -28,7 +47,7 @@ return [
     |
     */
     /* x-release-please-start-version */
-    'version' => '6.4.3',
+    'version' => '7.0.0',
     /* x-release-please-end */
 
     /*
@@ -226,18 +245,19 @@ return [
         /*
          * Application Service Providers...
          */
-        App\Providers\AppServiceProvider::class,
-        App\Providers\AuthServiceProvider::class,
+        AppServiceProvider::class,
+        AuthServiceProvider::class,
         // App\Providers\BroadcastServiceProvider::class,
-        App\Providers\EventServiceProvider::class,
-        App\Providers\RouteServiceProvider::class,
+        EventServiceProvider::class,
+        RouteServiceProvider::class,
 
         /*
         * Custom providers
         */
 
-        App\Providers\CarbonServiceProvider::class,
-        App\Providers\DivisionApiServiceProvider::class,
+        CarbonServiceProvider::class,
+        DivisionApiServiceProvider::class,
+        VatsimBookingApiServiceProvider::class,
 
     ])->toArray(),
 

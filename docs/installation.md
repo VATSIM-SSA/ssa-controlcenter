@@ -3,7 +3,7 @@
 <!-- There's a few fancy additions to the headers with HTML -->
 <!-- markdownlint-disable no-inline-html -->
 
-Control Center is built using [Laravel 11][laravel] and supports PHP 8.1+.
+Control Center is built using [Laravel 13][laravel] and requires PHP 8.4+.
 
 ## Install Control Center { data-toc-label="Install" }
 
@@ -17,10 +17,8 @@ In the instructions where we use `docker exec`, we assume your container is name
 
 Open up a terminal and pull the latest image with:
 
-<!-- TODO: Add a common variable with the latest version? Make release-please update it? -->
-
 ```shell
-docker pull ghcr.io/vatsim-scandinavia/control-center:v6
+docker pull %%image_tag%%
 ```
 
 If you're not familiar with Docker, don't worry. We'll walk you through the initial setup.
@@ -31,7 +29,7 @@ If you don't want to use Docker, you need:
 
 - An environment that can host PHP websites, such as Apache, Nginx or similar.
 - A MySQL compatible database to store data.
-- Comply with [Laravel 11 Requirements][laravel-requirements].
+- Comply with [Laravel 13 Requirements][laravel-requirements].
 
 In addition, you must handle the following additional tasks:
 
@@ -44,4 +42,4 @@ In addition, you must handle the following additional tasks:
 With either a container-based installation or the source code, you can now configure the [essential parts of the Control Center instance](configuration/index.md).
 
   [laravel]: https://laravel.com
-  [laravel-requirements]: https://laravel.com/docs/11.x/deployment#server-requirements
+  [laravel-requirements]: https://laravel.com/docs/13.x/deployment#server-requirements

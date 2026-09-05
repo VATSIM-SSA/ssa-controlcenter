@@ -2,7 +2,7 @@
 
 namespace App\Policies;
 
-use App\Models\SweatBook;
+use App\Models\Sweatbook;
 use App\Models\User;
 use Illuminate\Auth\Access\HandlesAuthorization;
 
@@ -17,7 +17,7 @@ class SweatbookPolicy
      */
     public function view(User $user)
     {
-        return $user->isMentorOrAbove();
+        return $user->hasPermission('bookings.sweatbox.use');
     }
 
     /**
@@ -27,7 +27,7 @@ class SweatbookPolicy
      */
     public function create(User $user)
     {
-        return $user->isMentorOrAbove();
+        return $user->hasPermission('bookings.sweatbox.use');
     }
 
     /**
@@ -37,6 +37,6 @@ class SweatbookPolicy
      */
     public function update(User $user, Sweatbook $booking)
     {
-        return $booking->user_id == $user->id || $user->isModeratorOrAbove();
+        return $booking->user_id == $user->id || $user->hasPermission('bookings.sweatbox.manage');
     }
 }

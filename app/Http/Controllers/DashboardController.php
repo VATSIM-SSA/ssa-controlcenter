@@ -4,12 +4,15 @@ namespace App\Http\Controllers;
 
 use anlutro\LaravelSettings\Facade as Setting;
 use App;
+use App\Helpers\InterestStatus;
+use App\Helpers\VatsimRating;
 use App\Models\TrainingInterest;
 use App\Models\TrainingReport;
 use App\Models\User;
 use App\Models\Vote;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\View\View;
 
 /**
  * Controller for the dashboard
@@ -29,7 +32,7 @@ class DashboardController extends Controller
     /**
      * Show the application dashboard.
      *
-     * @return \Illuminate\View\View
+     * @return View
      */
     public function index()
     {
@@ -51,10 +54,9 @@ class DashboardController extends Controller
         ];
 
         $trainings = $user->trainings;
-        $statuses = TrainingController::$statuses;
         $types = TrainingController::$types;
 
-        $dueInterestRequest = TrainingInterest::whereIn('training_id', $user->trainings->pluck('id'))->where('expired', false)->first();
+        $dueInterestRequest = TrainingInterest::whereIn('training_id', $user->trainings->pluck('id'))->where('expired', InterestStatus::NOT_EXPIRED)->first();
 
         // If the user belongs to our subdivision, doesn't have any training requests, has S2+ rating and is marked as inactive -> show notice
         $allowedSubDivisions = explode(',', Setting::get('trainingSubDivisions'));
@@ -63,7 +65,7 @@ class DashboardController extends Controller
                 (config('app.mode') == 'subdivision' && in_array($user->subdivision, $allowedSubDivisions) && $allowedSubDivisions != null)
                 || (config('app.mode') == 'division' && $user->division == config('app.owner_code'))
             )
-            && ! $user->hasActiveTrainings(true) && $user->rating > 1 && ! $user->isAtcActive() && ! $user->hasRecentlyCompletedTraining()
+            && ! $user->hasActiveTrainings(true) && $user->rating->isGreaterThan(VatsimRating::OBS) && ! $user->isAtcActive() && ! $user->hasRecentlyCompletedTraining()
         );
         $completedTrainingMessage = $user->hasRecentlyCompletedTraining();
 
@@ -76,17 +78,17 @@ class DashboardController extends Controller
 
         $studentTrainings = \Auth::user()->mentoringTrainings();
 
-        $cronJobError = (($user->isAdmin() && App::environment('production')) && (\Carbon\Carbon::parse(Setting::get('_lastCronRun', '2000-01-01')) <= \Carbon\Carbon::now()->subMinutes(5)));
+        $cronJobError = (($user->hasPermission('system.health.view') && App::environment('production')) && (Carbon::parse(Setting::get('_lastCronRun', '2000-01-01')) <= Carbon::now()->subMinutes(5)));
 
-        $oudatedVersionWarning = $user->isAdmin() && Setting::get('_updateAvailable');
+        $oudatedVersionWarning = $user->hasPermission('system.health.view') && Setting::get('_updateAvailable');
 
-        return view('dashboard', compact('data', 'trainings', 'statuses', 'types', 'dueInterestRequest', 'atcInactiveMessage', 'completedTrainingMessage', 'activeVote', 'atcHours', 'workmailRenewal', 'studentTrainings', 'cronJobError', 'oudatedVersionWarning'));
+        return view('dashboard', compact('data', 'trainings', 'types', 'dueInterestRequest', 'atcInactiveMessage', 'completedTrainingMessage', 'activeVote', 'atcHours', 'workmailRenewal', 'studentTrainings', 'cronJobError', 'oudatedVersionWarning'));
     }
 
     /**
      * Show the training apply view
      *
-     * @return \Illuminate\View\View
+     * @return View
      */
     public function apply()
     {
@@ -96,7 +98,7 @@ class DashboardController extends Controller
     /**
      * Show member endorsements view
      *
-     * @return \Illuminate\View\View
+     * @return View
      */
     public function endorsements()
     {

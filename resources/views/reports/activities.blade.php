@@ -4,14 +4,14 @@
 @section('title-flex')
     <div>
         <i class="fas fa-filter text-secondary"></i>&nbsp;Filter&nbsp;
-        @if(\Auth::user()->isAdmin())
+        @if(\Auth::user()->accessibleAreasForPermission('training.activities.view')->isGlobal)
             <a class="btn btn-sm {{ $filterName == "All Areas" ? 'btn-primary' : 'btn-outline-primary' }}" href="{{ route('reports.activities') }}">All Areas</a>
         @endif
         @foreach($areas as $area)
-            @if(\Auth::user()->isModeratorOrAbove($area))
+            @can('training.activities.view', $area)
                 <a class="btn btn-sm {{ $filterName == $area->name ? 'btn-primary' : 'btn-outline-primary' }}" href="{{ route('reports.activities.area', $area->id) }}">{{ $area->name }}</a>
-            @endif
-        @endforeach 
+            @endcan
+        @endforeach
     </div>
 @endsection
 
@@ -53,7 +53,7 @@
                             @foreach($entries as $activity)
                                 <tr>
                                     <td>
-                                        <i class="{{ $statuses[$activity->training->status]["icon"] }} text-{{  $statuses[$activity->training->status]["color"] }}"></i>
+                                        <i class="{{ $activity->training->status->icon() }} text-{{ $activity->training->status->color() }}"></i>
                                         <a href="{{ route('training.show', $activity->training) }}">{{ $activity->training->user->name }}'s {{ $activity->training->getInlineRatings() }}</a>
                                     </td>
                                     <td>
@@ -93,12 +93,12 @@
 
                                             @if($activity->type == "STATUS")
                                                 @if(($activity->new_data == -2 || $activity->new_data == -4) && isset($activity->comment))
-                                                    Status changed from <span class="badge text-bg-light text-primary">{{ \App\Http\Controllers\TrainingController::$statuses[$activity->old_data]["text"] }}</span>
-                                                to <span class="badge text-bg-light">{{ \App\Http\Controllers\TrainingController::$statuses[$activity->new_data]["text"] }}</span>
+                                                    Status changed from <span class="badge text-bg-light text-primary">{{ \App\Helpers\TrainingStatus::from((int) $activity->old_data)->label() }}</span>
+                                                to <span class="badge text-bg-light">{{ \App\Helpers\TrainingStatus::from((int) $activity->new_data)->label() }}</span>
                                                 with reason <span class="badge text-bg-light">{{ $activity->comment }}</span>
                                                 @else
-                                                    Status changed from <span class="badge text-bg-light">{{ \App\Http\Controllers\TrainingController::$statuses[$activity->old_data]["text"] }}</span>
-                                                to <span class="badge text-bg-light">{{ \App\Http\Controllers\TrainingController::$statuses[$activity->new_data]["text"] }}</span>
+                                                    Status changed from <span class="badge text-bg-light">{{ \App\Helpers\TrainingStatus::from((int) $activity->old_data)->label() }}</span>
+                                                to <span class="badge text-bg-light">{{ \App\Helpers\TrainingStatus::from((int) $activity->new_data)->label() }}</span>
                                                 @endif
                                             @elseif($activity->type == "TYPE")
                                                 Training type changed from <span class="badge text-bg-light">{{ \App\Http\Controllers\TrainingController::$types[$activity->old_data]["text"] }}</span>
@@ -174,15 +174,9 @@
 
                                     </td>
                                     <td>
-                                        @if(is_a($activity, 'App\Models\TrainingReport'))
-                                            <span data-bs-toggle="tooltip" data-bs-placement="top" title="{{ $activity->updated_at->toEuropeanDateTime() }}">
-                                                {{ $activity->updated_at->diffForHumans() }}
-                                            </span>
-                                        @else
-                                            <span data-bs-toggle="tooltip" data-bs-placement="top" title="{{ $activity->created_at->toEuropeanDateTime() }}">
-                                                {{ $activity->created_at->diffForHumans() }}
-                                            </span>
-                                        @endif
+                                        <span data-bs-toggle="tooltip" data-bs-placement="top" title="{{ $activity->activity_date->toEuropeanDateTime() }}">
+                                            {{ $activity->activity_date->diffForHumans() }}
+                                        </span>
                                     </td>
                                 </tr>
                             @endforeach

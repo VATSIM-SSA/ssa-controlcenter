@@ -2,100 +2,42 @@
 
 namespace App\Http\Controllers;
 
+use App\Helpers\ActivityLevel;
 use App\Models\ActivityLog;
+use App\Support\ActivityLog\ActivityChangePresenter;
+use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Http\Request;
+use Illuminate\View\View;
 
-/**
- * This controller logs various activity and stores it in database for logging purposes.
- */
 class ActivityLogController extends Controller
 {
     /**
-     * Internal function to save the log according to type
+     * Display a paginated, filterable listing of the activity log.
      *
-     * @param  string  $type
-     * @param  string  $message
-     * @return void
+     * @throws AuthorizationException
      */
-    private static function log($type, $category, $message)
-    {
-        $log = new ActivityLog();
-
-        $log->type = $type;
-        $log->category = $category;
-        $log->message = $message;
-
-        $request = request();
-
-        if (isset($request)) {
-            if (isset($request->user()->id)) {
-                $log->user_id = $request->user()->id;
-            }
-
-            $log->ip_address = $request->ip();
-            $log->user_agent = $request->userAgent();
-        }
-
-        $log->created_at = now();
-        $log->save();
-    }
-
-    /**
-     * Store a debug log
-     *
-     * @param  string  $message
-     * @return void
-     */
-    public static function debug($category, $message)
-    {
-        ActivityLogController::log('DEBUG', $category, $message);
-    }
-
-    /**
-     * Store a info log
-     *
-     * @param  string  $message
-     * @return void
-     */
-    public static function info($category, $message)
-    {
-        ActivityLogController::log('INFO', $category, $message);
-    }
-
-    /**
-     * Store a warning log
-     *
-     * @param  string  $message
-     * @return void
-     */
-    public static function warning($category, $message)
-    {
-        ActivityLogController::log('WARNING', $category, $message);
-    }
-
-    /**
-     * Store a danger log
-     *
-     * @param  string  $message
-     * @return void
-     */
-    public static function danger($category, $message)
-    {
-        ActivityLogController::log('DANGER', $category, $message);
-    }
-
-    /**
-     * Display a listing of the logs to the view.
-     *
-     * @param  anlutro\LaravelSettings\Facade  $setting
-     * @return \Illuminate\View\View
-     *
-     * @throws \Illuminate\Auth\Access\AuthorizationException
-     */
-    public function index()
+    public function index(Request $request): View
     {
         $this->authorize('index', ActivityLog::class);
-        $logs = ActivityLog::where('category', '!=', null)->with('user')->get()->sortByDesc('created_at');
 
-        return view('admin.logs', compact('logs'));
+        $logs = ActivityLog::with('causer')
+            ->when($request->query('log_name'), fn ($query, $logName) => $query->where('log_name', $logName))
+            ->when($request->query('level'), fn ($query, $level) => $query->where('level', $level))
+            ->latest()
+            ->paginate(50)
+            ->withQueryString();
+
+        $categories = ActivityLog::query()
+            ->whereNotNull('log_name')
+            ->distinct()
+            ->orderBy('log_name')
+            ->pluck('log_name')
+            ->all();
+
+        $levels = array_map(fn (ActivityLevel $level) => $level->value, ActivityLevel::cases());
+
+        $changes = ActivityChangePresenter::present($logs->getCollection());
+
+        return view('admin.logs', compact('logs', 'categories', 'levels', 'changes'));
     }
 }

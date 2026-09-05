@@ -5,15 +5,15 @@ namespace App\Models;
 use anlutro\LaravelSettings\Facade as Setting;
 use App\Exceptions\PolicyMethodMissingException;
 use App\Exceptions\PolicyMissingException;
+use App\Helpers\TrainingStatus;
+use App\Helpers\VatsimRating;
+use App\Services\PermissionMatrix;
+use App\Support\AreaScope;
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
-
-const GROUP_ADMINISTRATOR = 1;
-const GROUP_MODERATOR = 2;
-const GROUP_MENTOR = 3;
-const GROUP_BUDDY = 4;
 
 class User extends Authenticatable
 {
@@ -27,6 +27,7 @@ class User extends Authenticatable
         'last_login' => 'datetime',
         'last_activity' => 'datetime',
         'last_inactivity_warning' => 'datetime',
+        'rating' => VatsimRating::class,
     ];
 
     /**
@@ -47,26 +48,44 @@ class User extends Authenticatable
         'remember_token',
     ];
 
-    /**
-     * Relationship of all permissions to this user
-     *
-     * @return Illuminate\Database\Eloquent\Collection|Illuminate\Database\Eloquent\Relations\BelongsToMany
-     */
-    public function groups()
+    public function roleAssignments()
     {
-        return $this->belongsToMany(Group::class, 'permissions')->withPivot('area_id')->withTimestamps();
+        return $this->hasMany(RoleAssignment::class);
+    }
+
+    public static function allWithRole($roles)
+    {
+        $roles = (array) $roles;
+
+        return User::whereHas('roleAssignments', function ($query) use ($roles) {
+            $query->whereIn('role', $roles);
+        })->get();
     }
 
     /**
-     * Find all users with queried group
+     * Find all users granted the given permission, mirroring hasPermission():
+     * without an area, holding the permission anywhere is sufficient; with an
+     * area, the assignment must be global or in that area.
      *
-     * @param  int  $groupId  the id of the group to check for
-     * @return Illuminate\Database\Eloquent\Collection
+     * @return Collection<int, User>
      */
-    public static function allWithGroup($groupId, $IneqSymbol = '=')
+    public static function allWithPermission(string $permission, ?Area $area = null): Collection
     {
-        return User::whereHas('groups', function ($query) use ($groupId, $IneqSymbol) {
-            $query->where('id', $IneqSymbol, $groupId);
+        $allowedRoles = app(PermissionMatrix::class)->rolesFor($permission);
+
+        if (empty($allowedRoles)) {
+            return (new User)->newCollection();
+        }
+
+        return User::whereHas('roleAssignments', function ($query) use ($allowedRoles, $area) {
+            $query->whereIn('role', $allowedRoles);
+
+            if ($area !== null) {
+                $query->where(function ($areaQuery) use ($area) {
+                    $areaQuery->whereNull('area_id')
+                        ->orWhere('area_id', $area->id);
+                });
+            }
         })->get();
     }
 
@@ -127,7 +146,7 @@ class User extends Authenticatable
     /**
      * Check is this user is teaching the queried user
      *
-     * @param  \App\Models\User  $user  to check for
+     * @param  User  $user  to check for
      * @return bool
      */
     public function isTeaching(User $user)
@@ -251,48 +270,39 @@ class User extends Authenticatable
      */
     public static function getActiveAtcMembers(array $userIds = [])
     {
-        // Return S1+ users who are VATSCA members and active as ATC
-        if (! empty($userIds)) {
-            return User::whereIn('id', $userIds)
-                ->whereHas('atcActivity', function ($query) {
-                    $query->where('atc_active', true);
-                })->get();
-        } else {
-            return User::whereHas('atcActivity', function ($query) {
+        $query = User::where('rating', '>=', VatsimRating::S1->value)
+            ->whereHas('atcActivity', function ($query) {
                 $query->where('atc_active', true);
-            })->get();
+            });
+
+        if (! empty($userIds)) {
+            $query->whereIn('id', $userIds);
         }
+
+        return $query->get();
     }
 
     /**
-     * Fetch members that are active as ATC and associated with the division.
+     * Fetch members that are active as ATC and associated with the sub-/division.
      *
      * @return EloquentCollection<User>
      */
     public static function getAssociatedActiveAtcMembers(bool $onlyCheckActiveControllers = true, array $userIds = [])
     {
-        // Return S1+ users who are VATSCA members and active as ATC
+        $query = User::where('rating', '>=', VatsimRating::S1->value)
+            ->where(config('app.mode'), config('app.owner_code'));
+
         if (! empty($userIds)) {
-            $query = User::whereIn('id', $userIds)
-                ->where(config('app.mode'), config('app.owner_code'));
-
-            if ($onlyCheckActiveControllers) {
-                $query->whereHas('atcActivity', function ($query) {
-                    $query->where('atc_active', true);
-                });
-            }
-
-            return $query->get();
-        } else {
-            $query = User::where(config('app.mode'), config('app.owner_code'));
-            if ($onlyCheckActiveControllers) {
-                $query->whereHas('atcActivity', function ($query) {
-                    $query->where('atc_active', true);
-                });
-            }
-
-            return $query->get();
+            $query->whereIn('id', $userIds);
         }
+
+        if ($onlyCheckActiveControllers) {
+            $query->whereHas('atcActivity', function ($query) {
+                $query->where('atc_active', true);
+            });
+        }
+
+        return $query->get();
     }
 
     /**
@@ -332,7 +342,7 @@ class User extends Authenticatable
      */
     public function mentoringTrainings()
     {
-        $trainings = Training::where('status', '>=', 1)->whereHas('mentors', function ($query) {
+        $trainings = Training::where('status', '>=', TrainingStatus::PRE_TRAINING)->whereHas('mentors', function ($query) {
             $query->where('user_id', $this->id);
         })->with('area', 'ratings', 'reports', 'user')->orderBy('id')->get();
 
@@ -346,8 +356,8 @@ class User extends Authenticatable
      */
     public function getInlineMentoringAreas()
     {
-        $areas = Area::whereHas('permissions', function ($query) {
-            $query->where('user_id', $this->id);
+        $areas = Area::whereHas('mentors', function ($query) {
+            $query->where('users.id', $this->id);
         })->get();
 
         return $areas ? $areas->pluck('name')->implode(' & ') : ' - ';
@@ -356,49 +366,36 @@ class User extends Authenticatable
     /**
      * Return whether or not the user has active trainings.
      * A area can be provided to check if the user has an active training in the specified area.
-     *
-     * @return bool
      */
-    public function hasActiveTrainings(bool $includeWaiting, ?Area $area = null)
+    public function hasActiveTrainings(bool $includeWaiting, ?Area $area = null): bool
     {
-        $statuses = $includeWaiting ? [0, 1, 2, 3] : [1, 2, 3];
+        $minStatus = $includeWaiting ? TrainingStatus::IN_QUEUE : TrainingStatus::PRE_TRAINING;
 
         if ($this->relationLoaded('trainings')) {
-            $trainings = $this->trainings;
-            if ($area) {
-                $trainings = $trainings->where('area_id', $area->id);
-            }
+            $trainings = $area ? $this->trainings->where('area_id', $area->id) : $this->trainings;
 
-            return $trainings->whereIn('status', $statuses)->isNotEmpty();
+            return $trainings->filter(fn (Training $t) => $t->status->isGreaterThanOrEqual($minStatus))->isNotEmpty();
         }
 
-        if ($includeWaiting) {
-            if ($area == null) {
-                return $this->trainings()->whereIn('status', [0, 1, 2, 3])->exists();
-            }
+        $query = $this->trainings()->where('status', '>=', $minStatus->value);
 
-            return $this->trainings()->where('area_id', $area->id)->whereIn('status', [0, 1, 2, 3])->exists();
-        } else {
-            if ($area == null) {
-                return $this->trainings()->whereIn('status', [1, 2, 3])->exists();
-            }
-
-            return $this->trainings()->where('area_id', $area->id)->whereIn('status', [1, 2, 3])->exists();
+        if ($area) {
+            $query->where('area_id', $area->id);
         }
+
+        return $query->exists();
     }
 
     /**
      * Return the active training for the user
-     *
-     * @return Training|null
      */
-    public function getActiveTraining(int $minStatus = 0, ?Area $area = null)
+    public function getActiveTraining(TrainingStatus $minStatus = TrainingStatus::IN_QUEUE, ?Area $area = null): ?Training
     {
         if ($area == null) {
-            return $this->trainings()->where([['status', '>=', $minStatus]])->get()->first();
+            return $this->trainings()->where([['status', '>=', $minStatus->value]])->first();
         }
 
-        return $this->trainings()->where([['status', '>=', $minStatus], ['area_id', '=', $area->id]])->get()->first();
+        return $this->trainings()->where([['status', '>=', $minStatus->value], ['area_id', '=', $area->id]])->first();
     }
 
     /**
@@ -438,7 +435,7 @@ class User extends Authenticatable
      */
     public function hasRecentlyCompletedTraining()
     {
-        $training = $this->trainings->where('status', -1)->where('closed_at', '>', Carbon::now()->subDays(7))->first();
+        $training = $this->trainings->where('status', TrainingStatus::COMPLETED)->where('closed_at', '>', Carbon::now()->subDays(7))->first();
 
         if ($training == null || $training->isFacilityTraining() || $training->type != 1) {
             return false;
@@ -487,20 +484,59 @@ class User extends Authenticatable
         })->exists();
     }
 
-    /**
-     * Return if user is a buddy
-     *
-     * @return bool
-     */
-    public function isBuddy(?Area $area = null)
+    public function hasPermission(string $permission, ?Area $area = null): bool
     {
-        if ($area == null) {
-            return $this->groups->where('id', GROUP_BUDDY)->isNotEmpty();
+        $allowedRoles = app(PermissionMatrix::class)->rolesFor($permission);
+        if (empty($allowedRoles)) {
+            return false;
         }
 
-        // Check if user is buddy in the specified area
-        foreach ($this->groups->where('id', GROUP_BUDDY) as $group) {
-            if ($group->pivot->area_id == $area->id) {
+        return $this->hasRole($allowedRoles, $area);
+    }
+
+    public function hasGlobalPermission(string $permission): bool
+    {
+        $allowedRoles = app(PermissionMatrix::class)->rolesFor($permission);
+
+        if (empty($allowedRoles)) {
+            return false;
+        }
+
+        return $this->hasGlobalRole($allowedRoles);
+    }
+
+    public function accessibleAreasForPermission(string $permission): AreaScope
+    {
+        $allowedRoles = app(PermissionMatrix::class)->rolesFor($permission);
+
+        if (empty($allowedRoles)) {
+            return AreaScope::forAreas(collect());
+        }
+
+        $assignments = $this->roleAssignments->whereIn('role', $allowedRoles);
+
+        if ($assignments->whereNull('area_id')->isNotEmpty()) {
+            return AreaScope::global();
+        }
+
+        $areaIds = $assignments->whereNotNull('area_id')->pluck('area_id');
+
+        return AreaScope::forAreas(
+            $areaIds->isEmpty() ? collect() : Area::whereIn('id', $areaIds)->get()
+        );
+    }
+
+    public function hasRole($roles, ?Area $area = null): bool
+    {
+        $roles = (array) $roles;
+
+        foreach ($this->roleAssignments->whereIn('role', $roles) as $assignment) {
+            // If no specific area is requested, just having the role anywhere is sufficient
+            if ($area === null) {
+                return true;
+            }
+            // If a specific area is requested, it must match or the role must be global
+            if ($assignment->area_id === null || $assignment->area_id == $area->id) {
                 return true;
             }
         }
@@ -509,121 +545,15 @@ class User extends Authenticatable
     }
 
     /**
-     * Return if user is a mentor or above
+     * Check if the user holds any of the given roles as a global (area-less) assignment.
      *
-     * @return bool
+     * @param  string|array<string>  $roles
      */
-    public function isBuddyOrAbove(?Area $area = null)
+    public function hasGlobalRole($roles): bool
     {
-        if ($area == null) {
-            return $this->groups->where('id', '<=', GROUP_BUDDY)->isNotEmpty();
-        }
-
-        // Check if user is buddy or above in the specified area
-        foreach ($this->groups->where('id', '<=', GROUP_BUDDY) as $group) {
-            if ($group->pivot->area_id == $area->id) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * Return if user is a mentor
-     *
-     * @return bool
-     */
-    public function isMentor(?Area $area = null)
-    {
-        if ($area == null) {
-            return $this->groups->where('id', GROUP_MENTOR)->isNotEmpty();
-        }
-
-        // Check if user is mentor in the specified area
-        foreach ($this->groups->where('id', GROUP_MENTOR) as $group) {
-            if ($group->pivot->area_id == $area->id) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * Return if user is a mentor or above
-     *
-     * @return bool
-     */
-    public function isMentorOrAbove(?Area $area = null)
-    {
-        if ($area == null) {
-            return $this->groups->where('id', '<=', GROUP_MENTOR)->isNotEmpty();
-        }
-
-        // Check if user is mentor or above in the specified area
-        foreach ($this->groups->where('id', '<=', GROUP_MENTOR) as $group) {
-            if ($group->pivot->area_id == $area->id) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * Return if user is a moderator
-     *
-     * @return bool
-     */
-    public function isModerator(?Area $area = null)
-    {
-        if ($area == null) {
-            return $this->groups->where('id', GROUP_MODERATOR)->isNotEmpty();
-        }
-
-        // Check if user is moderator in the specified area
-        foreach ($this->groups->where('id', GROUP_MODERATOR) as $group) {
-            if ($group->pivot->area_id == $area->id) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * Return if user is a moderator or above
-     *
-     * @return bool
-     */
-    public function isModeratorOrAbove(?Area $area = null)
-    {
-        if ($area == null) {
-            return $this->groups->where('id', '<=', GROUP_MODERATOR)->isNotEmpty();
-        }
-
-        if ($this->isAdmin()) {
-            return true;
-        }
-
-        // Check if user is moderator or above in the specified area
-        foreach ($this->groups->where('id', '<=', GROUP_MODERATOR) as $group) {
-            if ($group->pivot->area_id == $area->id) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * Return if user is an admin
-     *
-     * @return bool
-     */
-    public function isAdmin()
-    {
-        return $this->groups->contains('id', GROUP_ADMINISTRATOR);
+        return $this->roleAssignments
+            ->whereIn('role', (array) $roles)
+            ->whereNull('area_id')
+            ->isNotEmpty();
     }
 }

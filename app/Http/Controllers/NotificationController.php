@@ -2,9 +2,14 @@
 
 namespace App\Http\Controllers;
 
+use App\Helpers\LogName;
 use App\Models\Area;
+use App\Services\ActivityLogService;
+use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Notifications\Notification;
+use Illuminate\View\View;
 
 /**
  * This controller manages each FIR's notifications settings to append
@@ -15,9 +20,9 @@ class NotificationController extends Controller
      * Display a listing of the resource.
      *
      * @param  int  $filterArea  areaId to filter the index by
-     * @return \Illuminate\View\View
+     * @return View
      *
-     * @throws \Illuminate\Auth\Access\AuthorizationException
+     * @throws AuthorizationException
      */
     public function index($filterArea = 1)
     {
@@ -36,9 +41,9 @@ class NotificationController extends Controller
     /**
      * Update the specified resource in storage.
      *
-     * @return \Illuminate\Http\RedirectResponse
+     * @return RedirectResponse
      *
-     * @throws \Illuminate\Auth\Access\AuthorizationException
+     * @throws AuthorizationException
      */
     public function update(Request $request)
     {
@@ -59,7 +64,7 @@ class NotificationController extends Controller
 
         $area->save();
 
-        ActivityLogController::warning('OTHER', 'Training Notification Text Updated ― Area: ' . $area->name);
+        ActivityLogService::warning(LogName::Other, 'Training Notification Text Updated ― Area: ' . $area->name);
 
         return redirect()->intended(route('admin.templates.area', $area->id))->withSuccess($area->name . "'s notifications updated.");
     }

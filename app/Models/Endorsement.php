@@ -2,12 +2,15 @@
 
 namespace App\Models;
 
+use App\Helpers\LogName;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Spatie\Activitylog\Models\Concerns\LogsActivity;
+use Spatie\Activitylog\Support\LogOptions;
 
 class Endorsement extends Model
 {
-    use HasFactory;
+    use HasFactory, LogsActivity;
 
     protected $casts = [
         'valid_from' => 'datetime',
@@ -15,6 +18,15 @@ class Endorsement extends Model
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];
+
+    public function getActivitylogOptions(): LogOptions
+    {
+        return LogOptions::defaults()
+            ->useLogName(LogName::Endorsement)
+            ->logOnly(['type', 'valid_from', 'valid_to', 'expired', 'revoked', 'user_id'])
+            ->logOnlyDirty()
+            ->dontLogEmptyChanges();
+    }
 
     public function ratings()
     {
@@ -34,5 +46,15 @@ class Endorsement extends Model
     public function user()
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function issuedBy()
+    {
+        return $this->belongsTo(User::class, 'issued_by');
+    }
+
+    public function revokedBy()
+    {
+        return $this->belongsTo(User::class, 'revoked_by');
     }
 }

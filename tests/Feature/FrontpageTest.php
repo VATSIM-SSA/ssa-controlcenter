@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Area;
 use App\Models\User;
 use Illuminate\Support\Facades\Auth;
 use PHPUnit\Framework\Attributes\Test;
@@ -14,6 +15,15 @@ class FrontpageTest extends TestCase
     {
         $response = $this->get('/');
         $response->assertStatus(200);
+    }
+
+    #[Test]
+    public function front_page_shows_configured_tagline()
+    {
+        config(['app.tagline' => 'Nordic Training Administration']);
+
+        $response = $this->get('/');
+        $response->assertSee('Nordic Training Administration');
     }
 
     #[Test]
@@ -31,5 +41,50 @@ class FrontpageTest extends TestCase
     {
         $response = $this->get('/logout');
         $response->assertRedirect('/login');
+    }
+
+    #[Test]
+    public function test_director_sees_user_search_in_topbar(): void
+    {
+        $director = User::factory()->create();
+        $director->roleAssignments()->create(['role' => 'director', 'area_id' => null]);
+
+        $response = $this->actingAs($director)->get(route('dashboard'));
+
+        $response->assertOk();
+        $response->assertSee('Search for user');
+    }
+
+    public function test_regular_user_does_not_see_user_search_in_topbar(): void
+    {
+        $user = User::factory()->create();
+
+        $response = $this->actingAs($user)->get(route('dashboard'));
+
+        $response->assertOk();
+        $response->assertDontSee('Search for user');
+    }
+
+    public function test_mentor_sees_training_section_in_sidebar(): void
+    {
+        $mentor = User::factory()->create();
+        $mentor->roleAssignments()->create(['role' => 'mentor', 'area_id' => Area::factory()->create()->id]);
+
+        $response = $this->actingAs($mentor)->get(route('dashboard'));
+
+        $response->assertOk();
+        $response->assertSee('My students');
+        $response->assertSee('Sweatbox Calendar');
+    }
+
+    public function test_regular_user_does_not_see_training_section_in_sidebar(): void
+    {
+        $user = User::factory()->create();
+
+        $response = $this->actingAs($user)->get(route('dashboard'));
+
+        $response->assertOk();
+        $response->assertDontSee('My students');
+        $response->assertDontSee('Sweatbox Calendar');
     }
 }

@@ -1,94 +1,66 @@
 # Themes
 
-Control Center includes a dynamic theme system that allows users to switch between light and dark modes, or follow their system preferences.
+Control Center ships a light and a dark theme. Each user selects one from `/settings`,
+or leaves it on **System Default** to follow the operating system. The preference is
+stored per user in the database and mirrored in browser storage, so the chosen theme is
+painted on first load without flashing the wrong one.
 
-## User Theme Selection
+Both themes are built from the same set of CSS custom properties, so anything you
+override below applies in either mode.
 
-Users can choose their preferred theme from their settings page (`/settings`):
+=== "Light"
 
-- **System Default**: Automatically matches the user's operating system theme preference
-- **Light**: Always uses the light theme
-- **Dark**: Always uses the dark theme
+    ![Light theme](../_assets/theme_light.png)
 
-The theme preference is saved to the database and persists across sessions.
+=== "Dark"
 
-## Available Themes
+    ![Dark theme](../_assets/theme_dark.png)
 
-### Light Theme (Default)
-The default theme with a clean, professional appearance:
-- White backgrounds
-- Dark text for optimal readability
-- Blue primary colors
+## Customizing Theme
 
-### Dark Theme
-A dark mode optimized for low-light environments:
-- Dark backgrounds
-- Light text for reduced eye strain
-- Adjusted colors for better visibility
+To brand your instance, put your overrides in `resources/sass/themes/_custom.scss`.
+That file is git-ignored, so your styles stay out of version control while still
+compiling into the regular front-end build.
 
-### System Theme
-Automatically switches between light and dark based on:
-- Operating system theme preference
-- Time of day settings (on supported systems)
-- No page reload required when system theme changes
+### 1. Create the override file
 
-## Customizing Theme Colors
-To customize the colors for your division, edit the theme files directly:
-
-### Light Theme Colors
-
-Edit: `resources/sass/themes/_light.scss`
-
-```scss
-:root, [data-theme="light"] {
-    --color-primary: #1a475f;      // Your primary color
-    --color-secondary: #484b4c;    // Your secondary color
-    --color-success: #41826e;      // Success/green color
-    --color-info: #17a2b8;         // Info/blue color
-    --color-warning: #ff9800;      // Warning/orange color
-    --color-danger: #b63f3f;       // Danger/red color
-    // ... more variables
-}
-```
-
-### Dark Theme Colors
-
-Edit: `resources/sass/themes/_dark.scss`
-
-```scss
-[data-theme="dark"] {
-    --color-primary: #4a9cc5;      // Your primary color (adjusted for dark)
-    --color-secondary: #6c757d;    // Your secondary color
-    // ... more variables
-}
-```
-
-### Rebuild After Changes
-
-After editing theme files, rebuild the frontend assets:
+Copy the example to get started:
 
 ```sh
-npm run build
+cp resources/sass/themes/_custom.scss.example resources/sass/themes/_custom.scss
 ```
 
-For Docker deployments:
-```sh
-docker exec -it control-center npm run build
-```
+### 2. Edit your colors
 
-## Technical Details
+Edit `resources/sass/themes/_custom.scss`. Override only what you need.
+Anything left out keeps its default.
 
-### For Developers
+Reference for the available values:
 
-The theme system uses CSS variables for dynamic switching:
+- `resources/sass/themes/_light.scss`: CSS custom properties for the light theme
+- `resources/sass/themes/_dark.scss`: CSS custom properties for the dark theme
+- `resources/sass/_variables.scss`: SCSS variables consumed by Bootstrap
 
-- **Theme definitions**: `resources/sass/themes/*.scss`
-- **Bootstrap overrides**: `resources/sass/_theme-overrides.scss`
-- **JavaScript**: `resources/js/theme.js`
+### 3. Rebuild the assets
 
-See the root-level `THEME_*.md` files for comprehensive developer documentation.
+The CSS is compiled ahead of time, so the override only takes effect once the front-end
+is rebuilt. How you do that depends on how you run Control Center.
 
-Older browsers (like IE11) will fall back to the default light theme without switching capability.
+=== "Without a container"
+
+    ```sh
+    npm run build
+    ```
+
+=== "With a container"
+
+    Build your own image with the override baked in. See
+    [Custom container image](./custom.md#custom-theme).
+
+!!! warning "Don't build inside a running container"
+    The published image contains no Node toolchain, and anything compiled into a running
+    container is lost the moment it is recreated. Either bake the theme into an image you
+    build yourself, or run Control Center without a container.
 
 ## Troubleshooting
 
@@ -98,11 +70,10 @@ Older browsers (like IE11) will fall back to the default light theme without swi
 - Verify assets are built: `npm run build`
 
 ### Colors look wrong
-- Ensure you edited both `_light.scss` and `_dark.scss`
+- Ensure you edited both the light and dark blocks in `_custom.scss` so the colors match in either mode
 - Rebuild assets after changes
 - Check CSS variables in browser DevTools
 
 ## Further Reading
-
 
 - [Custom Container](./custom.md) - Persistent customizations

@@ -8,23 +8,19 @@ use App\Models\User;
 use Illuminate\Auth\Access\HandlesAuthorization;
 use Illuminate\Auth\Access\Response;
 
-/**
- * @todo Add a check to limit the positions that can be edited to only the ones that are in the user's area
- * @todo Introduce sector manager role that can edit positions in their sector
- * @todo Add a create rule when one exists
- */
 class PositionPolicy
 {
     use HandlesAuthorization;
 
     public function viewAny(User $user, ?Area $area = null): bool
     {
-        return $user->isModeratorOrAbove($area);
+        return $user->hasPermission('fir.positions.view', $area)
+            || $user->hasPermission('fir.positions.manage', $area);
     }
 
     public function before(User $user): ?bool
     {
-        if ($user->isAdmin()) {
+        if ($user->hasRole('admin')) {
             return true;
         }
 
@@ -33,21 +29,33 @@ class PositionPolicy
 
     public function update(User $user, Position $position): Response
     {
-        return Response::deny('You are not authorized to update this position.');
+        return $user->hasPermission('fir.positions.manage', $position->area)
+            ? Response::allow()
+            : Response::deny('You are not authorized to update this position.');
     }
 
-    public function delete(User $user, Position $position): bool
+    public function delete(User $user, Position $position): Response
     {
-        return false;
+        return $user->hasPermission('fir.positions.manage', $position->area)
+            ? Response::allow()
+            : Response::deny('You are not authorized to delete this position.');
     }
 
-    public function create(User $user, Position $position): bool
+    public function create(User $user, Position $position): Response
     {
-        return false;
+        // Resolve the area from area_id explicitly: $position->area is unreliable on
+        // unsaved models (e.g. when authorising a create with a transient Position).
+        $area = Area::find($position->area_id);
+
+        return $user->hasPermission('fir.positions.manage', $area)
+            ? Response::allow()
+            : Response::deny('You are not authorized to create positions in this area.');
     }
 
-    public function createAny(User $user): bool
+    public function createAny(User $user): Response
     {
-        return false;
+        return $user->hasPermission('fir.positions.manage')
+            ? Response::allow()
+            : Response::deny('You are not authorized to create positions.');
     }
 }

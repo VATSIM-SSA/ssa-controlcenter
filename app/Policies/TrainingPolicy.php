@@ -4,6 +4,7 @@ namespace App\Policies;
 
 use anlutro\LaravelSettings\Facade as Setting;
 use App\Helpers\TrainingStatus;
+use App\Helpers\VatsimRating;
 use App\Models\Area;
 use App\Models\Training;
 use App\Models\User;
@@ -22,7 +23,7 @@ class TrainingPolicy
     public function view(User $user, Training $training)
     {
         return $training->mentors->contains($user) ||
-                $user->isModeratorOrAbove($training->area) ||
+                $user->hasPermission('training.update', $training->area) ||
                 $user->is($training->user);
     }
 
@@ -33,7 +34,7 @@ class TrainingPolicy
      */
     public function update(User $user, Training $training)
     {
-        return $user->isModeratorOrAbove($training->area);
+        return $user->hasPermission('training.update', $training->area);
     }
 
     /**
@@ -43,7 +44,7 @@ class TrainingPolicy
      */
     public function delete(User $user, Training $training)
     {
-        return $user->isModeratorOrAbove($training->area);
+        return $user->hasPermission('training.delete', $training->area);
     }
 
     /**
@@ -53,7 +54,7 @@ class TrainingPolicy
      */
     public function close(User $user, Training $training)
     {
-        return $user->is($training->user) && $training->status == TrainingStatus::IN_QUEUE->value;
+        return $user->is($training->user) && $training->status === TrainingStatus::IN_QUEUE;
     }
 
     /**
@@ -63,8 +64,8 @@ class TrainingPolicy
      */
     public function togglePreTrainingCompleted(User $user, Training $training)
     {
-        return $training->status == TrainingStatus::PRE_TRAINING->value &&
-                ($training->pre_training_completed == false || $user->isModeratorOrAbove($training->area));
+        return $training->status === TrainingStatus::PRE_TRAINING &&
+                ($training->pre_training_completed == false || $user->hasPermission('training.update', $training->area));
     }
 
     /**
@@ -104,7 +105,7 @@ class TrainingPolicy
         }
 
         // Not active users are forced to ask for a manual creation of refresh
-        if (! $user->hasActiveTrainings(true) && $user->rating > 1 && ! $user->isAtcActive()) {
+        if (! $user->hasActiveTrainings(true) && $user->rating->isGreaterThan(VatsimRating::OBS) && ! $user->isAtcActive()) {
             return Response::deny("Your ATC rating is inactive in {$divisionName}");
         }
 
@@ -118,7 +119,7 @@ class TrainingPolicy
      */
     public function create(User $user)
     {
-        return $user->isModeratorOrAbove();
+        return $user->hasPermission('fir.management.reports.view');
     }
 
     /**
@@ -133,7 +134,7 @@ class TrainingPolicy
             return true;
         }
 
-        return $user->isModeratorOrAbove(Area::find($data['training_area']));
+        return $user->hasPermission('training.update', Area::find($data['training_area']));
     }
 
     /**
@@ -143,16 +144,16 @@ class TrainingPolicy
      */
     public function edit(User $user, Training $training)
     {
-        return $user->isModeratorOrAbove($training->area);
+        return $user->hasPermission('training.update', $training->area);
     }
 
     public function viewActiveRequests(User $user)
     {
-        return $user->isModeratorOrAbove();
+        return $user->hasPermission('fir.management.reports.view');
     }
 
     public function viewHistoricRequests(User $user)
     {
-        return $user->isModeratorOrAbove();
+        return $user->hasPermission('fir.management.reports.view');
     }
 }

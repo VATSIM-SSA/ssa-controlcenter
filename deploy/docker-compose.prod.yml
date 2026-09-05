@@ -1,0 +1,64 @@
+# ControlCentre production. Copy to /srv/apps/cc/prod/docker-compose.yml on the VPS.
+#
+# Pulls the image built and pushed by .github/workflows/deploy.yml. It does NOT
+# build on the box: the estate moved off local `build:` on 14 Jul so that what
+# runs in production is the exact artefact CI produced and tested.
+#
+# The ghcr package must be public. The VPS has no ghcr login, and giving it one
+# would put a registry credential on the box for no gain.
+#
+# Shaped to match /srv/apps/handover/prod/docker-compose.yml, which is the
+# proven Laravel-on-Apache pattern for this host. Two things differ from the
+# homepage pattern, and both were learned the hard way on 2026-08-26:
+#
+#  1. NO `cap_drop: ALL`. Apache needs DAC_OVERRIDE to open its log files,
+#     SETUID/SETGID to drop to www-data, and NET_BIND_SERVICE to bind :80.
+#     With them dropped the container crash-loops on
+#     "(13)Permission denied: could not open error log file". Fine for the
+#     homepage, which is Next.js and needs none of them.
+#
+#  2. A NAMED VOLUME for the whole /app/storage, not bind mounts of
+#     subdirectories. A named volume is initialised from the image's contents
+#     WITH the image's ownership, so www-data (uid 33) owns it. A bind mount
+#     takes the host directory's ownership instead, which here is uid 1001 --
+#     so sessions and uploads would fail even once the capabilities are right.
+
+name: cc-prod
+
+services:
+  cc-prod:
+    image: ghcr.io/vatsim-ssa/ssa-controlcenter:prod
+    container_name: cc-prod
+    restart: unless-stopped
+    env_file: /srv/apps/cc/prod/.env
+    volumes:
+      - storage:/app/storage
+    networks:
+      - app-prod
+      - db-prod
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      # PHP, not curl: upstream's Dockerfile installs git, unzip, vim, nano,
+      # ca-certificates and libpq-dev, and no curl. v7.0.0 has no /health
+      # route either, so `/` is the probe -- it answers 200 or a 302 to login,
+      # and only a connection failure or a >=400 marks the container unhealthy.
+      test:
+        - CMD
+        - php
+        - -r
+        - |
+          $$c = @file_get_contents('http://127.0.0.1/'); exit($$c === false ? 1 : 0);
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+
+volumes:
+  storage:
+
+networks:
+  app-prod:
+    external: true
+  db-prod:
+    external: true

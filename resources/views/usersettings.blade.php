@@ -47,7 +47,7 @@
                                 @endif
                             </div>
 
-                            @if($user->isMentorOrAbove())
+                            @can('tasks.manage')
                                 <hr>
 
                                 <h5>Mentor Notifications</h5>
@@ -58,10 +58,10 @@
                                         Send notification of new tasks
                                     </label>
                                 </div>
-                                
-                            @endif
 
-                            @if($user->isModeratorOrAbove())
+                            @endcan
+
+                            @can('training.notifications.receive')
                                 <hr>
 
                                 <h5>Moderator Notifications</h5>
@@ -93,8 +93,8 @@
                                         <span class="text-danger">{{ $errors->first('setting_workmail_address') }}</span>
                                     @enderror
                                 </div>
-                                
-                            @endif
+
+                            @endcan
 
                             <button class="btn btn-success mt-3" type="submit">Save</button>
                         </form>

@@ -58,13 +58,8 @@ class TrainingExamNotification extends Notification implements ShouldQueue
         ];
 
         // Find staff who wants notification of new training request
-        $bcc = User::allWithGroup(2, '<=')->where('setting_notify_newexamreport', true);
-
-        foreach ($bcc as $key => $user) {
-            if (! $user->isModeratorOrAbove($this->training->area)) {
-                $bcc->pull($key);
-            }
-        }
+        $bcc = User::allWithPermission('training.notifications.receive', $this->training->area)
+            ->where('setting_notify_newexamreport', true);
 
         return (new TrainingMail('Training Examination Result', $this->training, $textLines, null, route('training.show', $this->training->id), 'Read Report'))
             ->to($this->training->user->personalNotificationEmail, $this->training->user->name)

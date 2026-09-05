@@ -1,6 +1,7 @@
 .DS_Store
 .env
 .envrc
+.mise.local.toml
 .direnv/
 .htaccess
 .idea/
@@ -21,7 +22,7 @@ public/css/*
 public/fonts/vendor/*
 public/images/logos/*
 public/js/*
-resources/sass/_env.scss
+resources/sass/themes/_custom.scss
 yarn-error.log
 storage/.container-setup-complete
 
@@ -38,3 +39,15 @@ docs_site/
 
 # php type generation
 _ide_helper_models.php
+
+# laravel/boost
+.mcp.json
+boost.json
+CLAUDE.md
+AGENTS.md
+junie/
+opencode.json
+.cursor/
+.claude/
+.agents/
+docs/superpowers/

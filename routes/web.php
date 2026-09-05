@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\ActivityLogController;
+use App\Http\Controllers\Admin\PositionController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\BookingController;
 use App\Http\Controllers\DashboardController;
@@ -77,10 +78,10 @@ Route::middleware(['auth', 'activity', 'suspended'])->group(function () {
     // Users
     Route::controller(UserController::class)->group(function () {
         Route::get('/user/{user}', 'show')->name('user.show');
-        Route::patch('/user/{user}', 'update')->name('user.update');
         Route::get('/user/{user}/reports', 'reports')->name('user.reports');
         Route::get('/settings', 'settings')->name('user.settings');
         Route::post('/settings', 'settings_update')->name('user.settings.store');
+        Route::post('/settings/theme', 'settings_update_theme')->name('user.settings.theme');
         Route::get('/settings/extendworkmail', 'extendWorkmail')->name('user.settings.extendworkmail');
 
         // Internal user search
@@ -107,8 +108,8 @@ Route::middleware(['auth', 'activity', 'suspended'])->group(function () {
     Route::get('/admin/templates/{id}', [NotificationController::class, 'index'])->name('admin.templates.area');
     Route::post('/admin/templates/update', [NotificationController::class, 'update'])->name('admin.templates.update');
     Route::get('/admin/log', [ActivityLogController::class, 'index'])->name('admin.logs');
-    Route::resource('/admin/positions', App\Http\Controllers\Admin\PositionController::class)->except(['show']);
-    Route::get('/admin/positions/{area}', [App\Http\Controllers\Admin\PositionController::class, 'index'])->name('positions.index.area');
+    Route::resource('/admin/positions', PositionController::class)->except(['show']);
+    Route::get('/admin/positions/{area}', [PositionController::class, 'index'])->name('positions.index.area');
 
     // Training routes
     Route::controller(TrainingController::class)->group(function () {
@@ -200,6 +201,7 @@ Route::middleware(['auth', 'activity', 'suspended'])->group(function () {
     Route::controller(FeedbackController::class)->group(function () {
         Route::get('/feedback', 'create')->name('feedback');
         Route::post('/feedback/store', 'store')->name('feedback.store');
+        Route::patch('/feedback/{feedback}', 'update')->name('feedback.update');
     });
 
     Route::controller(TaskController::class)->group(function () {

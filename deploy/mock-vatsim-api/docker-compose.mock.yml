@@ -1,0 +1,17 @@
+version: "3.8"
+
+# Add this service to /srv/apps/cc/staging/docker-compose.yml (merge into the
+# existing file, don't run standalone) so cc-staging can reach it by name.
+
+services:
+  mock-vatsim-api:
+    build:
+      context: .
+    container_name: mock-vatsim-api
+    restart: unless-stopped
+    networks:
+      - app-staging
+
+networks:
+  app-staging:
+    external: true

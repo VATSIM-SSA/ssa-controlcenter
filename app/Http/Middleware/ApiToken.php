@@ -4,16 +4,18 @@ namespace App\Http\Middleware;
 
 use App\Models\ApiKey;
 use Closure;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 
 class ApiToken
 {
     /**
      * Handle an incoming request.
      *
-     * @param  \Closure(\Illuminate\Http\Request): (\Illuminate\Http\Response|\Illuminate\Http\RedirectResponse)  $next
+     * @param  Closure(Request): (Response|RedirectResponse)  $next
      * @param  mixed  $editRights
-     * @return \Illuminate\Http\Response|\Illuminate\Http\RedirectResponse
+     * @return Response|RedirectResponse
      */
     public function handle(Request $request, Closure $next, $args = '')
     {
@@ -22,8 +24,10 @@ class ApiToken
 
         if ($key == null || ($args == 'edit' && $key->read_only == true)) {
 
-            // Exception for open routes
-            if ($request->getRequestUri() == '/api/bookings' || $request->getRequestUri() == '/api/positions') {
+            // Exception for open routes. Compare the path only (getPathInfo), so a query
+            // string such as `/api/v1/bookings?date=today` still resolves as a public route.
+            $openRoutes = ['/api/bookings', '/api/positions', '/api/v1/bookings', '/api/v1/positions'];
+            if (in_array($request->getPathInfo(), $openRoutes, true)) {
                 $request->attributes->set('unauthenticated', true);
 
                 return $next($request);

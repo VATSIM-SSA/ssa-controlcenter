@@ -1,4 +1,4 @@
-<nav class="navbar navbar-expand bg-white topbar {{ (\Auth::user()->isModeratorOrAbove()) ? 'topbar-justify-moderator' : 'topbar-justify-user' }} mb-4 ps-4 pe-4 static-top shadow">
+<nav class="navbar navbar-expand bg-white topbar {{ (\Auth::user()->can('users.manage')) ? 'topbar-justify-moderator' : 'topbar-justify-user' }} mb-4 ps-4 pe-4 static-top shadow">
 
     <a class="sidebar-brand sidebar-brand-topbar align-items-center" href="{{ route('dashboard') }}">
         <div class="sidebar-brand-icon">
@@ -9,7 +9,7 @@
     </a>
 
     {{-- Topbar Desktop Search --}}
-    @if(\Auth::user()->isModeratorOrAbove())
+    @can('users.manage')
         <form class="d-none d-md-inline-block my-2 my-md-0 mw-100 navbar-search" id="user-search-form-desktop">
             <div class="input-group">
                 <div class="search input-group input-lg">
@@ -25,12 +25,12 @@
                 </div>
             </div>
         </form>
-    @endif
+    @endcan
 
     {{-- Topbar Navbar --}}
     <ul class="navbar-nav">
 
-        @if(\Auth::user()->isModeratorOrAbove())
+        @can('users.manage')
 
             {{-- Search Dropdown (Visible Only XS) --}}
             <li class="nav-item dropdown no-arrow d-md-none">
@@ -55,7 +55,15 @@
                 </div>
             </li>
 
-        @endif
+        @endcan
+
+        {{-- Nav Item - Theme Toggle (cycles system -> light -> dark) --}}
+        <li class="nav-item no-arrow">
+            <button type="button" class="nav-link" id="theme-toggle" title="Theme preference" data-theme-url="{{ route('user.settings.theme') }}">
+                <i class="fas fa-fw fa-desktop" data-theme-icon></i>
+                <span class="visually-hidden">Change theme</span>
+            </button>
+        </li>
 
         <div class="topbar-divider d-none d-lg-block"></div>
 

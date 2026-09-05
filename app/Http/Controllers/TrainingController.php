@@ -4,11 +4,16 @@ namespace App\Http\Controllers;
 
 use anlutro\LaravelSettings\Facade as Setting;
 use App;
+use App\Exceptions\PolicyMethodMissingException;
+use App\Exceptions\PolicyMissingException;
 use App\Facades\DivisionApi;
+use App\Helpers\InterestStatus;
+use App\Helpers\LogName;
 use App\Helpers\TrainingStatus;
 use App\Helpers\VatsimRating;
 use App\Models\Area;
 use App\Models\AtcActivity;
+use App\Models\Endorsement;
 use App\Models\Rating;
 use App\Models\Training;
 use App\Models\TrainingExamination;
@@ -19,30 +24,27 @@ use App\Notifications\TrainingClosedNotification;
 use App\Notifications\TrainingCreatedNotification;
 use App\Notifications\TrainingMentorNotification;
 use App\Notifications\TrainingPreStatusNotification;
+use App\Services\ActivityLogService;
 use Carbon\Carbon;
+use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Contracts\Routing\ResponseFactory;
+use Illuminate\Contracts\View\Factory;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Validation\Rule;
+use Illuminate\View\View;
 
 /**
  * Controller for all trainings
  */
 class TrainingController extends Controller
 {
-    /**
-     * A list of possible statuses
-     */
-    public static $statuses = [
-        -4 => ['text' => 'Closed by system', 'color' => 'danger', 'icon' => 'fa fa-ban', 'assignableByStaff' => false],
-        -3 => ['text' => 'Closed by student', 'color' => 'danger', 'icon' => 'fa fa-ban', 'assignableByStaff' => false],
-        -2 => ['text' => 'Closed by staff', 'color' => 'danger', 'icon' => 'fas fa-ban', 'assignableByStaff' => true],
-        -1 => ['text' => 'Completed', 'color' => 'success', 'icon' => 'fas fa-check', 'assignableByStaff' => true],
-        0 => ['text' => 'In queue', 'color' => 'warning', 'icon' => 'fas fa-hourglass', 'assignableByStaff' => true],
-        1 => ['text' => 'Pre-training', 'color' => 'info', 'icon' => 'fas fa-book-open', 'assignableByStaff' => true],
-        2 => ['text' => 'Active training', 'color' => 'success', 'icon' => 'fas fa-book-open', 'assignableByStaff' => true],
-        3 => ['text' => 'Awaiting exam', 'color' => 'warning', 'icon' => 'fas fa-graduation-cap', 'assignableByStaff' => true],
-    ];
-
     /**
      * A list of possible types
      */
@@ -69,59 +71,51 @@ class TrainingController extends Controller
     /**
      * Display a listing of the resource.
      *
-     * @return \Illuminate\Contracts\View\Factory|\Illuminate\View\View
-     *
-     * @throws \App\Exceptions\PolicyMethodMissingException
-     * @throws \App\Exceptions\PolicyMissingException
-     * @throws \Illuminate\Auth\Access\AuthorizationException
+     * @throws PolicyMethodMissingException
+     * @throws PolicyMissingException
+     * @throws AuthorizationException
      */
-    public function index()
+    public function index(): Factory|View
     {
         $this->authorize('viewActiveRequests', Training::class);
 
-        $openTrainings = Auth::user()->viewableModels(\App\Models\Training::class, [['status', '>=', 0]], ['area', 'ratings', 'activities', 'mentors', 'user', 'user.groups', 'user.groups', 'user.atcActivity'])->sort(function ($a, $b) {
-            if ($a->status == $b->status) {
+        $openTrainings = Auth::user()->viewableModels(Training::class, [['status', '>=', TrainingStatus::IN_QUEUE]], ['area', 'ratings', 'activities', 'mentors', 'user', 'user.atcActivity'])->sort(function ($a, $b) {
+            if ($a->status === $b->status) {
                 return $a->created_at->timestamp - $b->created_at->timestamp;
             }
 
-            return $b->status - $a->status;
+            return $b->status->value - $a->status->value;
         });
 
-        $statuses = TrainingController::$statuses;
         $types = TrainingController::$types;
 
-        return view('training.index', compact('openTrainings', 'statuses', 'types'));
+        return view('training.index', compact('openTrainings', 'types'));
     }
 
     /**
      * Display a listing of the resource.
      *
-     * @return \Illuminate\Contracts\View\Factory|\Illuminate\View\View
-     *
-     * @throws \App\Exceptions\PolicyMethodMissingException
-     * @throws \App\Exceptions\PolicyMissingException
-     * @throws \Illuminate\Auth\Access\AuthorizationException
+     * @throws PolicyMethodMissingException
+     * @throws PolicyMissingException
+     * @throws AuthorizationException
      */
-    public function history()
+    public function history(): Factory|View
     {
         $this->authorize('viewHistoricRequests', Training::class);
 
-        $closedTrainings = Auth::user()->viewableModels(\App\Models\Training::class, [['status', '<', 0]], ['area', 'reports', 'ratings', 'activities', 'mentors', 'user', 'user.groups', 'user.groups'])->sortByDesc('closed_at');
+        $closedTrainings = Auth::user()->viewableModels(Training::class, [['status', '<', TrainingStatus::IN_QUEUE]], ['area', 'reports', 'ratings', 'activities', 'mentors', 'user', 'user.roleAssignments'])->sortByDesc('closed_at');
 
-        $statuses = TrainingController::$statuses;
         $types = TrainingController::$types;
 
-        return view('training.history', compact('closedTrainings', 'statuses', 'types'));
+        return view('training.history', compact('closedTrainings', 'types'));
     }
 
     /**
      * Show the form for creating a new resource.
      *
-     * @return \Illuminate\Contracts\View\Factory|\Illuminate\View\View
-     *
-     * @throws \Illuminate\Auth\Access\AuthorizationException
+     * @throws AuthorizationException
      */
-    public function apply()
+    public function apply(): Factory|View|RedirectResponse
     {
         $this->authorize('apply', Training::class);
 
@@ -138,9 +132,9 @@ class TrainingController extends Controller
                 $reqVatRating = $rating->pivot->required_vatsim_rating;
 
                 // If the rating gives vatsim-rating higher than user already holds || OR if it's endorsement-rating AND user does not hold the endorsement
-                if ($rating->vatsim_rating > $userVatsimRating || ($rating->vatsim_rating == null && $user->hasEndorsementRating($rating) == false)) {
+                if (($rating->vatsim_rating !== null && $rating->vatsim_rating->isGreaterThan($userVatsimRating)) || ($rating->vatsim_rating === null && ! $user->hasEndorsementRating($rating))) {
                     // If the required vatsim rating for the selection is lower or equals the level user has today, make it available
-                    if ($reqVatRating <= $userVatsimRating) {
+                    if ($reqVatRating <= $userVatsimRating->value) {
                         $rating->hour_requirement = $rating->pivot->hour_requirement;
                         $availableRatings->push($rating);
                     }
@@ -171,61 +165,34 @@ class TrainingController extends Controller
             }
 
             // Inject the data into payload
+            $atcActivity = $user->atcActivity->firstWhere('area_id', $area->id);
             $payload[$area->id]['name'] = $area->name;
             $payload[$area->id]['data'] = $availableRatings;
             $payload[$area->id]['waitingTime'] = $area->waiting_time ?? 'unknown';
-            $payload[$area->id]['atcActive'] = ($user->atcActivity->firstWhere('area_id', $area->id) && $user->atcActivity->firstWhere('area_id', $area->id)->atc_active) ? true : false;
+            $payload[$area->id]['atcActive'] = (bool) ($atcActivity && $atcActivity->atc_active);
         }
 
         // Fetch user's ATC hours
-        $vatsimStats = [];
-        $client = new \GuzzleHttp\Client();
-
-        try {
-            if (App::environment('production')) {
-                $res = $client->request('GET', 'https://api.vatsim.net/v2/members/' . $user->id . '/stats');
-            } else {
-                $res = $client->request('GET', 'https://api.vatsim.net/v2/members/819096/stats');
-            }
-
-            // Process the data if we got a 200 OK
-            if ($res->getStatusCode() == 200) {
-                $vatsimStats = json_decode($res->getBody(), true);
-
-                if (isset($vatsimStats[strtolower($user->rating_short)])) {
-                    $vatsimStats = $vatsimStats[strtolower($user->rating_short)];
-                } else {
-                    $vatsimStats = 0;
-                }
-            } else {
-                return redirect()->back()->withErrors('We were unable to load the application for you due to missing data from VATSIM. Please try again later.');
-            }
-        } catch (\GuzzleHttp\Exception\ClientException $e) {
-
-            // If the resource returns 404 and user is S1, it just means the user has no hours yet and can apply for training
-            if ($e->getResponse()->getStatusCode() == 404 && $user->rating == VatsimRating::OBS->value) {
-                $vatsimStats = 0;
-            } else {
-                return redirect()->back()->withErrors('An error occurred while fetching data from VATSIM. Please try again later.');
-            }
+        $vatsimStats = $this->fetchVatsimHours($user);
+        if ($vatsimStats instanceof RedirectResponse) {
+            return $vatsimStats;
         }
 
         // Is activity in area required to apply for training?
-        $atcActiveRequired = $user->rating >= VatsimRating::S1->value && Setting::get('atcActivityBasedOnTotalHours') == false;
+        $atcActiveRequired = $user->rating->isGreaterThanOrEqual(VatsimRating::S1) && Setting::get('atcActivityBasedOnTotalHours') == false;
 
-        // Return
         return view('training.apply', [
             'payload' => $payload,
             'atc_hours' => $vatsimStats,
-            'atcActiveRequired' => ($atcActiveRequired) ? 1 : 0,
-            'motivation_required' => ($userVatsimRating <= 2) ? 1 : 0,
+            'atcActiveRequired' => $atcActiveRequired ? 1 : 0,
+            'motivation_required' => $userVatsimRating->isLessThanOrEqual(VatsimRating::S1) ? 1 : 0,
         ]);
     }
 
     /**
      * Create a new instance of the resourcebundle_count
      *
-     * @return \Illuminate\View\View
+     * @return View
      */
     public function create(Request $request, $prefillUserId = null)
     {
@@ -245,7 +212,7 @@ class TrainingController extends Controller
     /**
      * Store a newly created resource in storage.
      *
-     * @return Training|\Illuminate\Contracts\Routing\ResponseFactory|\Illuminate\Http\RedirectResponse|\Illuminate\Http\Response
+     * @return Training|ResponseFactory|RedirectResponse|Response
      */
     public function store(Request $request)
     {
@@ -270,43 +237,16 @@ class TrainingController extends Controller
             $ratings = Rating::find(explode('+', $data['training_level']));
 
             // Check if user is active in the area if required by setting
-            $atcActivityRequired = Auth::user()->rating >= VatsimRating::S1->value && Setting::get('atcActivityBasedOnTotalHours') == false;
+            $atcActivityRequired = Auth::user()->rating->isGreaterThanOrEqual(VatsimRating::S1) && Setting::get('atcActivityBasedOnTotalHours') == false;
             $activeInArea = Auth::user()->atcActivity->firstWhere('area_id', $data['training_area']);
             if ($atcActivityRequired && $activeInArea && ! $activeInArea->atc_active) {
                 return redirect()->back()->withErrors('You need to be active in the area to apply for training.');
             }
 
             // Check if user fulfill rating hour requirement
-            $vatsimStats = [];
-            $client = new \GuzzleHttp\Client();
-
-            try {
-                if (App::environment('production')) {
-                    $res = $client->request('GET', 'https://api.vatsim.net/v2/members/' . \Auth::id() . '/stats');
-                } else {
-                    $res = $client->request('GET', 'https://api.vatsim.net/v2/members/819096/stats');
-                }
-
-                // Process the data if we got a 200 OK
-                if ($res->getStatusCode() == 200) {
-                    $vatsimStats = json_decode($res->getBody(), true);
-
-                    if (isset($vatsimStats[strtolower(\Auth::user()->rating_short)])) {
-                        $vatsimHours = $vatsimStats[strtolower(\Auth::user()->rating_short)];
-                    } else {
-                        $vatsimHours = 0;
-                    }
-                } else {
-                    return redirect()->back()->withErrors('We were unable to load the application for you due to missing data from VATSIM. Please try again later.');
-                }
-            } catch (\GuzzleHttp\Exception\ClientException $e) {
-
-                // If the resource returns 404 and user is S1, it just means the user has no hours yet and can apply for training
-                if ($e->getResponse()->getStatusCode() == 404 && \Auth::user()->rating == VatsimRating::OBS->value) {
-                    $vatsimHours = 0;
-                } else {
-                    return redirect()->back()->withErrors('An error occurred while fetching data from VATSIM. Please try again later.');
-                }
+            $vatsimHours = $this->fetchVatsimHours(Auth::user());
+            if ($vatsimHours instanceof RedirectResponse) {
+                return $vatsimHours;
             }
 
             // Loop through the ratings applied for
@@ -342,26 +282,22 @@ class TrainingController extends Controller
         }
 
         $training = Training::create([
-            'user_id' => isset($data['user_id']) ? $data['user_id'] : \Auth::id(),
-            'created_by' => \Auth::id(),
+            'user_id' => $data['user_id'] ?? Auth::id(),
+            'created_by' => Auth::id(),
             'area_id' => $data['training_area'],
-            'motivation' => isset($data['motivation']) ? $data['motivation'] : '',
-            'experience' => isset($data['experience']) ? $data['experience'] : null,
-            'english_only_training' => array_key_exists('englishOnly', $data) ? true : false,
-            'type' => isset($data['type']) ? $data['type'] : 1,
+            'motivation' => $data['motivation'] ?? '',
+            'experience' => $data['experience'] ?? null,
+            'english_only_training' => array_key_exists('englishOnly', $data),
+            'type' => $data['type'] ?? 1,
         ]);
 
         if (isset($data['comment'])) {
             TrainingActivityController::create($training->id, 'COMMENT', null, null, null, 'Comment from application: ' . $data['comment']);
         }
 
-        if ($ratings->count() > 1) {
-            $training->ratings()->saveMany($ratings);
-        } else {
-            $training->ratings()->save($ratings->first());
-        }
+        $training->ratings()->saveMany($ratings);
 
-        ActivityLogController::info('TRAINING', 'Created training request ' . $training->id . ' for CID ' . $training->user_id . ' ― Ratings: ' . $ratings->pluck('name') . ' in ' . Area::find($training->area_id)->name);
+        ActivityLogService::info(LogName::Training, 'Created training request ' . $training->id . ' for CID ' . $training->user_id . ' ― Ratings: ' . $ratings->pluck('name') . ' in ' . Area::find($training->area_id)->name);
 
         // Send confimration mail
         $training->user->notify(new TrainingCreatedNotification($training));
@@ -370,40 +306,39 @@ class TrainingController extends Controller
             return $training;
         }
 
-        return redirect()->intended(route('training.show', $training->id))->withSuccess('Training successfully created!');
+        return redirect()->intended($training->path())->withSuccess('Training successfully created!');
     }
 
     /**
      * Display the specified resource.
      *
-     * @return \Illuminate\Contracts\View\Factory|\Illuminate\View\View
+     * @return Factory|View
      *
-     * @throws \Illuminate\Auth\Access\AuthorizationException
+     * @throws AuthorizationException
      */
     public function show(Training $training)
     {
         $this->authorize('view', $training);
 
-        $examinations = TrainingExamination::where('training_id', $training->id)->get();
-        $reports = TrainingReport::where('training_id', $training->id)->get();
+        // The view policy walks training.user/mentors/area for every entry, so eager load it.
+        $policyContext = ['training.user', 'training.mentors', 'training.area', 'attachments.file'];
+        $examinations = TrainingExamination::where('training_id', $training->id)->with([...$policyContext, 'examiner', 'position'])->get();
+        $reports = TrainingReport::where('training_id', $training->id)->with([...$policyContext, 'author'])->get();
 
-        $reportsAndExams = collect($reports)->merge($examinations);
-        $reportsAndExams = $reportsAndExams->filter(fn ($item) => Gate::allows('view', $item));
-        $reportsAndExams = $reportsAndExams->sort(function ($a, $b) {
-            // Define the correct date to sort by model type is report or exam
-            is_a($a, '\App\Models\TrainingReport') ? $aSort = Carbon::parse($a->report_date) : $aSort = Carbon::parse($a->examination_date);
-            is_a($b, '\App\Models\TrainingReport') ? $bSort = Carbon::parse($b->report_date) : $bSort = Carbon::parse($b->examination_date);
+        $reportsAndExams = collect($reports)->merge($examinations)
+            ->filter(fn ($item) => Gate::allows('view', $item))
+            ->sort(function ($a, $b) {
+                $aSort = $a instanceof TrainingReport ? Carbon::parse($a->report_date) : Carbon::parse($a->examination_date);
+                $bSort = $b instanceof TrainingReport ? Carbon::parse($b->report_date) : Carbon::parse($b->examination_date);
 
-            // Sorting algorithm
-            if ($aSort == $bSort) {
-                return (is_a($a, '\App\Models\TrainingExamination')) ? -1 : 1;
-            }
+                if ($aSort == $bSort) {
+                    return $a instanceof TrainingExamination ? -1 : 1;
+                }
 
-            return ($aSort > $bSort) ? -1 : 1;
-        });
+                return $aSort > $bSort ? -1 : 1;
+            });
 
         $trainingMentors = $training->area->mentors->sortBy('name');
-        $statuses = TrainingController::$statuses;
         $types = TrainingController::$types;
         $experiences = TrainingController::$experiences;
         $activities = $training->activities->sortByDesc('created_at');
@@ -416,20 +351,20 @@ class TrainingController extends Controller
         $requestTypes = TaskController::getTypes();
         $requestPopularAssignees = TaskController::getPopularAssignees($training->area);
 
-        return view('training.show', compact('training', 'reportsAndExams', 'trainingMentors', 'statuses', 'types', 'experiences', 'activities', 'trainingInterests', 'activeTrainingInterest', 'relatedTasks', 'requestTypes', 'requestPopularAssignees'));
+        return view('training.show', compact('training', 'reportsAndExams', 'trainingMentors', 'types', 'experiences', 'activities', 'trainingInterests', 'activeTrainingInterest', 'relatedTasks', 'requestTypes', 'requestPopularAssignees'));
     }
 
     /**
      * Create a new instance of the resourcebundle_count
      *
-     * @param  \Illuminate\Http\Request  $request
-     * @return \Illuminate\View\View
+     * @param  Request  $request
+     * @return View
      */
     public function edit(Training $training)
     {
         $this->authorize('edit', [Training::class, $training]);
 
-        $ratings = Area::where('id', $training->area_id)->get()->first()->ratings;
+        $ratings = Area::find($training->area_id)->ratings;
         $types = TrainingController::$types;
 
         return view('training.edit', compact('training', 'ratings', 'types'));
@@ -438,9 +373,9 @@ class TrainingController extends Controller
     /**
      * Update the specified resource in storage.
      *
-     * @return \Illuminate\Http\RedirectResponse
+     * @return RedirectResponse
      *
-     * @throws \Illuminate\Auth\Access\AuthorizationException
+     * @throws AuthorizationException
      */
     public function updateRequest(Training $training)
     {
@@ -472,20 +407,16 @@ class TrainingController extends Controller
         }
 
         // Save the ratings
-        if ($ratings->count() > 1) {
-            $training->ratings()->saveMany($ratings);
-        } else {
-            $training->ratings()->save($ratings->first());
-        }
+        $training->ratings()->saveMany($ratings);
 
         // Save the rest
         $training->type = $attributes['type'];
-        $training->english_only_training = array_key_exists('englishOnly', $attributes) ? true : false;
+        $training->english_only_training = array_key_exists('englishOnly', $attributes);
 
         $training->save();
 
         // Log the action
-        ActivityLogController::warning('TRAINING', 'Updated training request ' . $training->id .
+        ActivityLogService::warning(LogName::Training, 'Updated training request ' . $training->id .
         ' ― Old Ratings: ' . $preChangeRatings->pluck('name') .
         ' ― New Ratings: ' . $ratings->pluck('name') .
         ' ― Old Training type: ' . TrainingController::$types[$preChangeType]['text'] .
@@ -493,7 +424,7 @@ class TrainingController extends Controller
         ' ― English only: ' . ($training->english_only_training ? 'true' : 'false'));
 
         if ($preChangeType != $training->type) {
-            TrainingActivityController::create($training->id, 'TYPE', $training->type, $preChangeType, Auth::user()->id);
+            TrainingActivityController::create($training->id, 'TYPE', $training->type, $preChangeType, Auth::id());
         }
 
         return redirect($training->path())->withSuccess('Training successfully updated');
@@ -502,9 +433,9 @@ class TrainingController extends Controller
     /**
      * Update the specified resource in storage.
      *
-     * @return \Illuminate\Http\RedirectResponse
+     * @return RedirectResponse
      *
-     * @throws \Illuminate\Auth\Access\AuthorizationException
+     * @throws AuthorizationException
      */
     public function updateDetails(Training $training)
     {
@@ -515,19 +446,21 @@ class TrainingController extends Controller
         if (array_key_exists('status', $attributes)) {
 
             // Don't allow re-opening a training if that causes student to have multiple trainings at the same time
-            if ($attributes['status'] >= 0 && $oldStatus < 0 && $training->user->hasActiveTrainings(true)) {
-                if ($training->user->hasActiveTrainings(true)) {
-                    return redirect($training->path())->withErrors('Training can not be reopened. The student already has an active training request.');
-                }
+            if ($attributes['status']->isOpen() && $oldStatus->isClosed() && $training->user->hasActiveTrainings(true)) {
+                return redirect($training->path())->withErrors('Training can not be reopened. The student already has an active training request.');
             }
 
-            $training->updateStatus($attributes['status']);
+            // Stage the status change (and its derived timestamps) in memory so
+            // the rest of this request reads the new state. Everything is then
+            // persisted together in the single update below, keeping the
+            // activity log to one entry per request.
+            $training->fill($training->resolveStatusChanges($attributes['status']));
 
-            if ($attributes['status'] != $oldStatus) {
-                if ($attributes['status'] == -2 || $attributes['status'] == -4) {
-                    TrainingActivityController::create($training->id, 'STATUS', $attributes['status'], $oldStatus, Auth::user()->id, $attributes['closed_reason']);
+            if ($attributes['status'] !== $oldStatus) {
+                if ($attributes['status'] === TrainingStatus::CLOSED_BY_STAFF || $attributes['status'] === TrainingStatus::CLOSED_BY_SYSTEM) {
+                    TrainingActivityController::create($training->id, 'STATUS', $attributes['status']->value, $oldStatus->value, Auth::id(), $attributes['closed_reason']);
                 } else {
-                    TrainingActivityController::create($training->id, 'STATUS', $attributes['status'], $oldStatus, Auth::user()->id);
+                    TrainingActivityController::create($training->id, 'STATUS', $attributes['status']->value, $oldStatus->value, Auth::id());
                 }
             }
         }
@@ -535,20 +468,20 @@ class TrainingController extends Controller
         $notifyOfNewMentor = false;
         if (array_key_exists('mentors', $attributes)) {
             foreach ((array) $attributes['mentors'] as $mentor) {
-                if (! $training->mentors->contains($mentor) && User::find($mentor) != null && User::find($mentor)->isMentorOrAbove($training->area)) {
+                if (! $training->mentors->contains($mentor) && User::find($mentor) != null && User::find($mentor)->hasPermission('training.mentor', $training->area)) {
                     $training->mentors()->attach($mentor, ['expire_at' => now()->addMonths(12)]);
 
                     // Notify student of their new mentor
                     $notifyOfNewMentor = true;
 
-                    TrainingActivityController::create($training->id, 'MENTOR', $mentor, null, Auth::user()->id);
+                    TrainingActivityController::create($training->id, 'MENTOR', $mentor, null, Auth::id());
                 }
             }
 
             foreach ($training->mentors as $mentor) {
                 if (! in_array($mentor->id, (array) $attributes['mentors'])) {
                     $training->mentors()->detach($mentor);
-                    TrainingActivityController::create($training->id, 'MENTOR', null, $mentor->id, Auth::user()->id);
+                    TrainingActivityController::create($training->id, 'MENTOR', null, $mentor->id, Auth::id());
                 }
             }
 
@@ -562,37 +495,36 @@ class TrainingController extends Controller
             // Detach all if no passed key, as that means the list is empty
 
             foreach ($training->mentors as $mentor) {
-                TrainingActivityController::create($training->id, 'MENTOR', null, $mentor->id, Auth::user()->id);
+                TrainingActivityController::create($training->id, 'MENTOR', null, $mentor->id, Auth::id());
             }
 
             $training->mentors()->detach();
         }
 
         // Update paused time for queue estimation
-        if (isset($attributes['paused_at']) && (int) $training->status >= TrainingStatus::IN_QUEUE->value) {
+        if (isset($attributes['paused_at']) && $training->status->isOpen()) {
             if (! isset($training->paused_at)) {
                 $attributes['paused_at'] = Carbon::now();
-                TrainingActivityController::create($training->id, 'PAUSE', 1, null, Auth::user()->id);
+                TrainingActivityController::create($training->id, 'PAUSE', 1, null, Auth::id());
             } else {
                 $attributes['paused_at'] = $training->paused_at;
             }
         } else {
             // If paused is unchecked but training is paused, sum up the length and unpause.
             if (isset($training->paused_at)) {
-                $training->paused_length = $training->paused_length + (int) Carbon::create($training->paused_at)->diffInSeconds(Carbon::now(), true);
-                $training->update(['paused_length' => $training->paused_length]);
-                TrainingActivityController::create($training->id, 'PAUSE', 0, null, Auth::user()->id);
+                $attributes['paused_length'] = $training->paused_length + (int) Carbon::create($training->paused_at)->diffInSeconds(Carbon::now(), true);
+                TrainingActivityController::create($training->id, 'PAUSE', 0, null, Auth::id());
             }
 
             $attributes['paused_at'] = null;
         }
 
         // If training is closed, force to unpause
-        if ((int) $training->status != $oldStatus) {
-            if ((int) $training->status < TrainingStatus::IN_QUEUE->value) {
+        if ($training->status !== $oldStatus) {
+            if ($training->status->isClosed()) {
                 $attributes['paused_at'] = null;
                 if (isset($training->paused_at)) {
-                    TrainingActivityController::create($training->id, 'PAUSE', 0, null, Auth::user()->id);
+                    TrainingActivityController::create($training->id, 'PAUSE', 0, null, Auth::id());
                 }
             }
         }
@@ -600,19 +532,19 @@ class TrainingController extends Controller
         // Update the training
         $training->update($attributes);
 
-        ActivityLogController::warning('TRAINING', 'Updated training details ' . $training->id .
-        ' ― Old Status: ' . TrainingController::$statuses[$oldStatus]['text'] .
-        ' ― New Status: ' . TrainingController::$statuses[$training->status]['text'] .
+        ActivityLogService::warning(LogName::Training, 'Updated training details ' . $training->id .
+        ' ― Old Status: ' . $oldStatus->label() .
+        ' ― New Status: ' . $training->status->label() .
         ' ― Mentor: ' . $training->mentors->pluck('name'));
 
         // Send e-mail and store endorsements rating (non-GRP ones), if it's a new status and it goes from active to closed
-        if ((int) $training->status != $oldStatus) {
-            if ((int) $training->status < TrainingStatus::IN_QUEUE->value) {
+        if ($training->status !== $oldStatus) {
+            if ($training->status->isClosed()) {
                 // Detach all mentors
                 $training->mentors()->detach();
 
                 // If the training was completed store the relevant endorsements
-                if ((int) $training->status == TrainingStatus::COMPLETED->value) {
+                if ($training->status === TrainingStatus::COMPLETED) {
                     foreach ($training->ratings as $rating) {
                         if ($rating->vatsim_rating == null) {
                             // Revoke the old endorsement if active
@@ -635,7 +567,7 @@ class TrainingController extends Controller
                             }
 
                             // Grant new endorsement
-                            $endorsement = new \App\Models\Endorsement();
+                            $endorsement = new Endorsement();
                             $endorsement->user_id = $training->user->id;
                             $endorsement->type = 'FACILITY';
                             $endorsement->valid_from = now()->format('Y-m-d H:i:s');
@@ -649,7 +581,7 @@ class TrainingController extends Controller
                 }
 
                 // If training is completed, let's set the user to active
-                if ((int) $training->status == TrainingStatus::COMPLETED->value) {
+                if ($training->status === TrainingStatus::COMPLETED) {
                     // atcActivityBasedOnTotalHours is false OR true and type is not familiarisation
                     if (! Setting::get('atcActivityBasedOnTotalHours') || Setting::get('atcActivityBasedOnTotalHours') && $training->type <= 4) {
 
@@ -662,7 +594,7 @@ class TrainingController extends Controller
                                 $activity->atc_active = true;
                                 $activity->start_of_grace_period = now();
                                 $activity->save();
-                            } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+                            } catch (ModelNotFoundException $e) {
                                 AtcActivity::create([
                                     'user_id' => $training->user->id,
                                     'area_id' => $training->area->id,
@@ -675,12 +607,12 @@ class TrainingController extends Controller
                     }
                 }
 
-                $training->user->notify(new TrainingClosedNotification($training, (int) $training->status, $training->closed_reason));
+                $training->user->notify(new TrainingClosedNotification($training, $training->status, $training->closed_reason));
 
                 return redirect($training->path())->withSuccess('Training successfully closed. E-mail confirmation sent to the student.');
             }
 
-            if ((int) $training->status == TrainingStatus::PRE_TRAINING->value) {
+            if ($training->status === TrainingStatus::PRE_TRAINING) {
                 $training->user->notify(new TrainingPreStatusNotification($training));
 
                 return redirect($training->path())->withSuccess('Training successfully updated. E-mail confirmation of pre-training sent to the student.');
@@ -698,22 +630,22 @@ class TrainingController extends Controller
      * Close the specified resource in storage.
      *
      * @param string
-     * @return \Illuminate\Http\RedirectResponse
+     * @return RedirectResponse
      *
-     * @throws \Illuminate\Auth\Access\AuthorizationException
+     * @throws AuthorizationException
      */
     public function close(Training $training)
     {
         $this->authorize('close', $training);
-        ActivityLogController::warning('TRAINING', 'Student closed training request ' . $training->id .
-        ' ― Status: ' . TrainingController::$statuses[$training->status]['text'] .
+        ActivityLogService::warning(LogName::Training, 'Student closed training request ' . $training->id .
+        ' ― Status: ' . $training->status->label() .
         ' ― Training type: ' . TrainingController::$types[$training->type]['text']);
-        TrainingActivityController::create($training->id, 'STATUS', -3, $training->status, $training->user->id);
+        TrainingActivityController::create($training->id, 'STATUS', TrainingStatus::CLOSED_BY_STUDENT->value, $training->status->value, $training->user->id);
 
         $training->mentors()->detach();
-        $training->updateStatus(-3);
+        $training->updateStatus(TrainingStatus::CLOSED_BY_STUDENT);
 
-        $training->user->notify(new TrainingClosedNotification($training, (int) $training->status));
+        $training->user->notify(new TrainingClosedNotification($training, $training->status));
 
         return redirect($training->path())->withSuccess('Training successfully closed.');
     }
@@ -722,35 +654,30 @@ class TrainingController extends Controller
      * Mark specific resource as pre-training is completed in storage
      *
      * @param Training
-     * @return \Illuminate\Http\RedirectResponse
+     * @return RedirectResponse
      *
-     * @throws \Illuminate\Auth\Access\AuthorizationException
+     * @throws AuthorizationException
      */
     public function togglePreTrainingCompleted(Training $training)
     {
         $this->authorize('togglePreTrainingCompleted', $training);
 
-        // Fetch the user, states and update them
-        $user = Auth::user();
-        $state = $training->pre_training_completed;
-        $newState = ! $state;
-        $newStateText = (($newState) ? 'completed' : 'not completed');
+        $oldState = $training->pre_training_completed;
+        $newState = ! $oldState;
 
-        // Update the state in database
         $training->pre_training_completed = $newState;
         $training->save();
 
-        // Logging
-        ActivityLogController::warning('TRAINING', 'Student marked pre-training as completed ' . $training->id);
-        TrainingActivityController::create($training->id, 'PRETRAINING', $newState, $state, $user->id);
+        ActivityLogService::warning(LogName::Training, 'Student marked pre-training as completed ' . $training->id);
+        TrainingActivityController::create($training->id, 'PRETRAINING', $newState, $oldState, Auth::id());
 
-        return redirect($training->path())->withSuccess('Pre-training marked as ' . $newStateText);
+        return redirect($training->path())->withSuccess('Pre-training marked as ' . ($newState ? 'completed' : 'not completed'));
     }
 
     /**
      * Confirm the continued interest in the training
      *
-     * @return \Illuminate\Contracts\Routing\ResponseFactory|\Illuminate\Http\RedirectResponse|\Illuminate\Http\Response
+     * @return ResponseFactory|RedirectResponse|Response
      */
     public function confirmInterest(Training $training, string $key)
     {
@@ -767,21 +694,49 @@ class TrainingController extends Controller
                 return redirect($training->path())->withSuccess('You have already confirmed your interest for this training.');
             }
 
-            if ($interest->expired) {
+            if ($interest->expired !== InterestStatus::NOT_EXPIRED) {
                 return redirect($training->path())->withErrors('This training interest link has expired. Please contact staff.');
             }
 
             $interest->confirmed_at = now();
             $interest->updated_at = now();
-            $interest->expired = true;
+            $interest->expired = InterestStatus::CLOSED;
             $interest->save();
 
-            ActivityLogController::info('TRAINING', 'Training interest confirmed.');
+            ActivityLogService::info(LogName::Training, 'Training interest confirmed.');
 
             return redirect()->to($training->path())->withSuccess('Interest successfully confirmed');
         }
 
         return redirect()->to($training->path())->withErrors('We could not find a training interest confirmation for this training. Please contact our technical staff if this issue persists.');
+    }
+
+    /**
+     * Fetch the user's ATC hours on their current rating from VATSIM.
+     *
+     * Returns the numeric hours on success, or a redirect response if the data could not be loaded.
+     */
+    protected function fetchVatsimHours(User $user): int|float|RedirectResponse
+    {
+        $memberId = App::environment('production') ? $user->id : 819096;
+
+        try {
+            $response = Http::get('https://api.vatsim.net/v2/members/' . $memberId . '/stats');
+        } catch (ConnectionException $e) {
+            return redirect()->back()->withErrors('An error occurred while fetching data from VATSIM. Please try again later.');
+        }
+
+        if ($response->status() === 404 && $user->rating === VatsimRating::OBS) {
+            return 0;
+        }
+
+        if ($response->failed()) {
+            return redirect()->back()->withErrors('We were unable to load the application for you due to missing data from VATSIM. Please try again later.');
+        }
+
+        $vatsimStats = $response->json();
+
+        return $vatsimStats[strtolower($user->rating_short)] ?? 0;
     }
 
     /**
@@ -834,7 +789,7 @@ class TrainingController extends Controller
      */
     protected function validateUpdateDetails()
     {
-        return request()->validate([
+        $attributes = request()->validate([
             'experience' => 'sometimes|required|integer|min:1|max:6',
             'englishOnly' => 'nullable',
             'paused_at' => 'sometimes',
@@ -843,12 +798,19 @@ class TrainingController extends Controller
             'comment' => 'nullable',
             'training_level' => 'sometimes|required',
             'ratings' => 'sometimes|required',
+            'ratings.*' => 'integer|exists:ratings,id',
             'training_area' => 'sometimes|required',
-            'status' => 'sometimes|required|integer',
+            'status' => ['sometimes', 'required', Rule::enum(TrainingStatus::class)],
             'type' => 'sometimes|integer',
             'mentors' => 'sometimes',
             'closed_reason' => 'sometimes|max:65',
         ]);
+
+        if (array_key_exists('status', $attributes)) {
+            $attributes['status'] = TrainingStatus::from((int) $attributes['status']);
+        }
+
+        return $attributes;
     }
 
     /**
@@ -860,6 +822,7 @@ class TrainingController extends Controller
             'type' => 'sometimes|required|integer',
             'englishOnly' => 'nullable',
             'ratings' => 'sometimes|required',
+            'ratings.*' => 'integer|exists:ratings,id',
         ]);
     }
 }

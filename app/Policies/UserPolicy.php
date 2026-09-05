@@ -3,7 +3,6 @@
 namespace App\Policies;
 
 use App\Models\Area;
-use App\Models\Group;
 use App\Models\User;
 use Illuminate\Auth\Access\HandlesAuthorization;
 
@@ -18,7 +17,7 @@ class UserPolicy
      */
     public function index(User $user)
     {
-        return $user->isModeratorOrAbove();
+        return $user->hasPermission('users.manage');
     }
 
     /**
@@ -28,7 +27,7 @@ class UserPolicy
      */
     public function view(User $user, User $model)
     {
-        return $user->is($model) || $user->isModeratorOrAbove() || $user->isTeaching($model);
+        return $user->is($model) || $user->hasPermission('users.manage') || $user->isTeaching($model);
     }
 
     /**
@@ -38,7 +37,7 @@ class UserPolicy
      */
     public function viewAccess(User $user)
     {
-        return $user->isModeratorOrAbove();
+        return $user->hasPermission('users.access.view');
     }
 
     /**
@@ -48,7 +47,7 @@ class UserPolicy
      */
     public function viewReports(User $user, User $model)
     {
-        return $user->is($model) || $user->isModeratorOrAbove();
+        return $user->is($model) || $user->hasPermission('fir.management.reports.view');
     }
 
     /**
@@ -58,21 +57,39 @@ class UserPolicy
      */
     public function update(User $user, User $model)
     {
-        return $user->isModeratorOrAbove();
+        return $user->hasPermission('users.manage');
     }
 
     /**
-     * Determine whether the user can update the model with that specific group
-     *
-     * @param  \App\Models\Group  $group
-     * @return bool
+     * Determine whether the user may grant or revoke the requested role
+     * for the model user. A null area means a global (area-less) assignment.
      */
-    public function updateGroup(User $user, User $model, Group $requstedGroup, Area $requestedArea)
+    public function updateRole(User $user, User $model, string $requestedRole, ?Area $requestedArea): bool
     {
-        // Allow admins to set all ranks from Moderator and below, and moderators can only set new mentors.
-        // Only Admin can set examinators.
-        return
-            $this->update($user, $model) &&
-            (($user->isAdmin() && $requstedGroup->id >= 2) || ($user->isModerator($requestedArea) && $requstedGroup->id >= 3));
+        if (! $this->update($user, $model)) {
+            return false;
+        }
+
+        // The admin role is managed exclusively through the user:makeadmin CLI command
+        if ($requestedRole === 'admin') {
+            return false;
+        }
+
+        // Global (area-less) assignments require the role's scope to allow them
+        if ($requestedArea === null
+            && ! in_array(config("roles.roles.{$requestedRole}.scope"), ['both', 'global'], true)) {
+            return false;
+        }
+
+        $permission = "roles.{$requestedRole}.manage";
+
+        // Grant authority must be held at (or above) the grant's scope. A global grant always
+        // needs global authority; a role declaring grant_scope 'global' needs it even in an area.
+        $requiresGlobalAuthority = $requestedArea === null
+            || config("roles.roles.{$requestedRole}.grant_scope", 'area') === 'global';
+
+        return $requiresGlobalAuthority
+            ? $user->hasGlobalPermission($permission)
+            : $user->hasPermission($permission, $requestedArea);
     }
 }

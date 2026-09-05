@@ -17,7 +17,7 @@
 @endsection
 @section('content')
 
-@if($training->status < \App\Helpers\TrainingStatus::COMPLETED->value && $training->status != \App\Helpers\TrainingStatus::CLOSED_BY_STUDENT->value)
+@if($training->status === \App\Helpers\TrainingStatus::CLOSED_BY_SYSTEM || $training->status === \App\Helpers\TrainingStatus::CLOSED_BY_STAFF)
     <div class="alert alert-warning" role="alert">
         <b>Training is closed with reason: </b>
         @if(isset($training->closed_reason))
@@ -28,7 +28,7 @@
     </div>
 @endif
 
-@if($training->status == \App\Helpers\TrainingStatus::CLOSED_BY_STUDENT->value)
+@if($training->status === \App\Helpers\TrainingStatus::CLOSED_BY_STUDENT)
     <div class="alert alert-warning" role="alert">
         <b>Training closed by student</b>
     </div>
@@ -78,11 +78,11 @@
                 <dl class="copyable">
                     <dt>State</dt>
                     <dd>
-                        <i class="{{ $statuses[$training->status]["icon"] }} text-{{ $statuses[$training->status]["color"] }}"></i>
-                        @if($training->status == \App\Helpers\TrainingStatus::PRE_TRAINING->value && $training->pre_training_completed )
+                        <i class="{{ $training->status->icon() }} text-{{ $training->status->color() }}"></i>
+                        @if($training->status === \App\Helpers\TrainingStatus::PRE_TRAINING && $training->pre_training_completed)
                             <i class="fas fa-check text-success"></i>
                         @endif
-                        {{ $statuses[$training->status]["text"] }}
+                        {{ $training->status->label() }}
                         {{ isset($training->paused_at) ? ' (PAUSED)' : '' }}
                     </dd>
 
@@ -174,14 +174,10 @@
                             @endif
 
                             <label class="form-label" for="trainingStateSelect">Select training state</label>
-                            <select class="form-select" name="status" id="trainingStateSelect" @if(!Auth::user()->isModeratorOrAbove()) disabled @endif>
-                                @foreach($statuses as $id => $data)
-                                    @if($data["assignableByStaff"])
-                                        @if($id == $training->status)
-                                            <option value="{{ $id }}" selected>{{ $data["text"] }}</option>
-                                        @else
-                                            <option value="{{ $id }}">{{ $data["text"] }}</option>
-                                        @endif
+                            <select class="form-select" name="status" id="trainingStateSelect" @if(Auth::user()->cannot('update', $training)) disabled @endif>
+                                @foreach(\App\Helpers\TrainingStatus::cases() as $status)
+                                    @if($status->isAssignableByStaff())
+                                        <option value="{{ $status->value }}" @selected($training->status === $status)>{{ $status->label() }}</option>
                                     @endif
                                 @endforeach
                             </select>
@@ -193,7 +189,7 @@
                         </div>
 
                         <div class="form-check">
-                            <input class="form-check-input" type="checkbox" id="check1" name="paused_at" {{ $training->paused_at ? "checked" : "" }} @if(!Auth::user()->isModeratorOrAbove()) disabled @endif>
+                            <input class="form-check-input" type="checkbox" id="check1" name="paused_at" {{ $training->paused_at ? "checked" : "" }} @if(Auth::user()->cannot('update', $training)) disabled @endif>
                             <label class="form-check-label" for="check1">
                                 Paused
                                 @if(isset($training->paused_at))
@@ -204,7 +200,7 @@
 
                         <hr>
 
-                        @if (\Auth::user()->isModeratorOrAbove())
+                        @can('update', $training)
                         <div class="mb-3">
                             <label class="form-label" for="assignMentors">Assigned mentors: <span class="badge bg-secondary">Ctrl/Cmd+Click</span> to select multiple</label>
                             <select multiple class="form-select" name="mentors[]" id="assignMentors">
@@ -213,7 +209,7 @@
                                 @endforeach
                             </select>
                         </div>
-                        @endif
+                        @endcan
 
                         <button type="submit" id="training-submit-btn" class="btn btn-primary" onclick="handleSubmit(event)">Save
                             <div class="submit-spinner spinner-border spinner-border-sm" role="status" style="display: none;">&nbsp;</div>
@@ -284,12 +280,12 @@
 
                                     @if($activity->type == "STATUS")
                                         @if(($activity->new_data == -2 || $activity->new_data == -4) && isset($activity->comment))
-                                            Status changed from <span class="badge text-bg-light">{{ \App\Http\Controllers\TrainingController::$statuses[$activity->old_data]["text"] }}</span>
-                                        to <span class="badge text-bg-light">{{ \App\Http\Controllers\TrainingController::$statuses[$activity->new_data]["text"] }}</span>
+                                            Status changed from <span class="badge text-bg-light">{{ \App\Helpers\TrainingStatus::from((int) $activity->old_data)->label() }}</span>
+                                        to <span class="badge text-bg-light">{{ \App\Helpers\TrainingStatus::from((int) $activity->new_data)->label() }}</span>
                                         with reason <span class="badge text-bg-light">{{ $activity->comment }}</span>
                                         @else
-                                            Status changed from <span class="badge text-bg-light">{{ \App\Http\Controllers\TrainingController::$statuses[$activity->old_data]["text"] }}</span>
-                                        to <span class="badge text-bg-light">{{ \App\Http\Controllers\TrainingController::$statuses[$activity->new_data]["text"] }}</span>
+                                            Status changed from <span class="badge text-bg-light">{{ \App\Helpers\TrainingStatus::from((int) $activity->old_data)->label() }}</span>
+                                        to <span class="badge text-bg-light">{{ \App\Helpers\TrainingStatus::from((int) $activity->new_data)->label() }}</span>
                                         @endif
                                     @elseif($activity->type == "TYPE")
                                         Training type changed from <span class="badge text-bg-light">{{ \App\Http\Controllers\TrainingController::$types[$activity->old_data]["text"] }}</span>
@@ -364,7 +360,7 @@
                             <i class="fas fa-flag"></i>
                             @isset($training->created_by)
                                 {{ \App\Models\User::find($training->created_by)->name }} —
-                            @endisset 
+                            @endisset
                             {{ $training->created_at->toEuropeanDateTime() }}
                         </div>
                         <p>
@@ -400,7 +396,7 @@
             </div>
 
             <div class="p-4">
-                <p class="fw-bold text-primary">
+                <p class="fw-bold text-primary-emphasis">
                     <i class="fas fa-envelope-open-text"></i>&nbsp;Letter of motivation
                 </p>
 
@@ -419,7 +415,7 @@
         <div class="card shadow mb-4 ">
             <div class="card-header bg-primary py-3 d-flex flex-row align-items-center justify-content-between">
 
-                @if($training->status >= \App\Helpers\TrainingStatus::PRE_TRAINING->value && $training->status <= \App\Helpers\TrainingStatus::AWAITING_EXAM->value)
+                @if($training->status->isInProgress())
                     <h6 class="m-0 fw-bold text-white">
                 @else
                     <h6 class="m-0 mt-1 mb-2 fw-bold text-white">
@@ -430,16 +426,16 @@
                 @if(
                     \Auth::user()->can('create', [\App\Models\OneTimeLink::class, $training, \App\Models\OneTimeLink::TRAINING_REPORT_TYPE]) ||
                     \Auth::user()->can('create', [\App\Models\OneTimeLink::class, $training, \App\Models\OneTimeLink::TRAINING_EXAMINATION_TYPE]) ||
-                    ($training->status >= \App\Helpers\TrainingStatus::PRE_TRAINING->value && $training->status <= \App\Helpers\TrainingStatus::AWAITING_EXAM->value)
+                    $training->status->isInProgress()
                 )
                     <div class="dropdown" style="display: inline;">
                         <button class="btn btn-light btn-icon dropdown-toggle" type="button" id="dropdownMenuButton" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
                             <i class="fas fa-plus"></i> Create
                         </button>
-                    
+
                         <div class="dropdown-menu" aria-labelledby="dropdownMenuButton">
                             @can('create', [\App\Models\TrainingReport::class, $training])
-                                @if($training->status >= \App\Helpers\TrainingStatus::PRE_TRAINING->value)
+                                @if($training->status->isInProgress())
                                     <a class="dropdown-item" href="{{ route('training.report.create', ['training' => $training->id]) }}"><i class="fas fa-file"></i> Training Report</a>
                                 @endif
                             @else
@@ -447,7 +443,7 @@
                             @endcan
 
                             @can('create', [\App\Models\TrainingExamination::class, $training])
-                                @if($training->status == \App\Helpers\TrainingStatus::AWAITING_EXAM->value)
+                                @if($training->status === \App\Helpers\TrainingStatus::AWAITING_EXAM)
                                     <a class="dropdown-item" href="{{ route('training.examination.create', ['training' => $training->id]) }}"><i class="fas fa-file"></i> Exam Report</a>
                                 @endif
                             @else
@@ -476,127 +472,10 @@
 
                             @foreach($reportsAndExams as $reportModel)
                                 @if(is_a($reportModel, '\App\Models\TrainingReport'))
-
-                                    @can('view', $reportModel)
-
-                                        @php
-                                            $uuid = "instance-".Ramsey\Uuid\Uuid::uuid4();
-                                        @endphp
-
-                                        <div class="card">
-                                            <div class="card-header p-0">
-                                                <h5 class="mb-0">
-                                                    <button class="btn btn-link" type="button" data-bs-toggle="collapse" data-bs-target="#{{ $uuid }}" aria-expanded="true">
-                                                        <i class="fas fa-fw fa-chevron-right me-2"></i>{{ $reportModel->report_date->toEuropeanDate() }}
-                                                        @if($reportModel->draft)
-                                                            <span class='badge bg-danger'>Draft</span>
-                                                        @endif
-                                                    </button>
-                                                </h5>
-                                            </div>
-
-                                            <div id="{{ $uuid }}" class="collapse" data-bs-parent="#reportAccordion">
-                                                <div class="card-body">
-
-                                                    <small class="text-muted">
-                                                        @if(isset($reportModel->position))
-                                                            <i class="fas fa-map-marker-alt"></i> {{ $reportModel->position }}&emsp;
-                                                        @endif
-                                                        <i class="fas fa-user-edit"></i> {{ isset(\App\Models\User::find($reportModel->written_by_id)->name) ? \App\Models\User::find($reportModel->written_by_id)->name : "Unknown"  }}
-                                                        @can('update', $reportModel)
-                                                            <a class="float-end" href="{{ route('training.report.edit', $reportModel->id) }}"><i class="fa fa-pen-square"></i> Edit</a>
-                                                        @endcan
-                                                    </small>
-
-                                                    <div class="mt-2" id="markdown-content">
-                                                        @markdown($reportModel->content)
-                                                    </div>
-
-                                                    @if(isset($reportModel->contentimprove) && !empty($reportModel->contentimprove))
-                                                        <hr>
-                                                        <p class="fw-bold text-primary">
-                                                            <i class="fas fa-clipboard-list-check"></i>&nbsp;Areas to improve
-                                                        </p>
-                                                        <div id="markdown-improve">
-                                                            @markdown($reportModel->contentimprove)
-                                                        </div>
-                                                    @endif
-
-                                                    @if($reportModel->attachments->count() > 0)
-                                                        <hr>
-                                                        @foreach($reportModel->attachments as $attachment)
-                                                            <div>
-                                                                <a href="{{ route('training.object.attachment.show', ['attachment' => $attachment]) }}" target="_blank">
-                                                                    <i class="fa fa-file"></i>&nbsp;{{ $attachment->file->name }}
-                                                                </a>
-                                                            </div>
-                                                        @endforeach
-                                                    @endif
-
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                    @endcan
-
-
+                                    <x-training.training-report :report="$reportModel" />
                                 @else
-
-
-                                    @php
-                                        $uuid = "instance-".Ramsey\Uuid\Uuid::uuid4();
-                                    @endphp
-
-                                    <div class="card">
-                                        <div class="card-header p-0">
-                                            <h5 class="mb-0 bg-lightorange">
-                                                <button class="btn btn-link" type="button" data-bs-toggle="collapse" data-bs-target="#{{ $uuid }}" aria-expanded="true">
-                                                    <i class="fas fa-fw fa-chevron-right me-2"></i>{{ $reportModel->examination_date->toEuropeanDate() }}
-                                                </button>
-                                            </h5>
-                                        </div>
-
-                                        <div id="{{ $uuid }}" class="collapse" data-bs-parent="#reportAccordion">
-                                            <div class="card-body">
-
-                                                <small class="text-muted">
-                                                    @if(isset($reportModel->position))
-                                                        <i class="fas fa-map-marker-alt"></i> {{ \App\Models\Position::find($reportModel->position_id)->callsign }}&emsp;
-                                                    @endif
-                                                    <i class="fas fa-user-edit"></i> {{ isset(\App\Models\User::find($reportModel->examiner_id)->name) ? \App\Models\User::find($reportModel->examiner_id)->name : "Unknown" }}
-                                                    @can('delete', [\App\Models\TrainingExamination::class, $reportModel])
-                                                        <a class="float-end" href="{{ route('training.examination.delete', $reportModel->id) }}" onclick="return confirm('Are you sure you want to delete this examination?')"><i class="fa fa-trash"></i> Delete</a>
-                                                    @endcan
-                                                </small>
-
-                                                <div class="mt-2">
-                                                    @if($reportModel->result == "PASSED")
-                                                        <span class='badge bg-success'>PASSED</span>
-                                                    @elseif($reportModel->result == "FAILED")
-                                                        <span class='badge bg-danger'>FAILED</span>
-                                                    @elseif($reportModel->result == "INCOMPLETE")
-                                                        <span class='badge bg-primary'>INCOMPLETE</span>
-                                                    @elseif($reportModel->result == "POSTPONED")
-                                                        <span class='badge bg-warning'>POSTPONED</span>
-                                                    @endif
-                                                </div>
-
-                                                @if($reportModel->attachments->count() > 0)
-                                                    @foreach($reportModel->attachments as $attachment)
-                                                        <div>
-                                                            <a href="{{ route('training.object.attachment.show', ['attachment' => $attachment]) }}" target="_blank">
-                                                                <i class="fa fa-file"></i>&nbsp;{{ $attachment->file->name }}
-                                                            </a>
-                                                        </div>
-                                                    @endforeach
-                                                @endif
-
-                                            </div>
-                                        </div>
-                                    </div>
+                                    <x-training.exam-report :report="$reportModel" />
                                 @endif
-
-
                             @endforeach
                         @endif
                     </div>
@@ -807,17 +686,22 @@
         }
 
         function updateComment(id, oldText){
+            const commentInput = document.getElementById('activity_comment')
+
             document.getElementById('activity_update_id').value = id
-            document.getElementById('activity_comment').value = oldText
+            commentInput.value = oldText
             document.getElementById('activity_button').innerHTML = 'Update'
 
-            // flash the activity_comment field yellow for a second
-            document.getElementById('activity_comment').style.backgroundColor = '#fff7bd'
-            document.getElementById('activity_comment').style.transition = 'background-color 100ms linear'
-            setTimeout(function(){
-                document.getElementById('activity_comment').style.backgroundColor = '#ffffff'
-            }, 750)
-
+            // Flash the comment field to show it's now holding the comment
+            // being edited. The colour lives in .flash-highlight so it follows
+            // the active theme; setting it inline here would stick around and
+            // override the themed background.
+            commentInput.classList.remove('flash-highlight')
+            void commentInput.offsetWidth // reflow, so a repeat edit restarts the animation
+            commentInput.classList.add('flash-highlight')
+            commentInput.addEventListener('animationend', function(){
+                commentInput.classList.remove('flash-highlight')
+            }, { once: true })
         }
 
     </script>

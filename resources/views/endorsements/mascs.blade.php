@@ -3,9 +3,9 @@
 @section('title', 'Facility Endorsements')
 @section('title-flex')
     <div>
-        @if (\Auth::user()->isModeratorOrAbove())
+        @can('endorsements.solo.manage')
             <a href="{{ route('endorsements.create') }}" class="btn btn-outline-success"><i class="fas fa-plus"></i> Add new endorsement</a>
-        @endif
+        @endcan
     </div>
 @endsection
 

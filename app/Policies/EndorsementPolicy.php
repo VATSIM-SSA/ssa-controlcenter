@@ -17,7 +17,7 @@ class EndorsementPolicy
      */
     public function view(User $user)
     {
-        return $user == Auth::user() || $user->isModeratorOrAbove();
+        return $user == Auth::user() || $user->hasPermission('endorsements.solo.manage');
     }
 
     /**
@@ -27,11 +27,15 @@ class EndorsementPolicy
      */
     public function create(User $user, $type = null)
     {
-        if ($type == 'VISITING' || $type == 'EXAMINER') {
-            return $user->isAdmin();
+        if ($type == 'VISITING') {
+            return $user->hasPermission('endorsements.visiting.manage');
         }
 
-        return $user->isModeratorOrAbove();
+        if ($type == 'EXAMINER') {
+            return $user->hasPermission('endorsements.examiner.manage');
+        }
+
+        return $user->hasPermission('endorsements.solo.manage');
     }
 
     /**
@@ -47,11 +51,15 @@ class EndorsementPolicy
         }
 
         // Check if user got correct permissions
-        if ($endorsement->type == 'VISITING' || $endorsement->type == 'EXAMINER') {
-            return $user->isAdmin();
+        if ($endorsement->type == 'VISITING') {
+            return $user->hasPermission('endorsements.visiting.delete');
         }
 
-        return $user->isModeratorOrAbove();
+        if ($endorsement->type == 'EXAMINER') {
+            return $user->hasPermission('endorsements.examiner.delete');
+        }
+
+        return $user->hasPermission('endorsements.solo.delete');
     }
 
     /**

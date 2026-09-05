@@ -2,6 +2,8 @@
 
 namespace App\Console\Commands;
 
+use App\Helpers\InterestStatus;
+use App\Helpers\TrainingStatus;
 use App\Http\Controllers\TrainingActivityController;
 use App\Models\Training;
 use App\Models\TrainingInterest;
@@ -43,7 +45,7 @@ class SendTrainingInterestNotifications extends Command
      */
     public function handle()
     {
-        $trainings = Training::where([['status', '>=', 0], ['status', '<=', 1], ['created_at', '<=', Carbon::now()->subDays(30)]])->get();
+        $trainings = Training::where([['status', '>=', TrainingStatus::IN_QUEUE], ['status', '<=', TrainingStatus::PRE_TRAINING], ['created_at', '<=', Carbon::now()->subDays(30)]])->get();
 
         foreach ($trainings as $training) {
             $lastInterestRequest = TrainingInterest::where('training_id', $training->id)->orderBy('created_at')->get()->last();
@@ -68,7 +70,7 @@ class SendTrainingInterestNotifications extends Command
                 $requestConfirmed = $lastInterestRequest->confirmed_at;
                 $requestUpdated = $lastInterestRequest->updated_at;
 
-                if ($requestDeadline->diffInMinutes(now(), false) >= 0 && $requestConfirmed == null && $lastInterestRequest->expired == false) {
+                if ($requestDeadline->diffInMinutes(now(), false) >= 0 && $requestConfirmed == null && $lastInterestRequest->expired === InterestStatus::NOT_EXPIRED) {
                     // If it's 14 days passed deadline, close the training
                     $this->info('Closing training ' . $training->id);
 
@@ -79,12 +81,12 @@ class SendTrainingInterestNotifications extends Command
 
                     // Update the training
                     // Note: The training interest is set to expire through updateStatus()
-                    $training->updateStatus(-4, true);
+                    $training->updateStatus(TrainingStatus::CLOSED_BY_SYSTEM, true);
                     $training->closed_reason = 'Continued training interest was not confirmed within deadline.';
                     $training->save();
-                    $training->user->notify(new TrainingClosedNotification($training, -4, 'Continued training interest was not confirmed within deadline.'));
-                    TrainingActivityController::create($training->id, 'STATUS', -4, $oldStatus, null, 'Continued training interest was not confirmed within deadline.');
-                } elseif ($requestDeadline->diffInDays(now(), true) == 6 && $requestUpdated->diffInDays(now(), true) != 0 && $lastInterestRequest->expired == false && $requestConfirmed == null) {
+                    $training->user->notify(new TrainingClosedNotification($training, TrainingStatus::CLOSED_BY_SYSTEM, 'Continued training interest was not confirmed within deadline.'));
+                    TrainingActivityController::create($training->id, 'STATUS', TrainingStatus::CLOSED_BY_SYSTEM->value, $oldStatus->value, null, 'Continued training interest was not confirmed within deadline.');
+                } elseif ($requestDeadline->diffInDays(now(), true) == 6 && $requestUpdated->diffInDays(now(), true) != 0 && $lastInterestRequest->expired === InterestStatus::NOT_EXPIRED && $requestConfirmed == null) {
                     // If the interest is not confirmed after 6 days, we remind
                     $this->info('Reminding training ' . $training->id);
 
@@ -92,7 +94,7 @@ class SendTrainingInterestNotifications extends Command
                     $lastInterestRequest->save();
 
                     $training->user->notify(new TrainingInterestNotification($training, $lastInterestRequest, true));
-                } elseif ($lastInterestRequest->created_at->diffInDays(now(), true) >= 30 && $lastInterestRequest->expired == true) {
+                } elseif ($lastInterestRequest->created_at->diffInDays(now(), true) >= 30 && $lastInterestRequest->expired !== InterestStatus::NOT_EXPIRED) {
                     // The training has been previously notified, after 30 days it's time for a new request
                     // Generate training interest key and store it in the request
                     $key = sha1($training->id . now()->format('Ymd_His') . rand(0, 9999));

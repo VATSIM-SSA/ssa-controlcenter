@@ -4,8 +4,9 @@ namespace Database\Seeders;
 
 use App\Helpers\FactoryHelper;
 use App\Helpers\TrainingStatus;
+use App\Helpers\VatsimRating;
 use App\Models\Endorsement;
-use App\Models\Group;
+use App\Models\Feedback;
 use App\Models\Position;
 use App\Models\Rating;
 use App\Models\Training;
@@ -33,7 +34,8 @@ class DatabaseSeeder extends Seeder
             $email = 'auth.dev' . $i . '@vatsim.net';
 
             $rating_id = 1;
-            $group = null;
+            $role = null;
+            $global = false;
 
             switch ($i) {
                 case 1:
@@ -58,28 +60,30 @@ class DatabaseSeeder extends Seeder
                 case 6:
                     $name_last = 'Six';
                     $rating_id = 7;
+                    $role = 'mentor';
                     break;
                 case 7:
                     $name_last = 'Seven';
                     $rating_id = 8;
-                    $group = 3;
+                    $role = 'mentor';
                     break;
                 case 8:
                     $name_last = 'Eight';
                     $rating_id = 10;
-                    $group = 3;
+                    $role = 'moderator';
                     break;
                 case 9:
                     $name_last = 'Nine';
                     $rating_id = 11;
-                    $group = 2;
+                    $role = 'director';
                     break;
                 case 10:
                     $name_first = 'Team';
                     $name_last = 'Web';
                     $rating_id = 12;
                     $email = 'noreply@vatsim.net';
-                    $group = 1;
+                    $role = 'admin';
+                    $global = true;
                     break;
                 case 11:
                     $name_first = 'Suspended';
@@ -89,18 +93,24 @@ class DatabaseSeeder extends Seeder
                     break;
             }
 
-            User::factory()->create([
+            $user = User::factory()->create([
                 'id' => 10000000 + $i,
                 'email' => $email,
                 'first_name' => $name_first,
                 'last_name' => $name_last,
                 'rating' => $rating_id,
                 'rating_short' => FactoryHelper::shortRating($rating_id),
-                'rating_long' => FactoryHelper::longRating($rating_id),
+                'rating_long' => FactoryHelper::longRating(VatsimRating::from($rating_id)),
                 'region' => 'EMEA',
                 'division' => 'EUD',
                 'subdivision' => 'SCA',
-            ])->groups()->attach(Group::find($group), ['area_id' => 1]);
+            ]);
+
+            if ($role !== null && $global) {
+                $user->roleAssignments()->create(['role' => $role, 'area_id' => null]);
+            } elseif ($role !== null) {
+                $user->roleAssignments()->create(['role' => $role, 'area_id' => 1]);
+            }
         }
 
         // Create random Scandinavian users
@@ -120,16 +130,38 @@ class DatabaseSeeder extends Seeder
             ]);
         }
 
+        // Seed feedback entries with a mix of correlated and uncorrelated
+        $users = User::inRandomOrder()->limit(30)->get();
+        $positions = Position::inRandomOrder()->limit(10)->get();
+
+        for ($i = 0; $i < 20; $i++) {
+            $submitter = $users->random();
+            $referenceUser = $users->random();
+
+            if ($positions->isNotEmpty() && rand(0, 3) > 0) {
+                Feedback::factory()->create([
+                    'submitter_user_id' => $submitter->id,
+                    'reference_user_id' => $referenceUser->id,
+                    'reference_position_id' => $positions->random()->id,
+                ]);
+            } else {
+                Feedback::factory()->uncorrelated()->create([
+                    'submitter_user_id' => $submitter->id,
+                    'reference_user_id' => $referenceUser->id,
+                ]);
+            }
+        }
+
         // Populate trainings and other of the Scandinavian users
         for ($i = 1; $i <= rand(100, 125); $i++) {
             $training = Training::factory()->create();
-            $training->ratings()->attach(Rating::where('vatsim_rating', '>', 1)->inRandomOrder()->first());
+            $training->ratings()->attach(Rating::whereIn('vatsim_rating', VatsimRating::TRAINABLE_RATINGS)->inRandomOrder()->first());
 
             // Give all non-queued trainings a mentor
             if ($training->status != TrainingStatus::IN_QUEUE->value) {
                 $training->mentors()->attach(
-                    User::whereHas('groups', function ($query) {
-                        $query->where('id', 3);
+                    User::whereHas('roleAssignments', function ($query) {
+                        $query->where('role', 'mentor');
                     })->inRandomOrder()->first(),
                     ['expire_at' => now()->addYears(5)]
                 );
@@ -150,7 +182,7 @@ class DatabaseSeeder extends Seeder
                     ]);
 
                     // Add position for solo
-                    $soloEndorsement->positions()->save(Position::where('rating', '>', 1)->inRandomOrder()->first());
+                    $soloEndorsement->positions()->save(Position::whereIn('rating', VatsimRating::getPositionRatingValues())->inRandomOrder()->first());
                 }
 
                 // And some a exam result

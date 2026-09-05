@@ -2,8 +2,9 @@
 
 namespace Tests\Feature;
 
+use App\Helpers\VatsimRating;
 use App\Models\Area;
-use App\Models\Group;
+use App\Models\Rating;
 use App\Models\Training;
 use App\Models\TrainingExamination;
 use App\Models\TrainingInterest;
@@ -28,8 +29,6 @@ class NotificationEmailTest extends TestCase
 
     protected User $user;
 
-    protected Group $moderatorGroup;
-
     protected Area $area;
 
     protected function setUp(): void
@@ -37,7 +36,6 @@ class NotificationEmailTest extends TestCase
         parent::setUp();
         Notification::fake();
 
-        $this->moderatorGroup = Group::firstOrCreate(['id' => 2], ['name' => 'Moderator']);
         $this->area = Area::factory()->create();
         $this->user = User::factory()->create([
             'email' => 'personal@example.com',
@@ -82,6 +80,27 @@ class NotificationEmailTest extends TestCase
     }
 
     #[Test]
+    public function training_notification_lists_both_facility_and_vatsim_ratings(): void
+    {
+        $training = Training::factory()
+            ->has(Rating::factory(['vatsim_rating' => VatsimRating::S2, 'name' => 'TST-S2']))
+            ->for($this->user)->for($this->area)->create();
+        $training->ratings()->save(Rating::factory()->create(['vatsim_rating' => null, 'name' => 'TST-MAE']));
+
+        $this->user->notify(new TrainingCreatedNotification($training->fresh()));
+
+        Notification::assertSentTo(
+            $this->user,
+            TrainingCreatedNotification::class,
+            function ($notification, $channels, $notifiable) {
+                $this->assertStringContainsString('TST-S2 + TST-MAE', $notification->toMail($notifiable)->render());
+
+                return true;
+            }
+        );
+    }
+
+    #[Test]
     public function sends_training_request_to_personal_email_and_bcc_to_work_email(): void
     {
         $anotherArea = Area::factory()->create();
@@ -91,15 +110,15 @@ class NotificationEmailTest extends TestCase
             'setting_workmail_address' => 'staff.work@example.com',
             'setting_notify_newreq' => true,
         ]);
-        $staffReceivesBcc->groups()->attach($this->moderatorGroup, ['area_id' => $this->area->id]);
+        $staffReceivesBcc->roleAssignments()->create(['role' => 'moderator', 'area_id' => $this->area->id]);
 
         // Staff member who should NOT receive BCC (wrong area)
         $staffWrongArea = User::factory()->create(['setting_notify_newreq' => true]);
-        $staffWrongArea->groups()->attach($this->moderatorGroup, ['area_id' => $anotherArea->id]);
+        $staffWrongArea->roleAssignments()->create(['role' => 'moderator', 'area_id' => $anotherArea->id]);
 
         // Staff member who should NOT receive BCC (notification setting disabled)
         $staffNoNotify = User::factory()->create(['setting_notify_newreq' => false]);
-        $staffNoNotify->groups()->attach($this->moderatorGroup, ['area_id' => $this->area->id]);
+        $staffNoNotify->roleAssignments()->create(['role' => 'moderator', 'area_id' => $this->area->id]);
 
         $training = Training::factory()->for($this->user)->for($this->area)->create();
 
@@ -124,5 +143,40 @@ class NotificationEmailTest extends TestCase
         // Assert notification was NOT sent to other staff members
         Notification::assertNotSentTo($staffWrongArea, TrainingCreatedNotification::class);
         Notification::assertNotSentTo($staffNoNotify, TrainingCreatedNotification::class);
+    }
+
+    #[Test]
+    public function bccs_directors_who_opted_in_to_new_request_notifications(): void
+    {
+        $director = User::factory()->create([
+            'setting_workmail_address' => 'director@example.com',
+        ]);
+        $director->setting_notify_newreq = true;
+        $director->save();
+        $director->roleAssignments()->create(['role' => 'director', 'area_id' => $this->area->id]);
+
+        $outsider = User::factory()->create([
+            'setting_workmail_address' => 'outsider@example.com',
+        ]);
+        $outsider->setting_notify_newreq = true;
+        $outsider->save();
+        $outsider->roleAssignments()->create(['role' => 'moderator', 'area_id' => Area::factory()->create()->id]);
+
+        $training = Training::factory()->for($this->user)->for($this->area)->create();
+
+        $this->user->notify(new TrainingCreatedNotification($training));
+
+        Notification::assertSentTo(
+            $this->user,
+            TrainingCreatedNotification::class,
+            function ($notification, $channels, $notifiable) {
+                $bccAddresses = collect($notification->toMail($notifiable)->bcc)->pluck('address');
+
+                $this->assertContains('director@example.com', $bccAddresses);
+                $this->assertNotContains('outsider@example.com', $bccAddresses);
+
+                return true;
+            }
+        );
     }
 }

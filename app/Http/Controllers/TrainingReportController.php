@@ -2,15 +2,21 @@
 
 namespace App\Http\Controllers;
 
-use App\Helpers\TrainingStatus;
 use App\Models\OneTimeLink;
 use App\Models\Position;
 use App\Models\Training;
 use App\Models\TrainingReport;
 use App\Notifications\TrainingReportNotification;
 use Carbon\Carbon;
+use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Contracts\Filesystem\FileNotFoundException;
+use Illuminate\Contracts\View\Factory;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
+use Illuminate\Routing\Redirector;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\View\View;
 
 /**
  * Controller for handling training reports
@@ -20,9 +26,9 @@ class TrainingReportController extends Controller
     /**
      * Display a listing of the resource.
      *
-     * @return \Illuminate\Contracts\View\Factory|\Illuminate\View\View
+     * @return Factory|View
      *
-     * @throws \Illuminate\Auth\Access\AuthorizationException
+     * @throws AuthorizationException
      */
     public function index(Training $training)
     {
@@ -36,14 +42,14 @@ class TrainingReportController extends Controller
     /**
      * Show the form for creating a new resource.
      *
-     * @return \Illuminate\Contracts\View\Factory|\Illuminate\Http\RedirectResponse|\Illuminate\View\View
+     * @return Factory|RedirectResponse|View
      *
-     * @throws \Illuminate\Auth\Access\AuthorizationException
+     * @throws AuthorizationException
      */
     public function create(Request $request, Training $training)
     {
         $this->authorize('create', [TrainingReport::class, $training]);
-        if ($training->status < TrainingStatus::PRE_TRAINING->value) {
+        if (! $training->status->isInProgress()) {
             return redirect(null, 400)->back()->withErrors('Training report cannot be created for a training not in progress.');
         }
 
@@ -55,10 +61,10 @@ class TrainingReportController extends Controller
     /**
      * Store a newly created resource in storage.
      *
-     * @return \Illuminate\Http\RedirectResponse|\Illuminate\Routing\Redirector
+     * @return RedirectResponse|Redirector
      *
-     * @throws \Illuminate\Auth\Access\AuthorizationException
-     * @throws \Illuminate\Contracts\Filesystem\FileNotFoundException
+     * @throws AuthorizationException
+     * @throws FileNotFoundException
      */
     public function store(Request $request, Training $training)
     {
@@ -99,7 +105,7 @@ class TrainingReportController extends Controller
     /**
      * Display the specified resource.
      *
-     * @return \Illuminate\Http\Response
+     * @return Response
      */
     public function show(TrainingReport $trainingReport)
     {
@@ -109,9 +115,9 @@ class TrainingReportController extends Controller
     /**
      * Show the form for editing the specified resource.
      *
-     * @return \Illuminate\Contracts\View\Factory|\Illuminate\View\View
+     * @return Factory|View
      *
-     * @throws \Illuminate\Auth\Access\AuthorizationException
+     * @throws AuthorizationException
      */
     public function edit(TrainingReport $report)
     {
@@ -125,14 +131,13 @@ class TrainingReportController extends Controller
     /**
      * Update the specified resource in storage.
      *
-     * @return \Illuminate\Http\RedirectResponse|\Illuminate\Routing\Redirector
+     * @return RedirectResponse|Redirector
      *
-     * @throws \Illuminate\Auth\Access\AuthorizationException
+     * @throws AuthorizationException
      */
     public function update(Request $request, TrainingReport $report)
     {
         $this->authorize('update', $report);
-        $oldDraftStatus = $report->fresh()->draft;
 
         $data = $this->validateRequest();
 
@@ -144,8 +149,8 @@ class TrainingReportController extends Controller
 
         $report->update($data);
 
-        // Notify student of new training request if it's not a draft anymore
-        if ($oldDraftStatus == true && $report->draft == false && $report->training->user->setting_notify_newreport) {
+        // Notify student when the report is first published (published_at just stamped)
+        if ($report->wasChanged('published_at') && $report->training->user->setting_notify_newreport) {
             $report->training->user->notify(new TrainingReportNotification($report->training, $report));
         }
 
@@ -155,9 +160,9 @@ class TrainingReportController extends Controller
     /**
      * Remove the specified resource from storage.
      *
-     * @return \Illuminate\Http\RedirectResponse|\Illuminate\Routing\Redirector
+     * @return RedirectResponse|Redirector
      *
-     * @throws \Illuminate\Auth\Access\AuthorizationException
+     * @throws AuthorizationException
      */
     public function destroy(TrainingReport $report)
     {
