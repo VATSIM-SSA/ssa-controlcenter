@@ -45,11 +45,19 @@
     </div>
 
     <div class="card-body">
-        <div class="row g-4 copyable">
+        {{-- `copyable` goes on each dl, NOT on this row.
+
+             _global.scss scopes the rule as `dl.copyable`, and everything it
+             does is to the buttons inside: hide them until the line is hovered,
+             strip the border and background, and turn them green on click. On
+             the wrapper it matched nothing, so every copy button rendered as a
+             raw browser button -- a bordered grey box sitting permanently
+             beside the CID, the name and the email. --}}
+        <div class="row g-4">
 
             {{-- Identity. --}}
             <div class="col-xl-3 col-md-6">
-                <dl class="mb-0">
+                <dl class="mb-0 copyable">
                     <dt>VATSIM ID</dt>
                     <dd>
                         {{ $user->id }}
@@ -73,7 +81,7 @@
                  The badges above answer "what are they"; this answers "since
                  when", which is the question the header has no room for. --}}
             <div class="col-xl-3 col-md-6">
-                <dl class="mb-0">
+                <dl class="mb-0 copyable">
                     @if(config('app.mode') == 'subdivision')
                         <dt>Sub/Division</dt>
                         <dd>{{ $user->division }} / {{ $user->subdivision }}</dd>
@@ -102,7 +110,7 @@
 
             {{-- Controlling. --}}
             <div class="col-xl-3 col-md-6">
-                <dl class="mb-0">
+                <dl class="mb-0 copyable">
                     <dt>ATC Rating</dt>
                     <dd>{{ $user->rating_short }}</dd>
 
@@ -136,7 +144,7 @@
 
             {{-- Presence: platforms, VATSIM totals, and when we last saw them. --}}
             <div class="col-xl-3 col-md-6">
-                <dl class="mb-0">
+                <dl class="mb-0 copyable">
                     {{-- VATSSA: platforms live in this list, not in a card of
                          their own further down. "Are they on Discord" is part
                          of who somebody is here, and a reader going down a
