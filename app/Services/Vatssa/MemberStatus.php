@@ -3,6 +3,7 @@
 namespace App\Services\Vatssa;
 
 use App\Helpers\Vatssa\DivisionalRelationship;
+use App\Helpers\Vatssa\MembershipRequestState;
 use App\Helpers\Vatssa\MembershipRequestType;
 use App\Helpers\Vatssa\StatusAxis;
 use App\Models\User;
@@ -60,7 +61,7 @@ class MemberStatus
         // Transfer outranks visit. Somebody with both open is on their way to
         // becoming a home member, and that is the more consequential of the
         // two -- it is the one that ends with their division changing.
-        if ($this->hasLiveRequest($user, MembershipRequestType::TRANSFER)) {
+        if ($this->hasPendingTransfer($user)) {
             return DivisionalRelationship::TRANSFERRING;
         }
 
@@ -84,15 +85,49 @@ class MemberStatus
     }
 
     /**
+     * A transfer that has not yet landed.
+     *
+     * ## Completing the request does NOT make somebody home
+     *
+     * Marking the request COMPLETE says the membership desk has done its part.
+     * It does not say VATSIM has moved the member's division, which happens
+     * elsewhere, later, and is the only thing that actually makes somebody a
+     * home member. So a completed transfer keeps reading as TRANSFERRING until
+     * the division field arrives, at which point `isMember()` catches it at the
+     * top of relationshipFor() and the answer becomes HOME on its own.
+     *
+     * Treating COMPLETE as the end would have dropped these members to
+     * INTERNATIONAL for the days between the desk finishing and VATSIM
+     * propagating -- reporting somebody halfway through a transfer as having no
+     * relationship with us at all, which is the one answer that is definitely
+     * wrong.
+     *
+     * Only an abandoned request stops meaning anything. That is why a member
+     * refused last year is international today rather than permanently marked.
+     */
+    private function hasPendingTransfer(User $user): bool
+    {
+        return MembershipRequest::where('user_id', $user->id)
+            ->where('type', MembershipRequestType::TRANSFER)
+            ->get()
+            ->contains(fn (MembershipRequest $request) => ! in_array(
+                $request->state,
+                [MembershipRequestState::CLOSED, MembershipRequestState::CLOSED_BY_MEMBER],
+                true
+            ));
+    }
+
+    /**
      * A request that still says something about where this member stands.
      *
      * "Live" is anything not finished -- on the desk, waiting on training,
-     * waiting on the member. A completed visit stops making somebody a visitor
+     * waiting on the member. A completed VISIT stops making somebody a visitor
      * in the in-progress sense; what it leaves behind is a visiting endorsement
-     * and a place on the roster, which the other axis reports.
+     * and a place on the roster, which the other axis reports. That is the
+     * asymmetry with a transfer: a visit ends with the member still
+     * international, so completing it is genuinely the end.
      *
-     * A closed or rejected request says nothing at all, which is why a member
-     * refused last year is international today rather than permanently marked.
+     * A closed or rejected request says nothing at all.
      */
     private function hasLiveRequest(User $user, MembershipRequestType $type): bool
     {

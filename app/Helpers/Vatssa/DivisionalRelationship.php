@@ -73,7 +73,12 @@ enum DivisionalRelationship: string
             self::HOME => 'Their VATSIM division is ours.',
             self::INTERNATIONAL => 'Their VATSIM division is elsewhere, with nothing in progress here.',
             self::VISITING => 'Controlling here on a visiting request, division still elsewhere.',
-            self::TRANSFERRING => 'Moving their division to ours. Home once the transfer completes.',
+            // Deliberately NOT "home once the transfer completes". Completing
+            // the request is the desk's half; the division field moving at
+            // VATSIM is what actually makes somebody home, and it arrives
+            // later. Saying otherwise would promise a change this system does
+            // not control.
+            self::TRANSFERRING => 'Transfer pending. Home once VATSIM reports the division change.',
         };
     }
 

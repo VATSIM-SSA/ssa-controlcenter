@@ -128,7 +128,7 @@ class MemberStatusTest extends TestCase
     }
 
     #[Test]
-    public function a_finished_request_stops_meaning_anything(): void
+    public function an_abandoned_request_stops_meaning_anything(): void
     {
         // Somebody refused last year is international today. A rejection is not
         // a permanent mark, and a profile that kept showing "transferring"
@@ -138,6 +138,42 @@ class MemberStatusTest extends TestCase
 
         $this->assertSame(
             DivisionalRelationship::INTERNATIONAL,
+            $this->memberStatus()->relationshipFor($user)
+        );
+    }
+
+    #[Test]
+    public function a_completed_transfer_stays_transferring_until_vatsim_moves_the_division(): void
+    {
+        // Completing the request is the DESK's half. VATSIM moving the division
+        // field is what actually makes somebody a home member, and it arrives
+        // later -- so the request completing must not promise it.
+        //
+        // The failure this prevents is worse than a wrong label: if COMPLETE
+        // ended the transfer, the member would drop to INTERNATIONAL for the
+        // days in between, reporting somebody halfway through a transfer as
+        // having no relationship with us at all.
+        $user = $this->outsider();
+        $this->request($user, MembershipRequestType::TRANSFER, MembershipRequestState::COMPLETE);
+
+        $this->assertSame(
+            DivisionalRelationship::TRANSFERRING,
+            $this->memberStatus()->relationshipFor($user)
+        );
+    }
+
+    #[Test]
+    public function the_division_field_is_what_finally_makes_them_home(): void
+    {
+        // The other half of the rule above. Once VATSIM reports the division,
+        // isMember() catches it at the top of relationshipFor() and the
+        // completed request stops mattering -- no second write, and no state
+        // to keep in step.
+        $user = $this->homeMember();
+        $this->request($user, MembershipRequestType::TRANSFER, MembershipRequestState::COMPLETE);
+
+        $this->assertSame(
+            DivisionalRelationship::HOME,
             $this->memberStatus()->relationshipFor($user)
         );
     }
