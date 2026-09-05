@@ -10,6 +10,21 @@
   </testsuites>
   <php>
     <server name="APP_ENV" value="testing"/>
+    <!--
+      A key of the suite's own, so the tests do not depend on a developer's
+      .env for one.
+
+      Without this, APP_KEY came from whatever .env the machine happened to
+      have, and on a machine where the test process cannot read that file 321
+      tests error on MissingAppKeyException: every test that makes an HTTP
+      request, because the session cookie is encrypted. The suite then looks
+      broken rather than unconfigured, which is the worst of both.
+
+      Throwaway and public on purpose. It encrypts nothing but a session cookie
+      in an in-memory sqlite database that is discarded at the end of the run,
+      and it must never be the key of any deployment.
+    -->
+    <server name="APP_KEY" value="base64:9qsCTJw6PUhCWeLn7/FCgrnrFwgHipO7LRB1l3cr76w="/>
     <server name="BCRYPT_ROUNDS" value="4"/>
     <server name="CACHE_DRIVER" value="array"/>
     <!--
