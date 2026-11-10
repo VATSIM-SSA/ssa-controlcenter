@@ -23,7 +23,7 @@
                     </div>
 
                     <div class="mb-3">
-                        <label class="form-label" for="end_at">End Time (Zulu)</label>
+                        <label class="form-label" for="end_at">End Time ({{ \App\Support\DisplayTime::label() }})</label>
                         <input id="end_at" class="form-control @error('expire_time') is-invalid @enderror" type="time" name="expire_time" placeholder="12:00" value="{{ old('expire_time') }}" required>
                         @error('expire_time')
                             <span class="text-danger">{{ $errors->first('expire_time') }}</span>

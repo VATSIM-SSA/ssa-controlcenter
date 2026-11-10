@@ -10,7 +10,7 @@
                 <h6 class="m-0 fw-bold text-white">
                     Create Bulk Bookings
                 </h6> 
-                <span class="m-0 fw-bold text-white zulu-clock">{{ \Carbon\Carbon::now()->format('H:i\z') }}</span>
+                <span class="m-0 fw-bold text-white zulu-clock">{{ \Carbon\Carbon::now()->format('H:i\z') }}@unless(\App\Support\DisplayTime::isZulu()) · {{ \Carbon\Carbon::now()->toUserTime() }}@endunless</span>
             </div>
             <div class="card-body">
                 <form action="{!! action('BookingController@storeBulk') !!}" method="POST">

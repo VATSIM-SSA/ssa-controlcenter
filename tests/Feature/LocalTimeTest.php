@@ -6,6 +6,7 @@ use App\Models\Area;
 use App\Models\Position;
 use App\Models\Sweatbook;
 use App\Models\User;
+use App\Models\Vote;
 use App\Services\BookingService;
 use App\Support\DisplayTime;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -166,6 +167,37 @@ class LocalTimeTest extends TestCase
         $this->assertSame('19:00 SAST', $moment->toUserTime());
         $this->assertSame('01/12/2026 19:00 SAST', $moment->toUserDateTime());
         $this->assertSame('17:00:00', $moment->format('H:i:s'));
+    }
+
+    #[Test]
+    public function the_header_clock_shows_zulu_and_local_time(): void
+    {
+        $mentor = $this->mentor('Africa/Johannesburg');
+        $this->travelTo(Carbon::parse('2026-12-01 14:48:00', 'UTC'));
+
+        $this->actingAs($mentor)->get('/sweatbook')->assertOk()->assertSee('14:48z · 16:48 SAST');
+
+        $mentor->forceFill(['setting_timezone' => null])->save();
+        $this->actingAs($mentor->fresh())->get('/sweatbook')->assertOk()->assertSee('14:48z<', false);
+    }
+
+    #[Test]
+    public function a_vote_end_time_is_typed_in_the_users_zone(): void
+    {
+        $admin = User::factory()->create(['setting_timezone' => 'Africa/Johannesburg']);
+        $admin->roleAssignments()->create(['role' => 'admin', 'area_id' => null]);
+        $day = Carbon::now()->addDays(3);
+
+        $this->actingAs($admin)->get(route('vote.create'))->assertSee('End Time (local, SAST)');
+
+        $this->actingAs($admin)->post(route('vote.store'), [
+            'expire_date' => $day->format('d/m/Y'),
+            'expire_time' => '20:00',
+            'question' => 'Pizza or braai?',
+            'vote_options' => "Pizza\nBraai",
+        ])->assertSessionHasNoErrors();
+
+        $this->assertSame($day->format('Y-m-d') . ' 18:00:00', Carbon::parse(Vote::sole()->end_at)->format('Y-m-d H:i:s'));
     }
 
     #[Test]

@@ -6,6 +6,7 @@ use App\Helpers\LogName;
 use App\Models\Vote;
 use App\Models\VoteOption;
 use App\Services\ActivityLogService;
+use App\Support\DisplayTime;
 use Carbon\Carbon;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Contracts\Foundation\Application;
@@ -69,10 +70,8 @@ class VoteController extends Controller
             'vote_options' => 'required|string',
         ]);
 
-        // Concat expire date and time
-        $expire = Carbon::createFromFormat('d/m/Y', $data['expire_date']);
-        $expire_time = explode(':', $data['expire_time']);
-        $expire->setTime($expire_time[0], $expire_time[1]);
+        // Concat expire date and time, typed in the user's time zone, stored in UTC
+        $expire = Carbon::createFromFormat('d/m/Y H:i', $data['expire_date'] . ' ' . $data['expire_time'], DisplayTime::zone())->utc();
 
         // Split vote options
         $options = preg_split('/\r\n|\r|\n/', $data['vote_options']);
