@@ -198,6 +198,7 @@ class StatisticsService
             $summary[] = [
                 'callsign' => $session['callsign'] !== '' ? $session['callsign'] : '—',
                 'start' => $logon->toIso8601String(),
+                'end' => $logoff->toIso8601String(),
                 'duration' => $duration,
             ];
         }

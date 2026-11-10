@@ -6,6 +6,24 @@
 {{-- Success message fed via JS for TR  --}}
 <div class="alert alert-success d-none" id="success-message"></div>
 
+@foreach($pendingAcknowledgements as $acknowledgement)
+<div class="card shadow mb-4 border-start border-4 border-info" id="acknowledgement-{{ $acknowledgement->id }}">
+    <div class="card-body d-flex flex-wrap justify-content-between align-items-start gap-3">
+        <div class="flex-grow-1">
+            <h6 class="fw-bold mb-1"><i class="fas fa-comment-dots text-info"></i>&nbsp; {{ $acknowledgement->subject->acknowledgementTitle() }}</h6>
+            @if($context = $acknowledgement->subject->acknowledgementContext())
+                <div class="small text-muted mb-2">{{ $context }}</div>
+            @endif
+            <p class="mb-0">{!! nl2br(e($acknowledgement->subject->acknowledgementBody())) !!}</p>
+        </div>
+        <form action="{{ route('acknowledgements.acknowledge', $acknowledgement) }}" method="POST">
+            @csrf
+            <button type="submit" class="btn btn-primary text-nowrap"><i class="fas fa-check"></i> Acknowledge</button>
+        </form>
+    </div>
+</div>
+@endforeach
+
 @if($dueInterestRequest)
 <div class="alert alert-warning" role="alert">
     <i class="fas fa-exclamation-triangle"></i>&nbsp;&nbsp;Please confirm your continued training interest by <a href="{{ route('training.confirm.interest', ['training' => $dueInterestRequest->training->id, 'key' => $dueInterestRequest->key] ) }}">clicking here</a>, within the deadline at {{ $dueInterestRequest->deadline->toEuropeanDate() }}. Your training will be otherwise be closed.

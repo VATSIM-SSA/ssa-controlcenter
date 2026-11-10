@@ -21,7 +21,6 @@ class FeedbackFactory extends Factory
             'reference_user_id' => User::factory(),
             'reference_position_id' => Position::factory(),
             'feedback' => $this->faker->paragraph(),
-            'forwarded' => false,
         ];
     }
 

@@ -372,6 +372,26 @@
                                 <span class="text-danger">{{ $errors->first('feedbackForwardEmail') }}</span>
                             @enderror
 
+                            <div class="mb-4">
+                                <label class="form-label" for="feedbackStaffDiscordWebhook">Discord webhook for staff (every submission)</label>
+                                <input type="url" class="form-control @error('feedbackStaffDiscordWebhook') is-invalid @enderror" id="feedbackStaffDiscordWebhook" name="feedbackStaffDiscordWebhook" autocomplete="off"
+                                    value="{{ Setting::get('feedbackStaffDiscordWebhook') ?: '' }}" placeholder="https://discord.com/api/webhooks/...">
+                                <small class="form-text">Posts every new feedback, with the submitter and full text, and keeps the message updated as staff review it. Use a staff-only channel. Leave blank to disable.</small>
+                                @error('feedbackStaffDiscordWebhook')
+                                    <span class="text-danger d-block">{{ $errors->first('feedbackStaffDiscordWebhook') }}</span>
+                                @enderror
+                            </div>
+
+                            <div class="mb-4">
+                                <label class="form-label" for="feedbackDiscordWebhook">Discord webhook for shared feedback (public)</label>
+                                <input type="url" class="form-control @error('feedbackDiscordWebhook') is-invalid @enderror" id="feedbackDiscordWebhook" name="feedbackDiscordWebhook" autocomplete="off"
+                                    value="{{ Setting::get('feedbackDiscordWebhook') ?: '' }}" placeholder="https://discord.com/api/webhooks/...">
+                                <small class="form-text">When set, staff can choose to post feedback they send to a controller in this Discord channel, without the submitter's name. Leave blank to disable.</small>
+                                @error('feedbackDiscordWebhook')
+                                    <span class="text-danger d-block">{{ $errors->first('feedbackDiscordWebhook') }}</span>
+                                @enderror
+                            </div>
+
                         </div>
                     </div>
                 </div>

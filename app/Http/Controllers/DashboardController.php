@@ -4,8 +4,10 @@ namespace App\Http\Controllers;
 
 use anlutro\LaravelSettings\Facade as Setting;
 use App;
+use App\Contracts\RequiresAcknowledgement;
 use App\Helpers\InterestStatus;
 use App\Helpers\VatsimRating;
+use App\Models\Acknowledgement;
 use App\Models\TrainingInterest;
 use App\Models\TrainingReport;
 use App\Models\User;
@@ -82,7 +84,11 @@ class DashboardController extends Controller
 
         $oudatedVersionWarning = $user->hasPermission('system.health.view') && Setting::get('_updateAvailable');
 
-        return view('dashboard', compact('data', 'trainings', 'types', 'dueInterestRequest', 'atcInactiveMessage', 'completedTrainingMessage', 'activeVote', 'atcHours', 'workmailRenewal', 'studentTrainings', 'cronJobError', 'oudatedVersionWarning'));
+        // Notices the member must confirm they have read, such as feedback sent to them.
+        $pendingAcknowledgements = Acknowledgement::where('user_id', $user->id)->pending()->with('subject')->oldest()->get()
+            ->filter(fn (Acknowledgement $acknowledgement): bool => $acknowledgement->subject instanceof RequiresAcknowledgement);
+
+        return view('dashboard', compact('data', 'trainings', 'types', 'dueInterestRequest', 'atcInactiveMessage', 'completedTrainingMessage', 'activeVote', 'atcHours', 'workmailRenewal', 'studentTrainings', 'cronJobError', 'oudatedVersionWarning', 'pendingAcknowledgements'));
     }
 
     /**

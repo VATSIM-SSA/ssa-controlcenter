@@ -2,11 +2,10 @@
 
 namespace App\Livewire;
 
+use App\Helpers\FeedbackStatus;
 use App\Models\Area;
 use App\Models\Feedback;
 use App\Models\ManagementReport;
-use App\Models\Position;
-use App\Models\User;
 use App\Services\Sql\Sql;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Builder;
@@ -44,12 +43,11 @@ class FeedbackTable extends Component
     public string $submitter = '';
 
     /**
-     * Toggled by the edit modal's open/close events so the controller and
-     * position pick-lists (the full active-controller and position sets) are
-     * only queried and rendered while the modal is actually open, never on a
-     * plain table render.
+     * Review status filter. Defaults to the open queue, so closed entries
+     * leave the default view; "all" shows every status.
      */
-    public bool $showReferenceOptions = false;
+    #[Url]
+    public string $status = 'open';
 
     public function mount(): void
     {
@@ -81,7 +79,7 @@ class FeedbackTable extends Component
      */
     public function clearFilters(): void
     {
-        $this->reset(['search', 'controller', 'area', 'position', 'submitter']);
+        $this->reset(['search', 'controller', 'area', 'position', 'submitter', 'status']);
         $this->resetPage();
     }
 
@@ -95,6 +93,7 @@ class FeedbackTable extends Component
             || $this->controller !== ''
             || $this->position !== ''
             || $this->submitter !== ''
+            || $this->status !== 'open'
             || $this->area !== null;
     }
 
@@ -108,7 +107,8 @@ class FeedbackTable extends Component
         $direction = in_array($this->sortDirection, ['asc', 'desc'], true) ? $this->sortDirection : 'desc';
 
         return Feedback::visibleTo(auth()->user())
-            ->with(['submitter', 'referenceUser', 'referencePosition.area', 'explicitArea'])
+            ->with(['submitter', 'referenceUser', 'referencePosition.area', 'explicitArea', 'latestAcknowledgement'])
+            ->when(FeedbackStatus::tryFrom($this->status), fn (Builder $q, FeedbackStatus $status) => $q->where('status', $status))
             ->when($this->search !== '', fn (Builder $q) => $q->where(fn (Builder $q) => $q->where('feedback', 'like', '%' . $this->search . '%')->orWhere('pilot_callsign', 'like', '%' . $this->search . '%')->orWhere('departure_airport', 'like', '%' . $this->search . '%')->orWhere('arrival_airport', 'like', '%' . $this->search . '%')))
             ->when($this->controller !== '', fn (Builder $q) => $q->whereHas('referenceUser', fn (Builder $q) => $q->whereRaw(Sql::concat('first_name', "' '", 'last_name') . ' like ?', ['%' . $this->controller . '%'])->orWhere('id', 'like', '%' . $this->controller . '%')))
             ->when($this->position !== '', fn (Builder $q) => $q->whereHas('referencePosition', fn (Builder $q) => $q->where('callsign', 'like', '%' . $this->position . '%')->orWhere('name', 'like', '%' . $this->position . '%')))
@@ -123,18 +123,9 @@ class FeedbackTable extends Component
 
         $feedbacks = $this->baseQuery()->paginate($perPage);
 
-        // Every area, because staff may hand a feedback to one they have no
-        // access to. The edit modal's select sits inside `wire:ignore`, so
-        // unlike the other pick-lists it cannot wait for the modal to open.
-        // The filter's scoped options are narrowed from these same rows.
-        $areas = Area::orderBy('name')->get();
-
         return view('livewire.feedback-table', [
             'feedbacks' => $feedbacks,
-            'areas' => $this->filterAreas($areas),
-            'editControllers' => $this->showReferenceOptions ? User::getActiveAtcMembers() : collect(),
-            'editPositions' => $this->showReferenceOptions ? Position::all() : collect(),
-            'editAreas' => $areas,
+            'areas' => $this->filterAreas(Area::orderBy('name')->get()),
         ]);
     }
 

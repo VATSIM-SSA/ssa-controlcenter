@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AcknowledgementController;
 use App\Http\Controllers\ActivityLogController;
 use App\Http\Controllers\Admin\PositionController;
 use App\Http\Controllers\Auth\LoginController;
@@ -203,8 +204,17 @@ Route::middleware(['auth', 'activity', 'suspended'])->group(function () {
     Route::controller(FeedbackController::class)->group(function () {
         Route::get('/feedback', 'create')->name('feedback');
         Route::post('/feedback/store', 'store')->name('feedback.store');
+        Route::get('/feedback/{feedback}', 'show')->whereNumber('feedback')->name('feedback.show');
         Route::patch('/feedback/{feedback}', 'update')->name('feedback.update');
+        Route::post('/feedback/{feedback}/sentiment', 'sentiment')->name('feedback.sentiment');
+        Route::post('/feedback/{feedback}/comment', 'comment')->name('feedback.comment');
+        Route::post('/feedback/{feedback}/close', 'close')->name('feedback.close');
+        Route::post('/feedback/{feedback}/reopen', 'reopen')->name('feedback.reopen');
+        Route::post('/feedback/{feedback}/send', 'send')->name('feedback.send');
+        Route::post('/feedback/{feedback}/withdraw', 'withdraw')->name('feedback.withdraw');
     });
+
+    Route::post('/acknowledgements/{acknowledgement}', [AcknowledgementController::class, 'acknowledge'])->name('acknowledgements.acknowledge');
 
     Route::controller(TaskController::class)->group(function () {
         Route::get('/tasks', 'index')->name('tasks');

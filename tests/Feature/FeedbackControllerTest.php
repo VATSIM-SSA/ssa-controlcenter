@@ -17,6 +17,28 @@ class FeedbackControllerTest extends TestCase
 {
     use RefreshDatabase;
 
+    /**
+     * The fields every submission must carry: the area (once there are
+     * several) and the controller the feedback is about.
+     *
+     * @return array{area: int, controller: int}
+     */
+    private function requiredFields(): array
+    {
+        return [
+            'area' => (Area::first() ?? Area::factory()->create())->id,
+            'controller' => User::factory()->create()->id,
+        ];
+    }
+
+    /**
+     * The form for one area, past the area picker.
+     */
+    private function formUrl(): string
+    {
+        return route('feedback', ['area' => (Area::first() ?? Area::factory()->create())->id]);
+    }
+
     #[Test]
     public function area_moderator_can_update_feedback_in_their_area(): void
     {
@@ -32,7 +54,7 @@ class FeedbackControllerTest extends TestCase
             'position' => '',
         ]);
 
-        $response->assertRedirect(route('reports.feedback'));
+        $response->assertRedirect(route('feedback.show', $feedback));
         $response->assertSessionHas('success');
     }
 
@@ -70,7 +92,7 @@ class FeedbackControllerTest extends TestCase
             'position' => '',
         ]);
 
-        $response->assertRedirect(route('reports.feedback'));
+        $response->assertRedirect(route('feedback.show', $feedback));
         $response->assertSessionHas('success');
     }
 
@@ -228,7 +250,7 @@ class FeedbackControllerTest extends TestCase
     {
         $user = User::factory()->create();
 
-        $response = $this->actingAs($user)->post(route('feedback.store'), [
+        $response = $this->actingAs($user)->post(route('feedback.store'), $this->requiredFields() + [
             'feedback' => str_repeat('a', 16001),
         ]);
 
@@ -241,7 +263,7 @@ class FeedbackControllerTest extends TestCase
         $user = User::factory()->create();
         Setting::set('feedbackEnabled', true);
 
-        $this->actingAs($user)->post(route('feedback.store'), [
+        $this->actingAs($user)->post(route('feedback.store'), $this->requiredFields() + [
             'feedback' => 'Great service',
             'pilot_callsign' => ' csa123 ',
             'event_date' => '2026-10-27',
@@ -263,7 +285,7 @@ class FeedbackControllerTest extends TestCase
         $user = User::factory()->create();
 
         foreach (['LK', 'PRG', 'LKPRX', 'LK-R'] as $airport) {
-            $this->actingAs($user)->post(route('feedback.store'), [
+            $this->actingAs($user)->post(route('feedback.store'), $this->requiredFields() + [
                 'feedback' => 'Great service',
                 'departure_airport' => $airport,
                 'arrival_airport' => $airport,
@@ -277,7 +299,7 @@ class FeedbackControllerTest extends TestCase
         $user = User::factory()->create();
         Setting::set('feedbackEnabled', true);
 
-        $this->actingAs($user)->post(route('feedback.store'), [
+        $this->actingAs($user)->post(route('feedback.store'), $this->requiredFields() + [
             'feedback' => 'Great service',
             'pilot_callsign' => '',
             'event_date' => '',
@@ -295,7 +317,7 @@ class FeedbackControllerTest extends TestCase
         $user = User::factory()->create();
 
         foreach (['CSA 123', '<b>CSA</b>', str_repeat('A', 21)] as $callsign) {
-            $this->actingAs($user)->post(route('feedback.store'), [
+            $this->actingAs($user)->post(route('feedback.store'), $this->requiredFields() + [
                 'feedback' => 'Great service',
                 'pilot_callsign' => $callsign,
             ])->assertSessionHasErrors('pilot_callsign');
@@ -308,7 +330,7 @@ class FeedbackControllerTest extends TestCase
         $user = User::factory()->create();
 
         foreach ([now()->addDay()->toDateString(), '27.10.2026'] as $eventDate) {
-            $this->actingAs($user)->post(route('feedback.store'), [
+            $this->actingAs($user)->post(route('feedback.store'), $this->requiredFields() + [
                 'feedback' => 'Great service',
                 'event_date' => $eventDate,
             ])->assertSessionHasErrors('event_date');
@@ -318,7 +340,7 @@ class FeedbackControllerTest extends TestCase
     #[Test]
     public function feedback_is_rejected_with_an_impossible_event_date(): void
     {
-        $this->actingAs(User::factory()->create())->post(route('feedback.store'), [
+        $this->actingAs(User::factory()->create())->post(route('feedback.store'), $this->requiredFields() + [
             'feedback' => 'Great service',
             'event_date' => '2026-02-30',
         ])->assertSessionHasErrors('event_date');
@@ -329,7 +351,7 @@ class FeedbackControllerTest extends TestCase
     {
         Setting::set('feedbackEnabled', true);
 
-        $this->actingAs(User::factory()->create())->post(route('feedback.store'), [
+        $this->actingAs(User::factory()->create())->post(route('feedback.store'), $this->requiredFields() + [
             'feedback' => 'Great service',
             'pilot_callsign' => str_repeat('A', 20),
         ])->assertSessionHasNoErrors();
@@ -341,7 +363,7 @@ class FeedbackControllerTest extends TestCase
         $user = User::factory()->create();
         Setting::set('feedbackEnabled', true);
 
-        $this->actingAs($user)->post(route('feedback.store'), [
+        $this->actingAs($user)->post(route('feedback.store'), $this->requiredFields() + [
             'feedback' => 'Great service',
             'event_date' => now()->toDateString(),
         ])->assertSessionHasNoErrors();
@@ -363,7 +385,7 @@ class FeedbackControllerTest extends TestCase
             ]),
         ]);
 
-        $this->actingAs($user)->get(route('feedback'))
+        $this->actingAs($user)->get($this->formUrl())
             ->assertOk()
             ->assertSee('id="recentFlight"', false)
             ->assertSee('data-date="2026-10-27"', false)
@@ -380,8 +402,8 @@ class FeedbackControllerTest extends TestCase
 
         Http::fake(['api.vatsim.net/*' => Http::response([], 503)]);
 
-        $this->actingAs($user)->get(route('feedback'))->assertSeeHtmlInOrder([
-            'name="controller"',
+        $this->actingAs($user)->get($this->formUrl())->assertSeeHtmlInOrder([
+            'id="feedback-controller-search"',
             'name="position"',
             'Pilot callsign',
             'Date of event, UTC',
@@ -397,7 +419,7 @@ class FeedbackControllerTest extends TestCase
         Setting::set('feedbackEnabled', false);
         Http::fake();
 
-        $this->actingAs(User::factory()->create())->get(route('feedback'))->assertRedirect(route('dashboard'));
+        $this->actingAs(User::factory()->create())->get($this->formUrl())->assertRedirect(route('dashboard'));
 
         Http::assertNothingSent();
     }
@@ -410,7 +432,7 @@ class FeedbackControllerTest extends TestCase
 
         Http::fake(['api.vatsim.net/*' => Http::response([], 503)]);
 
-        $this->actingAs($user)->from(route('feedback'))->followingRedirects()->post(route('feedback.store'), [
+        $this->actingAs($user)->from($this->formUrl())->followingRedirects()->post(route('feedback.store'), $this->requiredFields() + [
             'pilot_callsign' => 'CSA123',
             'departure_airport' => 'LKPR',
         ])->assertSee('value="CSA123"', false)->assertSee('value="LKPR"', false);
@@ -424,7 +446,7 @@ class FeedbackControllerTest extends TestCase
 
         Http::fake(['api.vatsim.net/*' => Http::response([], 503)]);
 
-        $this->actingAs($user)->get(route('feedback'))
+        $this->actingAs($user)->get($this->formUrl())
             ->assertOk()
             ->assertDontSee('id="recentFlight"', false)
             ->assertSee('name="pilot_callsign"', false)
@@ -432,7 +454,7 @@ class FeedbackControllerTest extends TestCase
     }
 
     #[Test]
-    public function updating_references_keeps_the_pilot_callsign_and_event_date(): void
+    public function updating_references_keeps_flight_details_the_request_does_not_carry(): void
     {
         $area = Area::factory()->create();
         $moderator = User::factory()->create();
@@ -449,9 +471,7 @@ class FeedbackControllerTest extends TestCase
         $this->actingAs($moderator)->patch(route('feedback.update', $feedback), [
             'controller' => '',
             'position' => '',
-            'pilot_callsign' => 'HACKED',
-            'departure_airport' => 'HACK',
-        ])->assertRedirect(route('reports.feedback'));
+        ])->assertRedirect(route('feedback.show', $feedback));
 
         $feedback->refresh();
 

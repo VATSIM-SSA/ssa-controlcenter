@@ -9,6 +9,7 @@ use App\Helpers\Vatsim;
 use App\Http\Requests\StatisticsSessionsRequest;
 use App\Models\Area;
 use App\Models\AtcActivity;
+use App\Models\Feedback;
 use App\Models\TrainingExamination;
 use App\Models\TrainingReport;
 use App\Models\User;
@@ -208,7 +209,30 @@ class UserController extends Controller
             )
         );
 
-        return view('user.show', compact('user', 'roles', 'areas', 'trainings', 'types', 'endorsements', 'areas', 'divisionExams', 'atcActivityHours', 'totalHours', 'recentAtcSessions'));
+        // Feedback on this profile.
+        // - Received and Submitted: with feedback permissions, everything this
+        //   member received and submitted within the viewer's feedback scope,
+        //   on any profile including your own (staff can read the same in the
+        //   report anyway).
+        // - About you: on your own profile, everything staff sent you, from any
+        //   area. Members without feedback permissions see only this: never
+        //   unsent feedback, never their own submissions.
+        $viewer = Auth::user();
+        $ownProfile = $viewer->is($user);
+        $canViewFeedback = $viewer->accessibleAreasForPermission('feedback.correlated.view')->hasAccess()
+            || $viewer->accessibleAreasForPermission('feedback.uncorrelated.view')->hasAccess();
+
+        $feedbackReceived = $canViewFeedback
+            ? Feedback::visibleTo($viewer)->where('reference_user_id', $user->id)->with(['submitter', 'referencePosition', 'latestAcknowledgement'])->latest()->get()
+            : collect();
+        $feedbackSubmitted = $canViewFeedback
+            ? Feedback::visibleTo($viewer)->where('submitter_user_id', $user->id)->with(['referenceUser', 'referencePosition', 'latestAcknowledgement'])->latest()->get()
+            : collect();
+        $feedbackAboutYou = $ownProfile
+            ? Feedback::sentTo($user)->with(['referencePosition', 'latestAcknowledgement'])->latest('sent_at')->get()
+            : collect();
+
+        return view('user.show', compact('user', 'roles', 'areas', 'trainings', 'types', 'endorsements', 'areas', 'divisionExams', 'atcActivityHours', 'totalHours', 'recentAtcSessions', 'feedbackReceived', 'feedbackSubmitted', 'feedbackAboutYou', 'ownProfile', 'canViewFeedback'));
     }
 
     /**

@@ -1,4 +1,4 @@
-<div x-data="{ current: { submitter: '', submitted: '', feedback: '', pilotCallsign: '', eventDate: '', departureAirport: '', arrivalAirport: '', controller: '', position: '', area: '', controllerLabel: '', positionLabel: '', areaLabel: '', updateUrl: '' } }">
+<div>
 
     <div class="card shadow mb-4">
         <div class="card-header bg-primary py-3">
@@ -37,6 +37,14 @@
                             placeholder="Submitter…"
                             wire:model.live.debounce.300ms="submitter">
                     </div>
+                    <div class="col-md-2">
+                        <select class="form-select form-select-sm" wire:model.live="status" aria-label="Status">
+                            @foreach(\App\Helpers\FeedbackStatus::cases() as $statusOption)
+                                <option value="{{ $statusOption->value }}">{{ $statusOption->label() }}</option>
+                            @endforeach
+                            <option value="all">All statuses</option>
+                        </select>
+                    </div>
                     <div class="col">
                         <input type="text" class="form-control form-control-sm"
                             placeholder="Search feedback, callsign or airport…"
@@ -67,10 +75,9 @@
                             <th>Controller</th>
                             <th>Position</th>
                             <th>Area</th>
+                            <th>Status</th>
                             <th>Feedback</th>
-                            @can('update', \App\Models\Feedback::class)
-                                <th>Actions</th>
-                            @endcan
+                            <th>Actions</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -87,37 +94,26 @@
                                 </td>
                                 <td>{{ $f->referencePosition?->callsign ?? 'N/A' }}</td>
                                 <td>{{ $f->area?->name ?? 'N/A' }}</td>
-                                <td>{!! nl2br(e($f->feedback)) !!}</td>
-                                @can('update', $f)
-                                    <td>
-                                        <button type="button"
-                                            class="btn btn-sm btn-primary"
-                                            data-bs-toggle="modal"
-                                            data-bs-target="#feedback-edit-modal"
-                                            @click="current = @js([
-                                                'submitter' => $f->submitter->name.' ('.$f->submitter_user_id.')',
-                                                'submitted' => $f->created_at->toEuropeanDateTime(),
-                                                'feedback' => $f->feedback,
-                                                'pilotCallsign' => $f->pilot_callsign ?? 'N/A',
-                                                'eventDate' => $f->event_date?->toEuropeanDate() ?? 'N/A',
-                                                'departureAirport' => $f->departure_airport ?? 'N/A',
-                                                'arrivalAirport' => $f->arrival_airport ?? 'N/A',
-                                                'controller' => $f->referenceUser?->id ?? '',
-                                                'position' => $f->referencePosition?->callsign ?? '',
-                                                'area' => $f->explicitArea?->id ?? '',
-                                                'controllerLabel' => $f->referenceUser ? $f->referenceUser->name.' ('.$f->referenceUser->id.')' : 'N/A',
-                                                'positionLabel' => $f->referencePosition?->callsign ?? 'N/A',
-                                                'areaLabel' => $f->area?->name ?? 'N/A',
-                                                'updateUrl' => route('feedback.update', $f->id),
-                                            ])">
-                                            Edit
-                                        </button>
-                                    </td>
-                                @endcan
+                                <td>
+                                    <span class="badge bg-{{ $f->status->color() }}">{{ $f->status->label() }}</span>
+                                    @if($f->sentiment)
+                                        <span class="badge bg-{{ $f->sentiment->color() }}">{{ $f->sentiment->label() }}</span>
+                                    @endif
+                                    @if($f->wasSent())
+                                        <small class="d-block text-muted text-nowrap">Sent · {{ $f->latestAcknowledgement?->acknowledged_at ? 'acknowledged' : 'not acknowledged' }}</small>
+                                    @endif
+                                </td>
+                                {{-- Cut short so long entries do not stretch the table; the full text is on the entry's page. --}}
+                                <td class="text-break">{{ \Illuminate\Support\Str::limit($f->feedback, 150) }}</td>
+                                <td>
+                                    <a href="{{ route('feedback.show', $f) }}" class="btn btn-sm {{ $f->isOpen() ? 'btn-primary' : 'btn-outline-primary' }}">
+                                        {{ $f->isOpen() && auth()->user()->can('review', $f) ? 'Review' : 'View' }}
+                                    </a>
+                                </td>
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="{{ auth()->user()->can('update', \App\Models\Feedback::class) ? 7 : 6 }}" class="text-center text-muted py-4">No feedback found.</td>
+                                <td colspan="8" class="text-center text-muted py-4">No feedback found.</td>
                             </tr>
                         @endforelse
                     </tbody>
@@ -138,157 +134,4 @@
             @endif
         </div>
     </div>
-
-    @can('update', \App\Models\Feedback::class)
-        {{-- Bootstrap owns this element's open/close state; wire:ignore keeps
-             Livewire re-renders (the one that loads the datalists on open) from
-             morphing away the `show` class mid-animation. The open/close events
-             fire on this element, so the flag is toggled from here directly. --}}
-        <div wire:ignore class="modal fade" id="feedback-edit-modal" tabindex="-1"
-            aria-labelledby="feedback-edit-modal-label" aria-hidden="true"
-            x-init="
-                $el.addEventListener('show.bs.modal', () => $wire.set('showReferenceOptions', true));
-                $el.addEventListener('hidden.bs.modal', () => $wire.set('showReferenceOptions', false));
-            ">
-            <div class="modal-dialog modal-lg">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h5 class="modal-title" id="feedback-edit-modal-label">Edit Feedback</h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                    </div>
-                    <div class="modal-body">
-                        <form :action="current.updateUrl" method="POST">
-                            @method('PATCH')
-                            @csrf
-
-                            <div class="row mb-4">
-                                <div class="col-md-6">
-                                    <label class="form-label">Submitter</label>
-                                    <input class="form-control" type="text" x-model="current.submitter" disabled>
-                                </div>
-                                <div class="col-md-6">
-                                    <label class="form-label">Submitted</label>
-                                    <input class="form-control" type="text" x-model="current.submitted" disabled>
-                                </div>
-                            </div>
-
-                            <div class="row mb-4">
-                                <div class="col-md-12 col-lg-4">
-                                    <label class="form-label" for="feedback-edit-area">Area
-                                        <small class="form-text"> (Optional)</small></label>
-                                    <select
-                                        id="feedback-edit-area"
-                                        class="form-select @error('area') is-invalid @enderror"
-                                        name="area"
-                                        x-model="current.area"
-                                        @change="current.position = ''"
-                                        :disabled="current.position !== ''"
-                                    >
-                                        <option value="">None</option>
-                                        @foreach($editAreas as $editArea)
-                                            <option value="{{ $editArea->id }}">{{ $editArea->name }}</option>
-                                        @endforeach
-                                    </select>
-                                    @error('area')
-                                        <span class="text-danger">{{ $errors->first('area') }}</span>
-                                    @enderror
-                                    <small class="form-text text-muted">Current: <span x-text="current.areaLabel"></span></small>
-                                </div>
-                                <div class="col-md-12 col-lg-4">
-                                    <label class="form-label" for="feedback-edit-controller">Controller
-                                        <small class="form-text"> (Optional)</small></label>
-                                    <input
-                                        id="feedback-edit-controller"
-                                        class="form-control @error('controller') is-invalid @enderror"
-                                        type="text"
-                                        name="controller"
-                                        list="feedback-controllers-list"
-                                        x-model="current.controller"
-                                    >
-                                    @error('controller')
-                                        <span class="text-danger">{{ $errors->first('controller') }}</span>
-                                    @enderror
-                                    <small class="form-text text-muted">Current: <span x-text="current.controllerLabel"></span></small>
-                                </div>
-                                <div class="col-md-12 col-lg-4">
-                                    <label class="form-label" for="feedback-edit-position">Controller's position
-                                        <small class="form-text"> (Optional)</small></label>
-                                    <input
-                                        id="feedback-edit-position"
-                                        class="form-control @error('position') is-invalid @enderror"
-                                        type="text"
-                                        name="position"
-                                        list="feedback-positions-list"
-                                        x-model="current.position"
-                                        @input="current.area = ''"
-                                        :disabled="current.area !== ''"
-                                    >
-                                    @error('position')
-                                        <span class="text-danger">{{ $errors->first('position') }}</span>
-                                    @enderror
-                                    <small class="form-text text-muted">Current: <span x-text="current.positionLabel"></span></small>
-                                </div>
-                            </div>
-
-                            <div class="row mb-4">
-                                <div class="col-md-6">
-                                    <label class="form-label">Pilot callsign</label>
-                                    <input class="form-control" type="text" x-model="current.pilotCallsign" disabled>
-                                </div>
-                                <div class="col-md-6">
-                                    <label class="form-label">Date of event, UTC</label>
-                                    <input class="form-control" type="text" x-model="current.eventDate" disabled>
-                                </div>
-                            </div>
-
-                            <div class="row mb-4">
-                                <div class="col-md-6">
-                                    <label class="form-label">Departure airport, ICAO</label>
-                                    <input class="form-control" type="text" x-model="current.departureAirport" disabled>
-                                </div>
-                                <div class="col-md-6">
-                                    <label class="form-label">Arrival airport, ICAO</label>
-                                    <input class="form-control" type="text" x-model="current.arrivalAirport" disabled>
-                                </div>
-                            </div>
-
-                            <div class="row mb-4">
-                                <div class="col-md-12">
-                                    <label class="form-label">Feedback Text</label>
-                                    <textarea class="form-control" rows="5" disabled :value="current.feedback"></textarea>
-                                </div>
-                            </div>
-
-                            <div class="d-flex justify-content-end">
-                                <button type="button" class="btn btn-secondary me-2" data-bs-dismiss="modal">Cancel</button>
-                                <button type="submit" class="btn btn-success">Update Feedback</button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        {{-- Options are populated lazily once the modal opens; see the
-             show.bs.modal / hidden.bs.modal handlers on the modal element. --}}
-        <datalist id="feedback-controllers-list">
-            @foreach($editControllers as $controller)
-                @browser('isFirefox')
-                    <option>{{ $controller->id }}</option>
-                @else
-                    <option value="{{ $controller->id }}">{{ $controller->name }}</option>
-                @endbrowser
-            @endforeach
-        </datalist>
-
-        <datalist id="feedback-positions-list">
-            @foreach($editPositions as $position)
-                @browser('isFirefox')
-                    <option>{{ $position->callsign }}</option>
-                @else
-                    <option value="{{ $position->callsign }}">{{ $position->name }}</option>
-                @endbrowser
-            @endforeach
-        </datalist>
-    @endcan
 </div>

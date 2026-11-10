@@ -58,4 +58,17 @@ return [
     'recent_sessions_days' => env('STATSIM_RECENT_SESSIONS_DAYS', 30),
     'recent_sessions_limit' => env('STATSIM_RECENT_SESSIONS_LIMIT', 10),
 
+    /*
+    |--------------------------------------------------------------------------
+    | VATSIM live data feed
+    |--------------------------------------------------------------------------
+    |
+    | Who is controlling right now. The feedback form lists these controllers
+    | first. Cached briefly, as the feed itself refreshes every 15 seconds.
+    |
+    */
+
+    'data_feed_url' => env('VATSIM_DATA_FEED_URL', 'https://data.vatsim.net/v3/vatsim-data.json'),
+    'data_feed_cache_seconds' => env('VATSIM_DATA_FEED_CACHE_SECONDS', 60),
+
 ];

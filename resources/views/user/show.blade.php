@@ -481,6 +481,8 @@
                 </div>
             </div>
         </div>
+
+        @include('user.partials.feedback')
     </div>
 
 </div>

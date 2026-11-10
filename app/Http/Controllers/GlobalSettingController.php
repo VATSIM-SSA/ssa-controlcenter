@@ -70,6 +70,8 @@ class GlobalSettingController extends Controller
             'divisionApiEnabled' => '',
             'feedbackEnabled' => '',
             'feedbackForwardEmail' => 'nullable|email',
+            'feedbackDiscordWebhook' => ['nullable', 'url', 'regex:#^https://(discord\.com|discordapp\.com)/api/webhooks/#'],
+            'feedbackStaffDiscordWebhook' => ['nullable', 'url', 'regex:#^https://(discord\.com|discordapp\.com)/api/webhooks/#'],
             'telemetryEnabled' => '',
         ]);
 
@@ -114,6 +116,8 @@ class GlobalSettingController extends Controller
         Setting::set('divisionApiEnabled', $divisionApiEnabled);
         Setting::set('feedbackEnabled', $feedbackEnabled);
         Setting::set('feedbackForwardEmail', $feedbackForwardEmail);
+        Setting::set('feedbackDiscordWebhook', $data['feedbackDiscordWebhook'] ?? '');
+        Setting::set('feedbackStaffDiscordWebhook', $data['feedbackStaffDiscordWebhook'] ?? '');
         Setting::set('telemetryEnabled', $telemetryEnabled);
         Setting::save();
 

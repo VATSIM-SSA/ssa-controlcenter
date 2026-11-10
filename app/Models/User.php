@@ -14,6 +14,8 @@ use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Collection as SupportCollection;
+use Illuminate\Support\Facades\Cache;
 
 class User extends Authenticatable
 {
@@ -280,6 +282,48 @@ class User extends Authenticatable
         }
 
         return $query->get();
+    }
+
+    /**
+     * Fetch the controllers feedback may be given about: everyone on an area's
+     * ATC roster, built the same way as the roster page (active controllers
+     * plus holders of an unrevoked visiting endorsement). Visitors often have
+     * no activity row, so the active-member query alone hides them.
+     * Without an area, everyone on any area's roster.
+     *
+     * @return Collection<int, User>
+     */
+    public static function getFeedbackControllers(?Area $area = null): Collection
+    {
+        $areas = $area ? collect([$area]) : Area::all();
+
+        $visitors = User::whereHas('endorsements', fn ($query) => $query
+            ->where('type', 'VISITING')
+            ->where('revoked', false)
+            ->whereHas('areas', fn ($query) => $query->whereIn('areas.id', $areas->pluck('id'))))
+            ->get();
+
+        $controllers = $areas
+            ->flatMap(fn (Area $rosterArea) => User::allActiveInArea($rosterArea))
+            ->concat($visitors)
+            ->unique('id')
+            ->sortBy(fn (User $user): string => mb_strtolower($user->name))
+            ->values()
+            ->all();
+
+        return (new User)->newCollection($controllers);
+    }
+
+    /**
+     * The ids of everyone on any area's roster (see getFeedbackControllers()),
+     * cached for a few minutes. Building every roster takes several queries,
+     * too many to repeat on each keystroke of a search.
+     *
+     * @return SupportCollection<int, int>
+     */
+    public static function getFeedbackControllerIds(): SupportCollection
+    {
+        return Cache::remember('feedback.controller-ids', now()->addMinutes(5), fn () => self::getFeedbackControllers()->pluck('id'));
     }
 
     /**

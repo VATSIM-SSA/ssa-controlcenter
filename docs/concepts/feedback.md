@@ -16,53 +16,69 @@ Feedback is controlled under **Administration → Settings → Feedback**:
 | --- | --- |
 | **Enable feedback functionality** | When off, members cannot open the submit form and are redirected away. |
 | **Forward feedback to e-mail** | Optional. Sends a copy of each new submission to the configured address. |
+| **Discord webhook for staff** | Optional. Posts a message for every new submission to a staff channel and keeps it updated as staff review it. The feedback text itself is not sent; the message links to it. |
+| **Discord webhook for shared feedback** | Optional. When set, staff can post feedback they send to a controller in a (public) channel, without the submitter's name. |
 
-Both settings are stored in the application settings store (`feedbackEnabled`, `feedbackForwardEmail`).
+The settings are stored in the application settings store (`feedbackEnabled`, `feedbackForwardEmail`, `feedbackStaffDiscordWebhook`, `feedbackDiscordWebhook`). Treat each webhook URL as a secret: anyone who has it can post to the channel. Use a staff-only channel for the staff webhook.
 
 ## Submitting feedback
 
-Any signed-in member can submit feedback when the feature is enabled. The form is available from the main navigation and collects:
+Any signed-in member can submit feedback when the feature is enabled. With more than one area, the member first picks the area the feedback is about. The form then collects:
 
-- **Controller** (optional) — VATSIM CID of the controller the feedback refers to
-- **Position** (optional) — callsign of the position controlled
-- **Pilot callsign** (optional) — the pilot's callsign, so staff can find the flight
-- **Date of event** (optional) — UTC date of the flight or session
-- **Departure airport** and **Arrival airport** (optional) — ICAO codes of the flight's airports
-- **Feedback text** (required)
+- **Controller** (required). A search over everyone on any area's roster: active controllers and holders of a visiting endorsement. Controllers online right now in the chosen area are listed first.
+- **Their session** (optional). The controller's sessions from the last 14 days, from the statistics API. Picking one fills in the position.
+- **Their position** (optional). Callsign of the position controlled.
+- **Pilot callsign**, **Date of event**, **Departure airport** and **Arrival airport** (optional). Members with recent flights on the network can pick one from a list, which fills these in. The list comes from the public VATSIM API; when it is unavailable, the fields are filled in by hand.
+- **Feedback text** (required).
 
-Members with recent flights on the network can also pick one from a list, which fills in the callsign, date and airports. The list comes from the public VATSIM API. When it is unavailable, these fields are filled in by hand.
-
-Submissions are stored with the submitter, optional controller/position references, and a timestamp. The feedback body itself is not editable after submission; staff may only change how the entry is **correlated** (controller and position fields).
+Members cannot give feedback about themselves. After submitting, the member does not see the entry again: it goes to staff.
 
 ## Viewing feedback
 
-Staff with the right permissions can open **Reports → Feedback** (`/reports/feedback`). The table lists received entries with submitter, controller, position, area (derived from the position), and the feedback text. The flight details the submitter gave are shown read-only in the entry's edit dialog.
+Staff with the right permissions can open **Reports → Feedback** (`/reports/feedback`). The table shows open entries by default; a status filter shows closed ones or all. Each row links to the entry's own page (**Review** while open, **View** once closed). Long feedback is cut short in the table; the entry's page shows it in full.
 
 Entries fall into two categories:
 
 | Type | Meaning |
 | --- | --- |
-| **Correlated** | Linked to a position (`reference_position_id` is set). Area is taken from that position. |
-| **Uncorrelated** | No position linked. Shown with area **N/A**. |
+| **Correlated** | Linked to a position or an area. The area is the explicit one, or else the position's. |
+| **Uncorrelated** | Neither linked. Shown with area **N/A**. |
 
 Which rows a user sees depends on **view** permissions and area scope (see below).
 
-## Editing feedback
+A member's profile lists their feedback. Staff see, within their feedback scope, every entry the member **received** and every entry they **submitted**, with its status (text cut short, full text on the entry's page). On your own profile, **Feedback about you** lists everything staff sent you, from any area, in full and without the submitter's name. Staff also see **received** and **submitted** on their own profile, limited to their feedback scope like on any other profile. Members without feedback permissions see only what was sent to them and never see their own submissions again.
 
-Moderators and other roles with `feedback.update` can correct the **controller** and **position** on an existing entry — for example when a member picked the wrong CID or callsign. The submitter, timestamp, and feedback text remain read-only.
+### The staff Discord channel
 
-### How editing works in the UI
+With the staff webhook set, every new submission posts one message to the staff channel: the review state as headings at the top (for example **🟡 Open** and **🏷️ Not tagged · 📭 Nothing sent**), then a card with the controller, position, area, submitter, flight, the latest action, and a link to the entry. The feedback text itself is never sent to Discord; staff read it in Control Center. The message is edited, not reposted, whenever the review changes: closing, reopening, tagging, editing, sending, withdrawing, acknowledging or commenting. Several changes in one request make one edit. If the message was deleted in Discord, the next change posts a new one.
 
-On the feedback report, each row the user is allowed to update shows an **Edit** button. This opens a modal where staff can change:
+## Reviewing feedback
 
-- Controller (optional VATSIM CID)
-- Position (optional callsign)
+Each entry has a page at `/feedback/{id}` with the submitter's original text, its details, and two separate controls: the **review** and **what the controller sees**.
 
-Saving runs server-side validation (controller must exist, position callsign must exist) and writes an activity-log entry describing what changed.
+### Review
 
-### What is logged
+- **Close review** marks the entry as dealt with. **Reopen review** puts it back in the queue, for example to discuss it again. Neither sends nor withdraws anything.
+- **Tone** tags the entry **Positive** or **Negative** at any time.
+- **Internal comments** can be added by any staff member who may review it, whether it is open or closed. They are never shown to the controller or the submitter.
+- **Edit details** corrects the controller, position, area, session and flight details. The submitter and their text cannot be edited. The controller cannot be changed while they hold a sent version.
 
-When controller or position values change, Control Center records an activity-log entry with category `feedback`, for example:
+### What the controller sees
+
+Nothing reaches the controller unless staff send it. **Send to [controller]** works whether the review is open or closed, and offers:
+
+- **The feedback as written**, without the submitter's name, or
+- **A rewritten version**, for example a respectful wording of a rude comment. It stays linked to the original.
+
+Sending e-mails the controller and puts a notice on their dashboard until they **acknowledge** it. Staff see whether and when they did. When a Discord webhook is set, staff can also post the sent version to Discord; the submitter is never named.
+
+A controller holds at most one version at a time. **Withdraw** takes it off their profile and dashboard and deletes the Discord post. The e-mail they already received cannot be recalled. To send a different version, withdraw and send again.
+
+### Timeline and activity log
+
+The entry's timeline records every comment, tag, edit, closing, reopening, sending, withdrawal and acknowledgement, with who did it and when. Timeline entries are never edited or deleted.
+
+Changes to the controller, position or area are also written to the activity log with category `feedback`, for example:
 
 > Updated feedback 42 ― Controller: Jane Doe (123456) → N/A, Position: ESGG_APP → N/A
 
@@ -93,7 +109,7 @@ Moderators receive all three permissions through the `feedback.**` pattern in th
 
 ### How update checks resolve
 
-Authorisation is enforced in `FeedbackPolicy`, the `UpdateFeedbackRequest` form request, and the feedback report view (`@can('update', …)`).
+Authorisation is enforced in `FeedbackPolicy`, the `UpdateFeedbackRequest` and `SendFeedbackRequest` form requests, and the feedback page. The same rule governs editing and reviewing (tone, comments, closing, sending, withdrawing).
 
 1. **Correlated feedback** (position is set)  
    The user must hold `feedback.update` for the **area of the linked position**. An area moderator in Area A can edit feedback tied to positions in Area A, but not Area B.
@@ -127,4 +143,4 @@ After `migrate:fresh --seed` in a [development environment](../contribute.md), t
 | Web Eight | `10000008` | Moderator (area 1) | Area 1 + uncorrelated |
 | Web Six / Seven | `10000006` / `10000007` | Mentor | No |
 
-Log in as one of the staff users above and open **Reports → Feedback** to exercise the edit flow.
+Log in as one of the staff users above and open **Reports → Feedback** to exercise the review flow.

@@ -102,19 +102,6 @@ class FeedbackOverviewTest extends TestCase
     }
 
     #[Test]
-    public function report_renders_a_single_shared_edit_modal(): void
-    {
-        $position = Position::factory()->create();
-        Feedback::factory()->count(3)->create(['reference_position_id' => $position->id]);
-
-        $html = Livewire::actingAs($this->admin())
-            ->test(FeedbackTable::class)
-            ->html();
-
-        $this->assertSame(1, substr_count($html, 'id="feedback-edit-modal"'));
-    }
-
-    #[Test]
     public function feedback_free_text_search_narrows_results(): void
     {
         $position = Position::factory()->create();
@@ -235,56 +222,6 @@ class FeedbackOverviewTest extends TestCase
             ->assertDontSee('feedback-filter-controllers')
             ->assertDontSee('feedback-filter-positions')
             ->assertSee('role="combobox"', false);
-    }
-
-    #[Test]
-    public function edit_modal_reference_options_are_deferred_until_the_modal_opens(): void
-    {
-        // A distinctive position that no feedback references, so it can only
-        // appear in the edit modal's datalist, never in a table row.
-        Position::factory()->create(['callsign' => 'ZZZZ_TWR', 'name' => 'Datalist Only']);
-
-        Livewire::actingAs($this->admin())
-            ->test(FeedbackTable::class)
-            // Nothing loaded on a plain render: the datalist is empty.
-            ->assertSet('showReferenceOptions', false)
-            ->assertDontSee('ZZZZ_TWR')
-            // Opening the modal (front-end toggles this flag) loads the options.
-            ->set('showReferenceOptions', true)
-            ->assertSee('ZZZZ_TWR');
-    }
-
-    #[Test]
-    public function edit_modal_area_options_are_present_on_a_plain_render(): void
-    {
-        // Assert on view data, not HTML: the filter select lists areas too, so
-        // assertSee() cannot tell the two selects apart.
-        $area = Area::factory()->create();
-
-        Livewire::actingAs($this->admin())
-            ->test(FeedbackTable::class)
-            ->assertSet('showReferenceOptions', false)
-            ->assertViewHas('editAreas', fn ($areas) => $areas->contains($area));
-    }
-
-    #[Test]
-    public function edit_modal_area_options_span_every_area_not_just_the_users_own(): void
-    {
-        // The edit list is deliberately wider than the scoped filter list.
-        $own = Area::factory()->create(['name' => 'Zulu']);
-        $other = Area::factory()->create(['name' => 'Alpha']);
-        $alsoOwn = Area::factory()->create(['name' => 'Mike']);
-        $moderator = $this->moderatorFor($own);
-        $moderator->roleAssignments()->create(['role' => 'moderator', 'area_id' => $alsoOwn->id]);
-
-        Livewire::actingAs($moderator)
-            ->test(FeedbackTable::class)
-            // Seeded areas share the list, so check membership, not an exact set.
-            ->assertViewHas('editAreas', fn ($areas) => $areas->contains($own)
-                && $areas->contains($other)
-                && $areas->contains($alsoOwn)
-                && $areas->pluck('name')->all() === $areas->pluck('name')->sort()->values()->all())
-            ->assertViewHas('areas', fn ($areas) => $areas->pluck('name')->all() === ['Mike', 'Zulu']);
     }
 
     #[Test]
@@ -409,47 +346,6 @@ class FeedbackOverviewTest extends TestCase
     }
 
     #[Test]
-    public function flight_details_are_in_the_edit_modal_and_not_a_table_column(): void
-    {
-        $area = Area::factory()->create();
-        $moderator = User::factory()->create();
-        $moderator->roleAssignments()->create(['role' => 'moderator', 'area_id' => $area->id]);
-
-        Feedback::factory()->create([
-            'reference_position_id' => Position::factory()->create(['area_id' => $area->id])->id,
-            'pilot_callsign' => 'CSA123',
-            'event_date' => '2026-10-27',
-            'departure_airport' => 'LKPR',
-            'arrival_airport' => 'EGLL',
-        ]);
-
-        Livewire::actingAs($moderator)
-            ->test(FeedbackTable::class)
-            ->assertSeeHtmlInOrder(['id="feedback-edit-area"', 'id="feedback-edit-controller"', 'id="feedback-edit-position"', 'Pilot callsign', 'Date of event, UTC', 'Departure airport, ICAO', 'Arrival airport, ICAO', 'Feedback Text'])
-            ->assertSee('CSA123')
-            ->assertSee('27\\\\\\/10\\\\\\/2026', false)
-            ->assertSee('LKPR')
-            ->assertSee('EGLL')
-            ->assertDontSeeHtml('<th>Flight</th>');
-    }
-
-    #[Test]
-    public function edit_modal_shows_na_for_entries_without_flight_details(): void
-    {
-        $area = Area::factory()->create();
-        $moderator = User::factory()->create();
-        $moderator->roleAssignments()->create(['role' => 'moderator', 'area_id' => $area->id]);
-
-        Feedback::factory()->create(['reference_position_id' => Position::factory()->create(['area_id' => $area->id])->id]);
-
-        $component = Livewire::actingAs($moderator)->test(FeedbackTable::class);
-
-        foreach (['pilotCallsign', 'eventDate', 'departureAirport', 'arrivalAirport'] as $key) {
-            $component->assertSeeHtml('\\u0022' . $key . '\\u0022:\\u0022N\\\\\\/A\\u0022');
-        }
-    }
-
-    #[Test]
     public function free_text_search_also_matches_airports(): void
     {
         $area = Area::factory()->create();
@@ -558,5 +454,40 @@ class FeedbackOverviewTest extends TestCase
             ->assertViewHas('feedbacks', fn ($f) => $f->first()->is($newer))
             ->call('sortByReceived')
             ->assertViewHas('feedbacks', fn ($f) => $f->first()->is($older));
+    }
+
+    #[Test]
+    public function the_report_has_no_edit_dialog_and_links_each_row_to_its_page(): void
+    {
+        $position = Position::factory()->create();
+        $feedback = Feedback::factory()->create(['reference_position_id' => $position->id]);
+
+        Livewire::actingAs($this->admin())
+            ->test(FeedbackTable::class)
+            ->assertDontSee('feedback-edit-modal', false)
+            ->assertSee(route('feedback.show', $feedback), false)
+            ->assertSee('Review');
+    }
+
+    #[Test]
+    public function flight_details_are_on_the_feedback_page_and_not_a_table_column(): void
+    {
+        $position = Position::factory()->create();
+        $feedback = Feedback::factory()->create([
+            'reference_position_id' => $position->id,
+            'pilot_callsign' => 'CSA123',
+            'event_date' => '2026-10-27',
+            'departure_airport' => 'LKPR',
+            'arrival_airport' => 'EGLL',
+        ]);
+        $admin = $this->admin();
+
+        Livewire::actingAs($admin)
+            ->test(FeedbackTable::class)
+            ->assertDontSee('LKPR');
+
+        $this->actingAs($admin)->get(route('feedback.show', $feedback))
+            ->assertOk()
+            ->assertSee('CSA123 · LKPR → EGLL · 27/10/2026');
     }
 }
