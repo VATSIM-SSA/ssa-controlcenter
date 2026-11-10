@@ -132,6 +132,7 @@ nav:
       - Upgrading: upgrade.md
   - Integrations:
       # Insert discord.md and others here
+      - Event Hub: integrations/event-hub.md
       - Handover: integrations/handover.md
       - VATEUD Core: integrations/vateud.md
       - VATSIM: integrations/vatsim.md

@@ -310,8 +310,9 @@ class UserController extends Controller
     {
         $user = Auth::user();
         $calendarLinks = $calendarFeed->subscriptionLinks($user);
+        $calendarCanIncludeEvents = $calendarFeed->canIncludeEvents();
 
-        return view('usersettings', compact('user', 'calendarLinks'));
+        return view('usersettings', compact('user', 'calendarLinks', 'calendarCanIncludeEvents'));
     }
 
     /**

@@ -96,6 +96,17 @@ Settings related to the [VATSIM integration](../integrations/vatsim.md).
 | `STATSIM_RECENT_SESSIONS_LIMIT` | 10                                    | Maximum number of recent ATC sessions shown in the \"Recent Connections\" table                    |
 <!-- --8<-- [end:env-vars-vatsim] -->
 
+## Event Hub
+
+<!-- --8<-- [start:env-vars-event-hub] -->
+Settings related to the [VATSIM Event Hub integration](../integrations/event-hub.md).
+
+| Variable                      | Default value | Explanation                                                                                       |
+| ----------------------------- | ------------- | ------------------------------------------------------------------------------------------------- |
+| `EVENT_HUB_URL`               | null          | Address of your Event Hub, without `/api`. When set, members can add its events to their calendar |
+| `EVENT_HUB_CACHE_TTL_MINUTES` | 15            | How long the list of events is cached before Control Center asks the Event Hub again              |
+<!-- --8<-- [end:env-vars-event-hub] -->
+
 ## Mail
 
 <!-- --8<-- [start:env-vars-mail] -->

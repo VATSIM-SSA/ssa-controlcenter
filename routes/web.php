@@ -84,6 +84,7 @@ Route::middleware(['auth', 'activity', 'suspended'])->group(function () {
         Route::post('/settings', 'settings_update')->name('user.settings.store');
         Route::post('/settings/theme', 'settings_update_theme')->name('user.settings.theme');
         Route::get('/settings/extendworkmail', 'extendWorkmail')->name('user.settings.extendworkmail');
+        Route::post('/settings/calendar', [CalendarFeedController::class, 'update'])->name('user.settings.calendar');
         Route::post('/settings/calendar/reset', [CalendarFeedController::class, 'reset'])->name('user.settings.calendar.reset');
 
         // Internal user search

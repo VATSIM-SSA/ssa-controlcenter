@@ -29,6 +29,7 @@ class User extends Authenticatable
         'last_activity' => 'datetime',
         'last_inactivity_warning' => 'datetime',
         'rating' => VatsimRating::class,
+        'setting_calendar_include_events' => 'boolean',
     ];
 
     /**

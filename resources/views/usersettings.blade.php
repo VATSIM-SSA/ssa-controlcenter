@@ -112,6 +112,18 @@
             <div class="card-body">
                 <p>Add your ATC and sweatbox bookings to Google Calendar, Outlook or Apple Calendar. Your calendar app checks this link for changes on its own, usually within a few hours.</p>
 
+                @if($calendarCanIncludeEvents)
+                    <form action="{{ route('user.settings.calendar') }}" method="POST" class="mb-3">
+                        @csrf
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" role="switch" id="setting_calendar_include_events" name="setting_calendar_include_events" value="1" {{ $user->setting_calendar_include_events ? 'checked' : '' }} onchange="this.form.submit()">
+                            <label class="form-check-label" for="setting_calendar_include_events">Also show all {{ config('app.owner_name_short') }} events</label>
+                        </div>
+                        <small class="form-text text-muted">Adds every published event, next to your own bookings. Event bookings you hold are named after their event. The link stays the same, so there is no need to subscribe again.</small>
+                        <noscript><button class="btn btn-sm btn-success mt-2" type="submit">Save</button></noscript>
+                    </form>
+                @endif
+
                 <label class="form-label" for="calendar-feed-url">Calendar link</label>
                 <div class="input-group mb-3">
                     <input type="text" class="form-control font-monospace" id="calendar-feed-url" value="{{ $calendarLinks['feed'] }}" readonly onclick="this.select()">

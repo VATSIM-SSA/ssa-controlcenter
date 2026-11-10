@@ -13,6 +13,7 @@ return new class extends Migration
     {
         Schema::table('users', function (Blueprint $table) {
             $table->string('calendar_feed_token', 64)->nullable()->unique();
+            $table->boolean('setting_calendar_include_events')->default(false);
         });
     }
 
@@ -23,7 +24,7 @@ return new class extends Migration
     {
         Schema::table('users', function (Blueprint $table) {
             $table->dropUnique(['calendar_feed_token']);
-            $table->dropColumn('calendar_feed_token');
+            $table->dropColumn(['calendar_feed_token', 'setting_calendar_include_events']);
         });
     }
 };

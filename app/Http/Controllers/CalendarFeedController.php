@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Services\ActivityLogService;
 use App\Services\CalendarFeedService;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Auth;
 
@@ -30,6 +31,24 @@ class CalendarFeedController extends Controller
             'Cache-Control' => 'private, max-age=300',
             'X-Robots-Tag' => 'noindex, nofollow',
         ]);
+    }
+
+    /**
+     * Choose whether the feed carries every Event Hub event, or only the user's own bookings.
+     * The link stays the same, so subscribed calendars pick the change up on their next refresh.
+     */
+    public function update(Request $request, CalendarFeedService $feed): RedirectResponse
+    {
+        abort_unless($feed->canIncludeEvents(), 404);
+
+        $user = Auth::user();
+        $user->setting_calendar_include_events = $request->boolean('setting_calendar_include_events');
+        $user->save();
+
+        return redirect(route('user.settings') . '#calendar-subscription')
+            ->withSuccess($user->setting_calendar_include_events
+                ? 'Your calendar now includes all events. Calendar apps show the change on their next refresh.'
+                : 'Your calendar now shows only your own bookings. Calendar apps show the change on their next refresh.');
     }
 
     /**

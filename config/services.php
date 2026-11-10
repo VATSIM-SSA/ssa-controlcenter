@@ -36,6 +36,15 @@ return [
         'secret' => env('SPARKPOST_SECRET'),
     ],
 
+    /*
+    | VATSIM Event Hub (github.com/Vatsim-Scandinavia/events). Its address without /api.
+    | When set, members can add the Hub's events to their calendar subscription.
+    */
+    'event_hub' => [
+        'url' => env('EVENT_HUB_URL'),
+        'cache_ttl_minutes' => env('EVENT_HUB_CACHE_TTL_MINUTES', 15),
+    ],
+
     'stripe' => [
         'model' => User::class,
         'key' => env('STRIPE_KEY'),
