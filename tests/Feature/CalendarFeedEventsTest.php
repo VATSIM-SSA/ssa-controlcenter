@@ -101,15 +101,65 @@ class CalendarFeedEventsTest extends TestCase
     }
 
     #[Test]
-    public function events_stay_out_by_default_and_the_hub_is_not_called(): void
+    public function events_stay_out_by_default_but_event_bookings_are_still_named(): void
     {
-        Http::fake();
+        $start = Carbon::tomorrow()->setHour(16);
+        $this->fakeHub([$this->occurrence(7, $start, 5, 'Joburg Rush')]);
         $user = User::factory()->create();
+        $this->eventBooking($user, 'FAOR_APP', $start->copy()->addHour());
 
         $body = $this->feed($user);
 
-        $this->assertStringNotContainsString('Event:', $body);
+        $this->assertStringNotContainsString('SUMMARY:Event:', $body);
+        $this->assertStringContainsString('SUMMARY:FAOR_APP - Joburg Rush', $body);
+    }
+
+    #[Test]
+    public function without_an_event_hub_the_feed_never_calls_out(): void
+    {
+        config(['services.event_hub.url' => null]);
+        Http::fake();
+
+        $this->feed(User::factory()->create(['setting_calendar_include_events' => true]));
+
         Http::assertNothingSent();
+    }
+
+    #[Test]
+    public function the_events_calendar_is_public_and_holds_only_events(): void
+    {
+        $start = Carbon::tomorrow()->setHour(16);
+        $this->fakeHub([$this->occurrence(7, $start, 5, 'Joburg Rush')]);
+        $this->eventBooking(User::factory()->create(), 'FAOR_APP', $start->copy()->addHour());
+
+        $response = $this->get(route('calendar.events'))->assertOk();
+
+        $response->assertHeader('Content-Type', 'text/calendar; charset=utf-8');
+        $this->assertStringContainsString('X-WR-CALNAME:' . config('app.owner_name_short') . ' events', $response->getContent());
+        $this->assertStringContainsString('SUMMARY:Event: Joburg Rush', $response->getContent());
+        $this->assertStringNotContainsString('FAOR_APP', $response->getContent());
+        $this->assertSame(1, substr_count($response->getContent(), 'BEGIN:VEVENT'));
+    }
+
+    #[Test]
+    public function the_events_calendar_is_not_found_without_an_event_hub(): void
+    {
+        config(['services.event_hub.url' => null]);
+
+        $this->get('/api/calendar/events.ics')->assertNotFound();
+    }
+
+    #[Test]
+    public function settings_offer_both_calendars(): void
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user)->get(route('user.settings'))
+            ->assertOk()
+            ->assertSee('Your calendar link')
+            ->assertSee('Events calendar link')
+            ->assertSee(route('calendar.events'))
+            ->assertSee('webcal://', false);
     }
 
     #[Test]

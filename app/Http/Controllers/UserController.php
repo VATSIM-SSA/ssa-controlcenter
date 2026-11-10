@@ -311,8 +311,9 @@ class UserController extends Controller
         $user = Auth::user();
         $calendarLinks = $calendarFeed->subscriptionLinks($user);
         $calendarCanIncludeEvents = $calendarFeed->canIncludeEvents();
+        $eventsCalendarLinks = $calendarFeed->eventsSubscriptionLinks();
 
-        return view('usersettings', compact('user', 'calendarLinks', 'calendarCanIncludeEvents'));
+        return view('usersettings', compact('user', 'calendarLinks', 'calendarCanIncludeEvents', 'eventsCalendarLinks'));
     }
 
     /**

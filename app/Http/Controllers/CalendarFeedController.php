@@ -34,6 +34,20 @@ class CalendarFeedController extends Controller
     }
 
     /**
+     * Serve every published Event Hub event as a calendar of its own.
+     */
+    public function events(CalendarFeedService $feed): Response
+    {
+        abort_unless($feed->canIncludeEvents(), 404);
+
+        return response($feed->forEvents(), 200, [
+            'Content-Type' => 'text/calendar; charset=utf-8',
+            'Content-Disposition' => 'inline; filename="events.ics"',
+            'Cache-Control' => 'public, max-age=300',
+        ]);
+    }
+
+    /**
      * Choose whether the feed carries every Event Hub event, or only the user's own bookings.
      * The link stays the same, so subscribed calendars pick the change up on their next refresh.
      */

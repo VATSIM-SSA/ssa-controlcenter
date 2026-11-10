@@ -45,23 +45,38 @@ class CalendarFeedService
     }
 
     /**
-     * The feed URL and the one-click subscribe links for each calendar app.
+     * The calendar of every published Event Hub event. It is the same for everyone and
+     * holds nothing private, so it needs no token.
+     */
+    public function forEvents(): string
+    {
+        return IcsCalendar::render(
+            name: $this->eventsCalendarName(),
+            events: $this->eventHub
+                ->occurrences(Carbon::now()->subDays(self::PAST_DAYS), Carbon::now()->addDays(self::FUTURE_DAYS))
+                ->map(fn (array $occurrence): IcsEvent => $this->occurrenceEvent($occurrence))
+                ->values(),
+        );
+    }
+
+    /**
+     * The user's personal feed URL and the one-click subscribe links for each calendar app.
      *
      * @return array{feed: string, webcal: string, google: string, outlook: string}
      */
     public function subscriptionLinks(User $user): array
     {
-        $feed = route('calendar.feed', ['token' => $user->ensureCalendarFeedToken()]);
-        $webcal = preg_replace('#^https?://#', 'webcal://', $feed);
+        return $this->linksFor(route('calendar.feed', ['token' => $user->ensureCalendarFeedToken()]), $this->calendarName());
+    }
 
-        return [
-            'feed' => $feed,
-            'webcal' => $webcal,
-            'google' => 'https://calendar.google.com/calendar/render?cid=' . rawurlencode($webcal),
-            'outlook' => 'https://outlook.live.com/owa/?path=%2Fcalendar%2Faction%2Fcompose&rru=addsubscription'
-                . '&url=' . rawurlencode($feed)
-                . '&name=' . rawurlencode($this->calendarName()),
-        ];
+    /**
+     * The events calendar's URL and subscribe links, or null without an Event Hub.
+     *
+     * @return array{feed: string, webcal: string, google: string, outlook: string}|null
+     */
+    public function eventsSubscriptionLinks(): ?array
+    {
+        return $this->canIncludeEvents() ? $this->linksFor(route('calendar.events'), $this->eventsCalendarName()) : null;
     }
 
     /**
@@ -72,9 +87,10 @@ class CalendarFeedService
         $from = Carbon::now()->subDays(self::PAST_DAYS);
         $to = Carbon::now()->addDays(self::FUTURE_DAYS);
 
-        $occurrences = $user->setting_calendar_include_events && $this->canIncludeEvents()
-            ? $this->eventHub->occurrences($from, $to)
-            : collect();
+        // Loaded whenever the Hub is connected, so event bookings carry their event's name
+        // even for members who keep the events in a calendar of their own.
+        $occurrences = $this->canIncludeEvents() ? $this->eventHub->occurrences($from, $to) : collect();
+        $includedOccurrences = $user->setting_calendar_include_events ? $occurrences : collect();
 
         $bookings = Booking::query()
             ->with('position')
@@ -95,7 +111,7 @@ class CalendarFeedService
 
         return $bookings
             ->concat($sweatbooks)
-            ->concat($occurrences->map(fn (array $occurrence): IcsEvent => $this->occurrenceEvent($occurrence)))
+            ->concat($includedOccurrences->map(fn (array $occurrence): IcsEvent => $this->occurrenceEvent($occurrence)))
             ->sortBy(fn (IcsEvent $event): int => $event->startsAt->getTimestamp())
             ->values();
     }
@@ -188,9 +204,31 @@ class CalendarFeedService
         return $candidates->count() === 1 ? $candidates->first() : null;
     }
 
+    /**
+     * @return array{feed: string, webcal: string, google: string, outlook: string}
+     */
+    private function linksFor(string $feed, string $name): array
+    {
+        $webcal = preg_replace('#^https?://#', 'webcal://', $feed);
+
+        return [
+            'feed' => $feed,
+            'webcal' => $webcal,
+            'google' => 'https://calendar.google.com/calendar/render?cid=' . rawurlencode($webcal),
+            'outlook' => 'https://outlook.live.com/owa/?path=%2Fcalendar%2Faction%2Fcompose&rru=addsubscription'
+                . '&url=' . rawurlencode($feed)
+                . '&name=' . rawurlencode($name),
+        ];
+    }
+
     private function calendarName(): string
     {
         return config('app.owner_name_short') . ' bookings';
+    }
+
+    private function eventsCalendarName(): string
+    {
+        return config('app.owner_name_short') . ' events';
     }
 
     private function positionLabel(string $callsign, ?string $name): string

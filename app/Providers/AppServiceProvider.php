@@ -29,11 +29,12 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         // Calendar apps poll feeds from shared servers (Google, Microsoft, Apple), so the
-        // per-IP ceiling is generous while each feed token is held to a normal rate.
-        RateLimiter::for('calendar-feed', fn (Request $request): array => [
-            Limit::perMinute(60)->by('calendar-feed:token:' . $request->route('token')),
+        // per-IP ceiling is generous while each personal feed token is held to a normal rate.
+        // The shared events calendar has no token and only the per-IP limit.
+        RateLimiter::for('calendar-feed', fn (Request $request): array => array_filter([
+            $request->route('token') ? Limit::perMinute(60)->by('calendar-feed:token:' . $request->route('token')) : null,
             Limit::perMinute(600)->by('calendar-feed:ip:' . $request->ip()),
-        ]);
+        ]));
 
         // The API v1 docs server URL (config/scramble.php) uses a `{host}` variable so readers
         // supply their own Control Center host in Swagger UI. Define its default and description here.

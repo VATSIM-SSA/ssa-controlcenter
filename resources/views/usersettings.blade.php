@@ -110,6 +110,7 @@
                 <h6 class="m-0 fw-bold text-tertiary">Calendar subscription</h6>
             </div>
             <div class="card-body">
+                <h5>Your bookings</h5>
                 <p>Add your ATC and sweatbox bookings to Google Calendar, Outlook or Apple Calendar. Your calendar app checks this link for changes on its own, usually within a few hours.</p>
 
                 @if($calendarCanIncludeEvents)
@@ -117,32 +118,14 @@
                         @csrf
                         <div class="form-check form-switch">
                             <input class="form-check-input" type="checkbox" role="switch" id="setting_calendar_include_events" name="setting_calendar_include_events" value="1" {{ $user->setting_calendar_include_events ? 'checked' : '' }} onchange="this.form.submit()">
-                            <label class="form-check-label" for="setting_calendar_include_events">Also show all {{ config('app.owner_name_short') }} events</label>
+                            <label class="form-check-label" for="setting_calendar_include_events">Also show all {{ config('app.owner_name_short') }} events in this calendar</label>
                         </div>
-                        <small class="form-text text-muted">Adds every published event, next to your own bookings. Event bookings you hold are named after their event. The link stays the same, so there is no need to subscribe again.</small>
+                        <small class="form-text text-muted">For one calendar with everything. The link stays the same, so there is no need to subscribe again.</small>
                         <noscript><button class="btn btn-sm btn-success mt-2" type="submit">Save</button></noscript>
                     </form>
                 @endif
 
-                <label class="form-label" for="calendar-feed-url">Calendar link</label>
-                <div class="input-group mb-3">
-                    <input type="text" class="form-control font-monospace" id="calendar-feed-url" value="{{ $calendarLinks['feed'] }}" readonly onclick="this.select()">
-                    <button class="btn btn-outline-secondary" type="button" id="calendar-feed-copy" data-copy="{{ $calendarLinks['feed'] }}">
-                        <i class="fas fa-copy"></i> <span>Copy</span>
-                    </button>
-                </div>
-
-                <div class="d-flex flex-wrap gap-2 mb-3">
-                    <a href="{{ $calendarLinks['google'] }}" target="_blank" rel="noopener noreferrer" class="btn btn-outline-primary btn-sm">
-                        <i class="fab fa-google"></i> Google Calendar
-                    </a>
-                    <a href="{{ $calendarLinks['outlook'] }}" target="_blank" rel="noopener noreferrer" class="btn btn-outline-primary btn-sm">
-                        <i class="fab fa-microsoft"></i> Outlook
-                    </a>
-                    <a href="{{ $calendarLinks['webcal'] }}" class="btn btn-outline-primary btn-sm">
-                        <i class="fab fa-apple"></i> Apple Calendar
-                    </a>
-                </div>
+                @include('partials.calendar-links', ['links' => $calendarLinks, 'id' => 'calendar-feed', 'label' => 'Your calendar link'])
 
                 <p class="small text-muted">Anyone with this link can see your bookings, so keep it private. Resetting the link stops every calendar already subscribed to it.</p>
 
@@ -150,6 +133,17 @@
                     @csrf
                     <button class="btn btn-outline-danger btn-sm" type="submit">Reset link</button>
                 </form>
+
+                @if($eventsCalendarLinks)
+                    <hr>
+
+                    <h5>All {{ config('app.owner_name_short') }} events</h5>
+                    <p>Prefer events in a calendar of their own, with their own colour and easy to hide? Subscribe to this one as well. It is the same for everyone and safe to share.</p>
+
+                    @include('partials.calendar-links', ['links' => $eventsCalendarLinks, 'id' => 'calendar-events', 'label' => 'Events calendar link'])
+
+                    <p class="small text-muted mb-0">Either way, your own event bookings are named after their event. Use this calendar or the switch above, not both, or each event shows twice.</p>
+                @endif
             </div>
         </div>
     </div>
@@ -159,11 +153,12 @@
 
 @section('js')
 <script>
-    document.getElementById('calendar-feed-copy').addEventListener('click', function () {
-        var button = this;
-        navigator.clipboard.writeText(button.dataset.copy).then(function () {
-            button.querySelector('span').textContent = 'Copied';
-            setTimeout(function () { button.querySelector('span').textContent = 'Copy'; }, 1500);
+    document.querySelectorAll('.calendar-copy').forEach(function (button) {
+        button.addEventListener('click', function () {
+            navigator.clipboard.writeText(button.dataset.copy).then(function () {
+                button.querySelector('span').textContent = 'Copied';
+                setTimeout(function () { button.querySelector('span').textContent = 'Copy'; }, 1500);
+            });
         });
     });
 </script>

@@ -21,6 +21,12 @@ Route::middleware('auth:api')->get('/user', function (Request $request) {
     return $request->user();
 });
 
+// Every published Event Hub event, the same for everyone, so no token.
+Route::get('/calendar/events.ics', [CalendarFeedController::class, 'events'])
+    ->withoutMiddleware('throttle:60,1')
+    ->middleware('throttle:calendar-feed')
+    ->name('calendar.events');
+
 // Read-only iCalendar feed. Calendar clients cannot log in, so the token in the URL is the credential.
 Route::get('/calendar/{token}.ics', [CalendarFeedController::class, 'show'])
     ->where('token', '[A-Za-z0-9]{48}')
