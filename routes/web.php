@@ -4,6 +4,7 @@ use App\Http\Controllers\ActivityLogController;
 use App\Http\Controllers\Admin\PositionController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\BookingController;
+use App\Http\Controllers\CalendarFeedController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EndorsementController;
 use App\Http\Controllers\FileController;
@@ -83,6 +84,7 @@ Route::middleware(['auth', 'activity', 'suspended'])->group(function () {
         Route::post('/settings', 'settings_update')->name('user.settings.store');
         Route::post('/settings/theme', 'settings_update_theme')->name('user.settings.theme');
         Route::get('/settings/extendworkmail', 'extendWorkmail')->name('user.settings.extendworkmail');
+        Route::post('/settings/calendar/reset', [CalendarFeedController::class, 'reset'])->name('user.settings.calendar.reset');
 
         // Internal user search
         Route::get('/user/search/find', 'search')->name('user.search');

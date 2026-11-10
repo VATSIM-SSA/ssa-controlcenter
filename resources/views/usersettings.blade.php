@@ -104,5 +104,55 @@
         </div>
     </div>
 
+    <div class="col-xl-6 col-md-12 mb-12">
+        <div class="card shadow mb-4" id="calendar-subscription">
+            <div class="card-header py-3 d-flex flex-row align-items-center justify-content-between">
+                <h6 class="m-0 fw-bold text-tertiary">Calendar subscription</h6>
+            </div>
+            <div class="card-body">
+                <p>Add your ATC and sweatbox bookings to Google Calendar, Outlook or Apple Calendar. Your calendar app checks this link for changes on its own, usually within a few hours.</p>
+
+                <label class="form-label" for="calendar-feed-url">Calendar link</label>
+                <div class="input-group mb-3">
+                    <input type="text" class="form-control font-monospace" id="calendar-feed-url" value="{{ $calendarLinks['feed'] }}" readonly onclick="this.select()">
+                    <button class="btn btn-outline-secondary" type="button" id="calendar-feed-copy" data-copy="{{ $calendarLinks['feed'] }}">
+                        <i class="fas fa-copy"></i> <span>Copy</span>
+                    </button>
+                </div>
+
+                <div class="d-flex flex-wrap gap-2 mb-3">
+                    <a href="{{ $calendarLinks['google'] }}" target="_blank" rel="noopener noreferrer" class="btn btn-outline-primary btn-sm">
+                        <i class="fab fa-google"></i> Google Calendar
+                    </a>
+                    <a href="{{ $calendarLinks['outlook'] }}" target="_blank" rel="noopener noreferrer" class="btn btn-outline-primary btn-sm">
+                        <i class="fab fa-microsoft"></i> Outlook
+                    </a>
+                    <a href="{{ $calendarLinks['webcal'] }}" class="btn btn-outline-primary btn-sm">
+                        <i class="fab fa-apple"></i> Apple Calendar
+                    </a>
+                </div>
+
+                <p class="small text-muted">Anyone with this link can see your bookings, so keep it private. Resetting the link stops every calendar already subscribed to it.</p>
+
+                <form action="{{ route('user.settings.calendar.reset') }}" method="POST" onsubmit="return confirm('Reset the calendar link? Calendars subscribed to the old link will stop updating.')">
+                    @csrf
+                    <button class="btn btn-outline-danger btn-sm" type="submit">Reset link</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
 </div>
+@endsection
+
+@section('js')
+<script>
+    document.getElementById('calendar-feed-copy').addEventListener('click', function () {
+        var button = this;
+        navigator.clipboard.writeText(button.dataset.copy).then(function () {
+            button.querySelector('span').textContent = 'Copied';
+            setTimeout(function () { button.querySelector('span').textContent = 'Copy'; }, 1500);
+        });
+    });
+</script>
 @endsection

@@ -14,6 +14,7 @@ use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Str;
 
 class User extends Authenticatable
 {
@@ -46,7 +47,32 @@ class User extends Authenticatable
      */
     protected $hidden = [
         'remember_token',
+        'calendar_feed_token',
     ];
+
+    /**
+     * Return the user's calendar feed token, creating one on first use.
+     */
+    public function ensureCalendarFeedToken(): string
+    {
+        if (blank($this->calendar_feed_token)) {
+            return $this->regenerateCalendarFeedToken();
+        }
+
+        return $this->calendar_feed_token;
+    }
+
+    /**
+     * Replace the calendar feed token, which invalidates existing subscriptions.
+     */
+    public function regenerateCalendarFeedToken(): string
+    {
+        $token = Str::random(48);
+
+        $this->forceFill(['calendar_feed_token' => $token])->save();
+
+        return $token;
+    }
 
     public function roleAssignments()
     {
