@@ -10,6 +10,7 @@ use App\Models\Booking;
 use App\Models\Position;
 use App\Models\Sweatbook;
 use App\Models\User;
+use App\Support\DisplayTime;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Collection;
 
@@ -73,15 +74,18 @@ class BookingService
     /**
      * Parse the validated date and time inputs into the booking period.
      *
+     * Inputs are in the user's chosen time zone (Zulu by default); the period comes back in
+     * UTC. Callers roll an overnight end over with adjustForOvernight().
+     *
      * @return array{0: Carbon, 1: Carbon} Start and end of the booking
      */
     public function parsePeriod(string $date, string $startAt, string $endAt): array
     {
-        $bookingDate = Carbon::createFromFormat('d/m/Y', $date);
+        $zone = DisplayTime::zone();
 
         return [
-            Carbon::createFromFormat('H:i', $startAt)->setDateFrom($bookingDate),
-            Carbon::createFromFormat('H:i', $endAt)->setDateFrom($bookingDate),
+            Carbon::createFromFormat('d/m/Y H:i', $date . ' ' . $startAt, $zone)->utc(),
+            Carbon::createFromFormat('d/m/Y H:i', $date . ' ' . $endAt, $zone)->utc(),
         ];
     }
 

@@ -32,7 +32,7 @@
 
 @if($activeVote)
 <div class="alert alert-info" role="alert">
-    <i class="fas fa-vote-yea"></i>&nbsp;&nbsp;Vote <i>"{{ $activeVote->question }}"</i> is available. Vote closes {{ \Carbon\Carbon::create($activeVote->end_at)->toEuropeanDateTime() }}. <a href="{{ route('vote.show', $activeVote) }}">Click here to vote</a>.
+    <i class="fas fa-vote-yea"></i>&nbsp;&nbsp;Vote <i>"{{ $activeVote->question }}"</i> is available. Vote closes {{ \Carbon\Carbon::create($activeVote->end_at)->toUserDateTime() }}. <a href="{{ route('vote.show', $activeVote) }}">Click here to vote</a>.
 </div>
 @endif
 
@@ -202,9 +202,9 @@
                                 <td>
                                     @php($nextTrainingSession = $training->bookedSessions()->first())
                                     @if($nextTrainingSession)
-                                        <span title="{{ $nextTrainingSession->starts_at->toEuropeanDateTime() }}">
-                                            {{ $nextTrainingSession->starts_at->toEuropeanDate(true) }}
-                                            {{ $nextTrainingSession->starts_at->toEuropeanTime() }}
+                                        <span title="{{ $nextTrainingSession->starts_at->toUserDateTime() }}">
+                                            {{ $nextTrainingSession->starts_at->toUserDate(true) }}
+                                            {{ $nextTrainingSession->starts_at->toUserTime() }}
                                         </span>
                                         <br>
                                         <span class="text-muted">{{ $nextTrainingSession->position->callsign }}</span>

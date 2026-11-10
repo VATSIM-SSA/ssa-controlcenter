@@ -1,6 +1,6 @@
 <tr>
     <td>
-        <span data-bs-toggle="tooltip" data-bs-placement="top" title="{{ (in_array($activeFilter, ['archived'])) ? $task->closed_at->toEuropeanDateTime() : $task->created_at->toEuropeanDateTime() }}">
+        <span data-bs-toggle="tooltip" data-bs-placement="top" title="{{ (in_array($activeFilter, ['archived'])) ? $task->closed_at->toUserDateTime() : $task->created_at->toUserDateTime() }}">
             {{ (in_array($activeFilter, ['archived'])) ? $task->closed_at->diffForHumans() : $task->created_at->diffForHumans() }}
         </span>
     </td>

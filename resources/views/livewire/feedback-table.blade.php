@@ -76,7 +76,7 @@
                     <tbody>
                         @forelse($feedbacks as $f)
                             <tr wire:key="feedback-{{ $f->id }}">
-                                <td>{{ $f->created_at->toEuropeanDateTime() }}</td>
+                                <td>{{ $f->created_at->toUserDateTime() }}</td>
                                 <td><a href="{{ route('user.show', $f->submitter->id) }}">{{ $f->submitter->name }} ({{ $f->submitter_user_id }})</a></td>
                                 <td>
                                     @isset($f->referenceUser)
@@ -96,7 +96,7 @@
                                             data-bs-target="#feedback-edit-modal"
                                             @click="current = @js([
                                                 'submitter' => $f->submitter->name.' ('.$f->submitter_user_id.')',
-                                                'submitted' => $f->created_at->toEuropeanDateTime(),
+                                                'submitted' => $f->created_at->toUserDateTime(),
                                                 'feedback' => $f->feedback,
                                                 'controller' => $f->referenceUser?->id ?? '',
                                                 'position' => $f->referencePosition?->callsign ?? '',

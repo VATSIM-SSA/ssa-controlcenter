@@ -24,7 +24,7 @@
                     </div>
 
                     <div class="mb-3">
-                        <label class="form-label" for="start_at">Start (Zulu)</label>
+                        <label class="form-label" for="start_at">Start ({{ \App\Support\DisplayTime::label() }})</label>
                         <input id="start_at" class="form-control @error('start_at') is-invalid @enderror" type="time" name="start_at" placeholder="12:00" value="{{ old('start_at') }}" required>
                         @error('start_at')
                             <span class="text-danger">{{ $errors->first('start_at') }}</span>
@@ -32,7 +32,7 @@
                     </div>
 
                     <div class="mb-3">
-                        <label class="form-label" for="end_at">End (Zulu)</label>
+                        <label class="form-label" for="end_at">End ({{ \App\Support\DisplayTime::label() }})</label>
                         <input id="end_at" class="form-control @error('end_at') is-invalid @enderror" type="time" name="end_at" placeholder="12:00" value="{{ old('end_at') }}" required>
                         @error('end_at')
                             <span class="text-danger">{{ $errors->first('end_at') }}</span>

@@ -13,6 +13,7 @@ use App\Models\TrainingExamination;
 use App\Models\TrainingReport;
 use App\Models\User;
 use App\Services\StatisticsService;
+use App\Support\DisplayTime;
 use Carbon\Carbon;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\ClientException;
@@ -329,6 +330,7 @@ class UserController extends Controller
             'setting_notify_tasks' => '',
             'setting_workmail_address' => 'nullable|email|max:64|regex:/(.*)' . Setting::get('linkDomain') . '$/i',
             'setting_theme' => 'required|in:light,dark,system',
+            'setting_timezone' => 'nullable|timezone:all',
         ]);
 
         isset($data['setting_notify_newreport']) ? $setting_notify_newreport = true : $setting_notify_newreport = false;
@@ -343,6 +345,7 @@ class UserController extends Controller
         $user->setting_notify_newexamreport = $setting_notify_newexamreport;
         $user->setting_notify_tasks = $setting_notify_tasks;
         $user->setting_theme = $data['setting_theme'];
+        $user->setting_timezone = ($data['setting_timezone'] ?? null) === DisplayTime::ZULU ? null : ($data['setting_timezone'] ?? null);
 
         if (! $user->setting_workmail_address && isset($data['setting_workmail_address'])) {
             $user->setting_workmail_address = $data['setting_workmail_address'];

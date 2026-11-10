@@ -35,8 +35,8 @@
                         <thead class="table-light">
                             <tr>
                                 <th data-field="date" data-sortable="true" data-sorter="tableSortDates" data-filter-control="select" data-filter-data-collector="tableFilterStripHtml" data-filter-strict-search="false" data-filter-order-by="desc">Date</th>
-                                <th data-field="start" data-sortable="true" data-filter-control="select">Start (Zulu)</th>
-                                <th data-field="end" data-sortable="true" data-filter-control="select">End (Zulu)</th>
+                                <th data-field="start" data-sortable="true" data-filter-control="select">Start ({{ \App\Support\DisplayTime::label() }})</th>
+                                <th data-field="end" data-sortable="true" data-filter-control="select">End ({{ \App\Support\DisplayTime::label() }})</th>
                                 <th data-field="position" data-sortable="true" data-filter-control="select" data-filter-data-collector="tableFilterStripBadge" data-filter-strict-search="false">Position</th>
                                 <th data-field="fir" data-sortable="true" data-filter-control="select">FIR</th>
                                 <th data-field="user" data-sortable="true" data-filter-control="select">User</th>
@@ -50,17 +50,17 @@
                                     @can('update', $booking)
                                         <a href="/booking/{{ $booking->id }}">
                                             <i class="fas fa-pencil-alt w3-tiny" aria-hidden="true"></i>&nbsp;
-                                            @if(\Carbon\Carbon::create($booking->time_start)->isToday())
+                                            @if(\App\Support\DisplayTime::convert(\Carbon\Carbon::create($booking->time_start))->isToday())
                                                 Today
                                             @else
-                                                {{ \Carbon\Carbon::create($booking->time_start)->toEuropeanDate(true) }}
+                                                {{ \Carbon\Carbon::create($booking->time_start)->toUserDate(true) }}
                                             @endif 
                                         </a>
                                     @else
-                                        @if(\Carbon\Carbon::create($booking->time_start)->isToday())
+                                        @if(\App\Support\DisplayTime::convert(\Carbon\Carbon::create($booking->time_start))->isToday())
                                             Today
                                         @else
-                                            {{ \Carbon\Carbon::create($booking->time_start)->toEuropeanDate(true) }}
+                                            {{ \Carbon\Carbon::create($booking->time_start)->toUserDate(true) }}
                                         @endif 
                                         
                                         @if(Auth::user()->id == $booking->user_id || Auth::user()->hasPermission('bookings.manage'))
@@ -75,10 +75,10 @@
                                     @endcan
                                 </td>
                                 <td>
-                                    {{ \Carbon\Carbon::create($booking->time_start)->toEuropeanTime() }}
+                                    {{ \Carbon\Carbon::create($booking->time_start)->toUserTime() }}
                                 </td>
                                 <td>
-                                    {{ \Carbon\Carbon::create($booking->time_end)->toEuropeanTime() }}
+                                    {{ \Carbon\Carbon::create($booking->time_end)->toUserTime() }}
                                 </td>
                                 <td>
                                     {{ $booking->position->callsign }} ({{ $booking->position->name }})
@@ -131,7 +131,7 @@
 
 
                     <div class="mb-3">
-                        <label class="form-label" for="start_at">Start (Zulu)</label>
+                        <label class="form-label" for="start_at">Start ({{ \App\Support\DisplayTime::label() }})</label>
                         <input id="start_at" class="form-control @error('start_at') is-invalid @enderror" type="time" name="start_at" placeholder="12:00" value="{{ old('start_at') }}" required>
                         @error('start_at')
                             <span class="text-danger">{{ $errors->first('start_at') }}</span>
@@ -139,7 +139,7 @@
                     </div>
 
                     <div class="mb-3">
-                        <label class="form-label" for="end_at">End (Zulu)</label>
+                        <label class="form-label" for="end_at">End ({{ \App\Support\DisplayTime::label() }})</label>
                         <input id="end_at" class="form-control @error('end_at') is-invalid @enderror" type="time" name="end_at" placeholder="12:00" value="{{ old('end_at') }}" required>
                         @error('end_at')
                             <span class="text-danger">{{ $errors->first('end_at') }}</span>

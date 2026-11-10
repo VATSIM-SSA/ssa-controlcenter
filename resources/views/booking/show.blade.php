@@ -16,17 +16,17 @@
                     @csrf
                     <div class="mb-3">
                         <label class="form-label" for="date">Date</label>
-                        <input id="date" class="datepicker form-control" type="text" name="date" value="{{ Carbon\Carbon::parse($booking->time_start)->format('d/m/Y') }}" required>
+                        <input id="date" class="datepicker form-control" type="text" name="date" value="{{ \App\Support\DisplayTime::convert(\Carbon\Carbon::parse($booking->time_start))->format('d/m/Y') }}" required>
                     </div>
 
                     <div class="mb-3">
-                        <label class="form-label" for="start_at">Start (Zulu)</label>
-                        <input id="start_at" class="form-control @error('start_at') is-invalid @enderror" type="time" name="start_at" placeholder="12:00" value="{{ empty(old('start_at')) ? \Carbon\Carbon::createFromFormat('Y-m-d H:i:s', $booking->time_start)->format('H:i') : old('start_at') }}" required>
+                        <label class="form-label" for="start_at">Start ({{ \App\Support\DisplayTime::label() }})</label>
+                        <input id="start_at" class="form-control @error('start_at') is-invalid @enderror" type="time" name="start_at" placeholder="12:00" value="{{ empty(old('start_at')) ? \App\Support\DisplayTime::convert(\Carbon\Carbon::parse($booking->time_start))->format('H:i') : old('start_at') }}" required>
                     </div>
 
                     <div class="mb-3">
-                        <labe class="form-label"l for="end_at">End (Zulu)</label>
-                        <input id="end_at" class="form-control @error('end_at') is-invalid @enderror" type="time" name="end_at" placeholder="12:00" value="{{ empty(old('end_at')) ? \Carbon\Carbon::createFromFormat('Y-m-d H:i:s', $booking->time_end)->format('H:i') : old('end_at') }}" required>
+                        <label class="form-label" for="end_at">End ({{ \App\Support\DisplayTime::label() }})</label>
+                        <input id="end_at" class="form-control @error('end_at') is-invalid @enderror" type="time" name="end_at" placeholder="12:00" value="{{ empty(old('end_at')) ? \App\Support\DisplayTime::convert(\Carbon\Carbon::parse($booking->time_end))->format('H:i') : old('end_at') }}" required>
                     </div>
 
                     <div class="mb-3">
@@ -102,7 +102,7 @@
 @vite(['resources/js/flatpickr.js', 'resources/sass/flatpickr.scss'])
 <script>
     document.addEventListener("DOMContentLoaded", function () {
-        var defaultDate = "{{ empty(old('date')) ? \Carbon\Carbon::createFromFormat('Y-m-d H:i:s', $booking->time_start)->format('d/m/Y') : old('date') }}"
+        var defaultDate = "{{ empty(old('date')) ? \App\Support\DisplayTime::convert(\Carbon\Carbon::parse($booking->time_start))->format('d/m/Y') : old('date') }}"
         document.querySelector('.datepicker').flatpickr({ disableMobile: true, minDate: "{!! date('Y-m-d') !!}", dateFormat: "d/m/Y", defaultDate: defaultDate, locale: {firstDayOfWeek: 1 } });
     })
 </script>

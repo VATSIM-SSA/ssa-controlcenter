@@ -124,7 +124,7 @@
                                                         </span> granted, valid to 
                                                         <span class="badge text-bg-light">
                                                             @isset($activity->endorsement->valid_to)
-                                                                {{ $activity->endorsement->valid_to->toEuropeanDateTime() }}
+                                                                {{ $activity->endorsement->valid_to->toUserDateTime() }}
                                                             @else
                                                                 Forever
                                                             @endisset
@@ -135,7 +135,7 @@
                                                         </span> granted, valid to 
                                                         <span class="badge text-bg-light">
                                                             @isset($activity->endorsement->valid_to)
-                                                                {{ $activity->endorsement->valid_to->toEuropeanDateTime() }}
+                                                                {{ $activity->endorsement->valid_to->toUserDateTime() }}
                                                             @else
                                                                 Forever
                                                             @endisset
@@ -179,7 +179,7 @@
 
                                     </td>
                                     <td>
-                                        <span data-bs-toggle="tooltip" data-bs-placement="top" title="{{ $activity->activity_date->toEuropeanDateTime() }}">
+                                        <span data-bs-toggle="tooltip" data-bs-placement="top" title="{{ $activity->activity_date->toUserDateTime() }}">
                                             {{ $activity->activity_date->diffForHumans() }}
                                         </span>
                                     </td>

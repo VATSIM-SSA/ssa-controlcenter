@@ -47,7 +47,7 @@
                         <tbody>
                             @forelse($logs as $log)
                             <tr>
-                                <td>{{ \Carbon\Carbon::parse($log->created_at)->toEuropeanDateTime() }}</td>
+                                <td>{{ \Carbon\Carbon::parse($log->created_at)->toUserDateTime() }}</td>
                                 <td><span class="text-{{ $log->level->value }}">{{ strtoupper($log->level->value) }}</span></td>
                                 <td>{{ ucfirst($log->log_name) }}</td>
                                 <td>

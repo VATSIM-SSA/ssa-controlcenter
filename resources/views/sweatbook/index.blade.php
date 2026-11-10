@@ -27,8 +27,8 @@
                         <thead class="table-light">
                             <tr>
                                 <th data-field="date" data-sortable="true" data-sorter="tableSortDates" data-filter-data-collector="tableFilterStripHtml" data-filter-strict-search="false">Date</th>
-                                <th data-field="start" data-sortable="true" data-filter-control="select">Start (Zulu)</th>
-                                <th data-field="end" data-sortable="true" data-filter-control="select">End (Zulu)</th>
+                                <th data-field="start" data-sortable="true" data-filter-control="select">Start ({{ \App\Support\DisplayTime::label() }})</th>
+                                <th data-field="end" data-sortable="true" data-filter-control="select">End ({{ \App\Support\DisplayTime::label() }})</th>
                                 <th data-field="position" data-sortable="true" data-filter-control="select" data-filter-data-collector="tableFilterStripHtml" data-filter-strict-search="false">Position</th>
                                 <th data-field="fir" data-sortable="true" data-filter-control="select">FIR</th>
                                 <th data-field="mentor" data-sortable="true" data-filter-control="select">Mentor</th>
@@ -40,18 +40,18 @@
                             <tr>
                                 <td>
                                     @can('update', $booking)
-                                        <a href="/sweatbook/{{ $booking->id }}">{{ $booking->time_start->toEuropeanDate(true) }}
+                                        <a href="/sweatbook/{{ $booking->id }}">{{ $booking->time_start->toUserDate(true) }}
                                         &nbsp;&nbsp;<i class="fa fa-pencil-alt w3-tiny" aria-hidden="true"></i></a>
                                     @endcan
                                     @cannot('update', $booking)
-                                        {{ $booking->time_start->toEuropeanDate(true) }}
+                                        {{ $booking->time_start->toUserDate(true) }}
                                     @endcannot
                                 </td>
                                 <td>
-                                    {{ $booking->time_start->toEuropeanTime() }}
+                                    {{ $booking->time_start->toUserTime() }}
                                 </td>
                                 <td>
-                                    {{ $booking->time_end->toEuropeanTime() }}
+                                    {{ $booking->time_end->toUserTime() }}
                                 </td>
                                 <td>
                                     {{ $booking->position->callsign }} ({{ $booking->position->name }})
@@ -94,7 +94,7 @@
                     </div>
 
                     <div class="mb-3">
-                        <label class="form-label" for="start_at">Start (Zulu)</label>
+                        <label class="form-label" for="start_at">Start ({{ \App\Support\DisplayTime::label() }})</label>
                         <input id="start_at" class="form-control @error('start_at') is-invalid @enderror" type="time" name="start_at" placeholder="12:00" value="{{ old('start_at') }}" required>
                         @error('start_at')
                             <span class="text-danger">{{ $errors->first('start_at') }}</span>
@@ -102,7 +102,7 @@
                     </div>
 
                     <div class="mb-3">
-                        <label class="form-label" for="end_at">End (Zulu)</label>
+                        <label class="form-label" for="end_at">End ({{ \App\Support\DisplayTime::label() }})</label>
                         <input id="end_at" class="form-control @error('end_at') is-invalid @enderror" type="time" name="end_at" placeholder="12:00" value="{{ old('end_at') }}" required>
                         @error('end_at')
                             <span class="text-danger">{{ $errors->first('end_at') }}</span>

@@ -285,7 +285,7 @@
                                         {{ \App\Models\User::find($activity->triggered_by_id)->name }} —
                                     @endisset
 
-                                    {{ $activity->created_at->toEuropeanDateTime() }}
+                                    {{ $activity->created_at->toUserDateTime() }}
                                     @can('comment', [\App\Models\TrainingActivity::class, \App\Models\Training::find($training->id)])
                                         @if($activity->type == "COMMENT" && now() <= $activity->created_at->addDays(1) && $activity->triggered_by_id == \Auth::user()->id)
                                             <button class="btn btn-sm float-end" onclick="updateComment({{ $activity->id }}, '{{ $activity->comment }}')"><i class="fas fa-pencil"></i></button>
@@ -326,7 +326,7 @@
                                                 </span> granted, valid to
                                                 <span class="badge text-bg-light">
                                                     @isset(\App\Models\Endorsement::find($activity->new_data)->valid_to)
-                                                        {{ \App\Models\Endorsement::find($activity->new_data)->valid_to->toEuropeanDateTime() }}
+                                                        {{ \App\Models\Endorsement::find($activity->new_data)->valid_to->toUserDateTime() }}
                                                     @else
                                                         Forever
                                                     @endisset
@@ -337,7 +337,7 @@
                                                 </span> granted, valid to
                                                 <span class="badge text-bg-light">
                                                     @isset(\App\Models\Endorsement::find($activity->new_data)->valid_to)
-                                                        {{ \App\Models\Endorsement::find($activity->new_data)->valid_to->toEuropeanDateTime() }}
+                                                        {{ \App\Models\Endorsement::find($activity->new_data)->valid_to->toUserDateTime() }}
                                                     @else
                                                         Forever
                                                     @endisset
@@ -381,7 +381,7 @@
                             @isset($training->created_by)
                                 {{ \App\Models\User::find($training->created_by)->name }} —
                             @endisset
-                            {{ $training->created_at->toEuropeanDateTime() }}
+                            {{ $training->created_at->toUserDateTime() }}
                         </div>
                         <p>
                             Training created
@@ -430,8 +430,8 @@
                                     <tbody>
                                         @foreach($soloEndorsementSummary['endorsements'] as ['endorsement' => $soloEndorsement, 'days' => $soloDays])
                                             <tr>
-                                                <td>{{ $soloEndorsement->valid_from?->toEuropeanDateTime() ?? '—' }}</td>
-                                                <td>{{ $soloEndorsement->valid_to?->toEuropeanDateTime() ?? '—' }}</td>
+                                                <td>{{ $soloEndorsement->valid_from?->toUserDateTime() ?? '—' }}</td>
+                                                <td>{{ $soloEndorsement->valid_to?->toUserDateTime() ?? '—' }}</td>
                                                 <td>{{ $soloEndorsement->valid_to ? $soloDays : '—' }}</td>
                                                 <td>
                                                     @if($soloEndorsement->revoked)
@@ -667,9 +667,9 @@
                                         @endif
 
                                         @if($task->status == \App\Helpers\TaskStatus::COMPLETED || $task->status == \App\Helpers\TaskStatus::DECLINED)
-                                            <span class="text-muted" title="{{ $task->closed_at->toEuropeanDateTime() }}">{{ $task->closed_at->diffForHumans() }}</span>
+                                            <span class="text-muted" title="{{ $task->closed_at->toUserDateTime() }}">{{ $task->closed_at->diffForHumans() }}</span>
                                         @else
-                                            <span class="text-muted" title="{{ $task->created_at->toEuropeanDateTime() }}">{{ $task->created_at->diffForHumans() }}</span>
+                                            <span class="text-muted" title="{{ $task->created_at->toUserDateTime() }}">{{ $task->created_at->diffForHumans() }}</span>
                                         @endif
 
                                     </td>
@@ -706,9 +706,9 @@
                             <tbody>
                                 @foreach($trainingSessions as $trainingSession)
                                     <tr>
-                                        <td>{{ $trainingSession->starts_at->toEuropeanDate(true) }}</td>
-                                        <td>{{ $trainingSession->starts_at->toEuropeanTime() }}</td>
-                                        <td>{{ $trainingSession->ends_at->toEuropeanTime() }}</td>
+                                        <td>{{ $trainingSession->starts_at->toUserDate(true) }}</td>
+                                        <td>{{ $trainingSession->starts_at->toUserTime() }}</td>
+                                        <td>{{ $trainingSession->ends_at->toUserTime() }}</td>
                                         <td>{{ $trainingSession->position->callsign }}</td>
                                     </tr>
                                 @endforeach

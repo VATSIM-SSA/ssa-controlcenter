@@ -86,7 +86,7 @@
                                         <td>{{ Carbon\Carbon::parse($e->valid_from)->toEuropeanDate() }}</td>
                                         <td>
                                             @isset($e->valid_to)
-                                                {{ Carbon\Carbon::parse($e->valid_to)->toEuropeanDateTime() }}
+                                                {{ Carbon\Carbon::parse($e->valid_to)->toUserDateTime() }}
                                             @else
                                                 Never
                                             @endisset

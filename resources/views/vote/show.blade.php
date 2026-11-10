@@ -59,7 +59,7 @@
 
                 @else
 
-                    <p>Summary will be publicly available once the vote closes at {{ \Carbon\Carbon::create($vote->end_at)->toEuropeanDateTime() }}</p>
+                    <p>Summary will be publicly available once the vote closes at {{ \Carbon\Carbon::create($vote->end_at)->toUserDateTime() }}</p>
 
                 @endif
 

@@ -28,6 +28,19 @@
                                 <small class="form-text text-muted">Choose your preferred theme or let the system decide based on your device settings.</small>
                             </div>
 
+                            <div class="mb-3">
+                                <label class="form-label" for="setting_timezone">Show times in</label>
+                                <select class="form-control" id="setting_timezone" name="setting_timezone">
+                                    <option value="" {{ blank($user->setting_timezone) ? 'selected' : '' }}>Zulu (UTC)</option>
+                                    @foreach(\DateTimeZone::listIdentifiers() as $zone)
+                                        @continue($zone === 'UTC')
+                                        <option value="{{ $zone }}" {{ $user->setting_timezone === $zone ? 'selected' : '' }}>{{ str_replace('_', ' ', $zone) }}</option>
+                                    @endforeach
+                                </select>
+                                <button type="button" class="btn btn-link btn-sm px-0" id="setting_timezone_detect">Use this device's time zone</button>
+                                <small class="form-text text-muted d-block">Bookings, sessions and other times show in this zone, and booking forms take times in it. Everything is still stored in Zulu.</small>
+                            </div>
+
                             <hr>
 
                             <h5>Notifications</h5>
@@ -105,4 +118,16 @@
     </div>
 
 </div>
+@endsection
+
+@section('js')
+<script>
+    document.getElementById('setting_timezone_detect').addEventListener('click', function () {
+        var zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        var select = document.getElementById('setting_timezone');
+        if (zone && select.querySelector('option[value="' + zone + '"]')) {
+            select.value = zone;
+        }
+    });
+</script>
 @endsection

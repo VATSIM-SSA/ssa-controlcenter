@@ -81,11 +81,11 @@
                     <dd class="separator pb-3"></dd>
 
                     <dt class="pt-2">Last login</dt>
-                    <dd>{{ $user->last_login->toEuropeanDateTime() }}</dd>
+                    <dd>{{ $user->last_login->toUserDateTime() }}</dd>
 
                     @can('users.manage')
                         <dt class="pt-2">Last activity</dt>
-                        <dd>{{ isset($user->last_activity) ? $user->last_activity->toEuropeanDateTime() : 'N/A' }}</dd>
+                        <dd>{{ isset($user->last_activity) ? $user->last_activity->toUserDateTime() : 'N/A' }}</dd>
                     @endcan
 
                 </dl>
@@ -324,7 +324,7 @@
                                         </tr>
                                         <tr class="spacing">
                                             <th>Expire</th>
-                                            <td>{{ isset($endorsement->valid_to) ? $endorsement->valid_to->toEuropeanDateTime() : 'Never' }}</td>
+                                            <td>{{ isset($endorsement->valid_to) ? $endorsement->valid_to->toUserDateTime() : 'Never' }}</td>
                                         </tr>
                                         <tr>
                                             <th>Issued by</th>
@@ -347,7 +347,7 @@
                                         </tr>
                                         <tr class="spacing">
                                             <th>Expire</th>
-                                            <td>{{ isset($endorsement->valid_to) ? $endorsement->valid_to->toEuropeanDateTime() : 'Never' }}</td>
+                                            <td>{{ isset($endorsement->valid_to) ? $endorsement->valid_to->toUserDateTime() : 'Never' }}</td>
                                         </tr>
                                         <tr>
                                             <th>Issued by</th>
@@ -374,7 +374,7 @@
                                         </tr>
                                         <tr class="spacing">
                                             <th>Expire</th>
-                                            <td>{{ isset($endorsement->valid_to) ? $endorsement->valid_to->toEuropeanDateTime() : 'Never' }}</td>
+                                            <td>{{ isset($endorsement->valid_to) ? $endorsement->valid_to->toUserDateTime() : 'Never' }}</td>
                                         </tr>
                                         <tr>
                                             <th>Issued by</th>
@@ -401,7 +401,7 @@
                                         </tr>
                                         <tr class="spacing">
                                             <th>Expire</th>
-                                            <td>{{ isset($endorsement->valid_to) ? $endorsement->valid_to->toEuropeanDateTime() : 'Never' }}</td>
+                                            <td>{{ isset($endorsement->valid_to) ? $endorsement->valid_to->toUserDateTime() : 'Never' }}</td>
                                         </tr>
                                         <tr>
                                             <th>Issued by</th>
@@ -463,7 +463,7 @@
                                         @foreach($recentAtcSessions as $session)
                                         <tr>
                                             <td>{{ $session['callsign'] }}</td>
-                                            <td>{{ isset($session['start']) ? Carbon\Carbon::parse($session['start'])->toEuropeanDateTime() : '—' }}</td>
+                                            <td>{{ isset($session['start']) ? Carbon\Carbon::parse($session['start'])->toUserDateTime() : '—' }}</td>
                                             <td>{{ $session['duration'] ?? '—' }}</td>
                                         </tr>
                                         @endforeach
