@@ -52,10 +52,7 @@
                             <tr>
                                 <td>
                                     <i class="{{ $training->status->icon() }} text-{{ $training->status->color() }}"></i>
-                                    {{-- VATSSA: theory mark replaces the pre-training tick --}}
-                                    @if($training->theory_completed)
-                                        <span class="badge text-bg-success" title="Theory completed"><i class="fas fa-graduation-cap"></i> Theory</span>
-                                    @endif
+                                    @include('vatssa.training.theory-badge', ['short' => true]) {{-- VATSSA: replaces the pre-training tick --}}
 
                                     @if($training->activities->where('type', 'COMMENT')->count())
 

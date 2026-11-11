@@ -23,9 +23,9 @@ underneath an added file. So each section below names its own detector, and
 
 ## Modified upstream files
 
-Thirteen, but they are two different things and should be read as such.
+Eighteen, but they are two different things and should be read as such.
 
-**Three are code and configuration.** These are the real divergence. Each one is
+**Eight are code and configuration.** These are the real divergence. Each one is
 a conflict on some future release, each needs judgement to resolve, and this
 list growing is the thing to resist.
 
@@ -36,16 +36,18 @@ they carry risk.
 
 | | Count |
 |---|---|
-| Code and configuration | 3 |
+| Code and configuration | 8 |
 | Brand assets | 10 |
-| Added files | 32 |
+| Added files | 40 |
 | Force-added past `.gitignore` | 3 |
 
 ### `config/roles.php`
 
-**Why it diverges.** VATSSA runs six roles (`admin`, `atc-training-manager`,
+**Why it diverges.** VATSSA runs its own roles (`admin`, `atc-training-manager`,
 `pipeline-coordinator`, `mentor`, `nav-editor`, `feedback-team`) in place of
-upstream's eight, with its own permission matrix. The permission catalogue is
+upstream's, with its own permission matrix. One upstream role is kept exactly as
+upstream wrote it: `event-staff` (v7.3.0), with upstream's two booking grants and
+grantable by admin only. The permission catalogue is
 upstream's verbatim except for the `roles.*.manage` entries, which are renamed to
 match the VATSSA role keys.
 
@@ -96,6 +98,37 @@ docker run --rm ghcr.io/vatsim-ssa/ssa-controlcenter:prod ls vendor/bin
 
 **In flight upstream:** `upstream-contrib/install-dev-arg`. If it lands, delete
 this entry and take upstream's version.
+
+### `config/app.php`
+
+**Why it diverges.** Two lines: the import and the `providers` entry for
+`App\Providers\VatssaServiceProvider`. That provider carries the fork's
+behaviour changes so the upstream files they would otherwise touch stay clean.
+
+**Detector:** a git merge conflict at absorption. If the provider entry is lost,
+`VatssaTheoryCompletedTest` fails (route missing, pre-training button back).
+
+**What to check when it conflicts.** Upstream moving to `bootstrap/providers.php`
+is the likely cause. Register the provider there instead.
+
+### Theory mark: `training/show.blade.php`, `training/index.blade.php`, `reports/activities.blade.php`
+
+**Why they diverge.** Staff mark a training's theory as passed (2026-11-11).
+The logic lives in added files; the views carry only what a view has to:
+
+- `show.blade.php`: `@include('vatssa.training.theory-button')` beside the
+  title buttons, and `@include('vatssa.training.theory-badge')` in place of the
+  pre-training tick next to the state.
+- `index.blade.php` (Open requests): the badge include, in place of the tick.
+- `show.blade.php` and `reports/activities.blade.php`: the activity feed's
+  `PRETRAINING` branches also render `THEORY`, icon and text. Two lines each.
+
+**Detector:** `tests/Feature/VatssaTheoryCompletedTest.php` asserts the button,
+the badge on Open requests and the missing pre-training button.
+
+**What to check when it conflicts.** Re-add the includes wherever upstream now
+renders the state and the title buttons. If upstream reworks the activity feed,
+keep `THEORY` rendering like `PRETRAINING`.
 
 ---
 
@@ -173,6 +206,45 @@ runs it end to end.
 
 **On absorption:** diff those upstream paths between the old and the new tag. If
 any moved, read the seeder before trusting the test.
+
+### `app/Providers/VatssaServiceProvider.php`, `routes/vatssa.php`
+
+Fork behaviour without editing upstream files:
+
+- registers the `THEORY` activity type (`TrainingActivityController::$activityTypes`)
+- turns off upstream's student "Mark pre-training as completed" with a
+  `Gate::before` on `togglePreTrainingCompleted`, admins included
+- defines `toggleTheoryCompleted`: `training.update` in the training's area, open
+  trainings only
+- loads `routes/vatssa.php` with the authenticated web middleware
+  (`web`, `auth`, `activity`, `suspended`)
+
+**Leans on:** the public static `$activityTypes`, the ability name
+`togglePreTrainingCompleted`, the middleware aliases in `routes/web.php`, and
+`TrainingStatus::isOpen()`.
+**Detector:** `VatssaTheoryCompletedTest`.
+
+### `app/Http/Controllers/VatssaTheoryController.php`, `resources/views/vatssa/training/*`
+
+The theory mark itself. The form posts the state it wants (`completed` 0/1),
+so a double click or a stale page cannot flip it back.
+**Detector:** `VatssaTheoryCompletedTest`.
+
+### `database/migrations/2026_11_11_120000_vatssa_add_theory_completed_to_trainings.php`
+
+Adds `trainings.theory_completed`. **Deliberately on the default path, not
+`database/migrations-vatssa/`**: `RefreshDatabase` runs only the default path, so
+a column added from `migrations-vatssa/` does not exist in tests (the same reason
+the reference-data tests fail). The `vatssa_` prefix and the date keep it clear
+of upstream's names.
+**Detector:** `VatssaTheoryCompletedTest`.
+
+### `.github/workflows/upstream-check.yml`
+
+Daily at 06:00 UTC, compares upstream's latest release with `.upstream-version`
+and posts to Discord when they differ. Needs the `DISCORD_WEBHOOK` repo secret.
+Runs only from `main`. **Bump `.upstream-version` in every absorption**, or it
+pings daily.
 
 ### `tests/Feature/VatssaTest.php`
 

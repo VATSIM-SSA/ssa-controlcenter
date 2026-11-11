@@ -22,7 +22,6 @@ use App\Http\Controllers\TrainingExaminationController;
 use App\Http\Controllers\TrainingObjectAttachmentController;
 use App\Http\Controllers\TrainingReportController;
 use App\Http\Controllers\UserController;
-use App\Http\Controllers\VatssaTheoryController;
 use App\Http\Controllers\VoteController;
 
 /*
@@ -124,8 +123,6 @@ Route::middleware(['auth', 'activity', 'suspended'])->group(function () {
         Route::get('/training/{training}/action/pretraining', 'togglePreTrainingCompleted')->name('training.action.pretraining');
         Route::post('/training/{training}/rating/{rating}/complete', 'completePart')->name('training.action.completepart');
         Route::post('/training/{training}/complete', 'complete')->name('training.action.complete');
-        // VATSSA: staff-only theory mark (VatssaTheoryController).
-        Route::post('/training/{training}/action/theory', [VatssaTheoryController::class, 'toggle'])->name('training.action.theory');
         Route::patch('/training/{training}', 'updateDetails')->name('training.update.details');
         Route::get('/training/{training}', 'show')->name('training.show');
 

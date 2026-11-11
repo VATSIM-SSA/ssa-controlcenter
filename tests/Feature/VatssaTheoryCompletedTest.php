@@ -48,7 +48,7 @@ class VatssaTheoryCompletedTest extends TestCase
         $coordinator = $this->userWithRole('pipeline-coordinator', $this->area->id);
 
         $this->actingAs($coordinator)
-            ->post(route('training.action.theory', $this->training))
+            ->post(route('training.action.theory', $this->training), ['completed' => 1])
             ->assertRedirect($this->training->path());
 
         $this->assertTrue((bool) $this->training->fresh()->theory_completed);
@@ -59,7 +59,29 @@ class VatssaTheoryCompletedTest extends TestCase
             'triggered_by_id' => $coordinator->id,
         ]);
 
-        $this->actingAs($coordinator)->post(route('training.action.theory', $this->training));
+        $this->actingAs($coordinator)->post(route('training.action.theory', $this->training), ['completed' => 0]);
+        $this->assertFalse((bool) $this->training->fresh()->theory_completed);
+    }
+
+    #[Test]
+    public function setting_the_state_it_already_has_changes_nothing(): void
+    {
+        // A double click, or two staff on stale pages, must not flip it back.
+        $coordinator = $this->userWithRole('pipeline-coordinator', $this->area->id);
+
+        $this->actingAs($coordinator)->post(route('training.action.theory', $this->training), ['completed' => 1]);
+        $this->actingAs($coordinator)->post(route('training.action.theory', $this->training), ['completed' => 1]);
+
+        $this->assertTrue((bool) $this->training->fresh()->theory_completed);
+        $this->assertSame(1, $this->training->activities()->where('type', 'THEORY')->count());
+    }
+
+    #[Test]
+    public function the_state_is_required(): void
+    {
+        $coordinator = $this->userWithRole('pipeline-coordinator', $this->area->id);
+
+        $this->actingAs($coordinator)->post(route('training.action.theory', $this->training))->assertSessionHasErrors('completed');
         $this->assertFalse((bool) $this->training->fresh()->theory_completed);
     }
 
@@ -68,7 +90,7 @@ class VatssaTheoryCompletedTest extends TestCase
     {
         $atm = $this->userWithRole('atc-training-manager', null);
 
-        $this->actingAs($atm)->post(route('training.action.theory', $this->training))->assertRedirect();
+        $this->actingAs($atm)->post(route('training.action.theory', $this->training), ['completed' => 1])->assertRedirect();
 
         $this->assertTrue((bool) $this->training->fresh()->theory_completed);
     }
@@ -78,8 +100,8 @@ class VatssaTheoryCompletedTest extends TestCase
     {
         $mentor = $this->userWithRole('mentor', $this->area->id);
 
-        $this->actingAs($this->training->user)->post(route('training.action.theory', $this->training))->assertForbidden();
-        $this->actingAs($mentor)->post(route('training.action.theory', $this->training))->assertForbidden();
+        $this->actingAs($this->training->user)->post(route('training.action.theory', $this->training), ['completed' => 1])->assertForbidden();
+        $this->actingAs($mentor)->post(route('training.action.theory', $this->training), ['completed' => 1])->assertForbidden();
 
         $this->assertFalse((bool) $this->training->fresh()->theory_completed);
     }
@@ -89,7 +111,7 @@ class VatssaTheoryCompletedTest extends TestCase
     {
         $other = $this->userWithRole('pipeline-coordinator', Area::factory()->create()->id);
 
-        $this->actingAs($other)->post(route('training.action.theory', $this->training))->assertForbidden();
+        $this->actingAs($other)->post(route('training.action.theory', $this->training), ['completed' => 1])->assertForbidden();
     }
 
     #[Test]
@@ -98,7 +120,7 @@ class VatssaTheoryCompletedTest extends TestCase
         $this->training->update(['status' => TrainingStatus::COMPLETED->value]);
         $coordinator = $this->userWithRole('pipeline-coordinator', $this->area->id);
 
-        $this->actingAs($coordinator)->post(route('training.action.theory', $this->training))->assertForbidden();
+        $this->actingAs($coordinator)->post(route('training.action.theory', $this->training), ['completed' => 1])->assertForbidden();
     }
 
     #[Test]
