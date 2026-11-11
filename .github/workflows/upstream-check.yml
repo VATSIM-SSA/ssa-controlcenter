@@ -1,0 +1,32 @@
+name: Upstream release check
+
+# Daily check: has Vatsim-Scandinavia/controlcenter shipped a release newer than the
+# one this fork is based on? If so, Discord-ping so we can review + rebase.
+on:
+  schedule:
+    - cron: "0 6 * * *"   # 06:00 UTC daily
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Compare upstream latest release to our pin
+        run: |
+          UPSTREAM=$(curl -s https://api.github.com/repos/Vatsim-Scandinavia/controlcenter/releases/latest | jq -r .tag_name)
+          OURS=$(cat .upstream-version 2>/dev/null | tr -d '[:space:]')
+          echo "upstream=$UPSTREAM  ours=$OURS"
+          if [ -n "$UPSTREAM" ] && [ "$UPSTREAM" != "null" ] && [ "$UPSTREAM" != "$OURS" ]; then
+            curl -sS -H "Content-Type: application/json" -X POST "${{ secrets.DISCORD_WEBHOOK }}" -d "{
+              \"username\": \"Control Center Upstream\",
+              \"embeds\": [{
+                \"title\": \"⬆️ Upstream Control Center ${UPSTREAM} released\",
+                \"url\": \"https://github.com/Vatsim-Scandinavia/controlcenter/releases/latest\",
+                \"color\": 3447003,
+                \"description\": \"This fork (ssa-controlcenter) is based on **${OURS}**. Review the changelog + rebase when ready, then bump .upstream-version.\"
+              }]
+            }"
+          fi
