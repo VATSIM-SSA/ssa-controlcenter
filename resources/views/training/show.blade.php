@@ -6,6 +6,18 @@
         @can('close', $training)
             <a href="{{ route('training.action.close', $training->id) }}" onclick="return confirm('Are you sure you want to close your training?')" class="btn btn-danger"><i class="fas fa-xmark"></i> Close my training</a>
         @endcan
+        {{-- VATSSA: staff-only theory mark. The pre-training button below is
+             switched off in TrainingPolicy and never renders. --}}
+        @can('toggleTheoryCompleted', $training)
+            <form method="POST" action="{{ route('training.action.theory', $training->id) }}" class="d-inline">
+                @csrf
+                @if($training->theory_completed)
+                    <button type="submit" onclick="return confirm('Mark the theory as not completed?')" class="btn btn-outline-secondary"><i class="fas fa-xmark"></i> Mark theory as not completed</button>
+                @else
+                    <button type="submit" onclick="return confirm('Mark the theory as completed?')" class="btn btn-success"><i class="fas fa-check"></i> Mark theory as completed</button>
+                @endif
+            </form>
+        @endcan
         @can('togglePreTrainingCompleted', $training)
             @if($training->pre_training_completed)
                 <a href="{{ route('training.action.pretraining', $training->id) }}" onclick="return confirm('Are you sure you want to mark this pre-training as not completed?')" class="btn btn-primary"><i class="fas fa-xmark"></i> Mark pre-training as not completed</a>
@@ -72,10 +84,11 @@
                     <dt>State</dt>
                     <dd>
                         <i class="{{ $training->status->icon() }} text-{{ $training->status->color() }}"></i>
-                        @if($training->status === \App\Helpers\TrainingStatus::PRE_TRAINING && $training->pre_training_completed)
-                            <i class="fas fa-check text-success"></i>
-                        @endif
                         {{ $training->status->label() }}
+                        {{-- VATSSA: theory mark replaces the pre-training tick --}}
+                        @if($training->theory_completed)
+                            <span class="badge text-bg-success ms-1"><i class="fas fa-graduation-cap"></i> Theory completed</span>
+                        @endif
                         {{ isset($training->paused_at) ? ' (PAUSED)' : '' }}
                     </dd>
 
@@ -277,7 +290,7 @@
                                         <i class="fas fa-list-check"></i>
                                     @elseif($activity->type == "COMMENT")
                                         <i class="fas fa-comment"></i>
-                                    @elseif($activity->type == 'PRETRAINING')
+                                    @elseif($activity->type == 'PRETRAINING' || $activity->type == 'THEORY')
                                         <i class="fas fa-graduation-cap"></i>
                                     @endif
 
@@ -358,8 +371,8 @@
                                         @if($activity->created_at != $activity->updated_at)
                                             <span class="text-muted">(edited)</span>
                                         @endif
-                                    @elseif($activity->type == "PRETRAINING")
-                                        Pre-training marked as
+                                    @elseif($activity->type == "PRETRAINING" || $activity->type == "THEORY")
+                                        {{ $activity->type == "THEORY" ? 'Theory' : 'Pre-training' }} marked as
                                         <span class="badge text-bg-light">
                                             @if($activity->new_data)
                                                 <i class="fas fa-check"></i>

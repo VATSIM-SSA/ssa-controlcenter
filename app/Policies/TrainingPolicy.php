@@ -64,8 +64,21 @@ class TrainingPolicy
      */
     public function togglePreTrainingCompleted(User $user, Training $training)
     {
-        return $training->status === TrainingStatus::PRE_TRAINING &&
-                ($training->pre_training_completed == false || $user->hasPermission('training.update', $training->area));
+        // VATSSA: switched off. A student self-ticking "pre-training done" gates
+        // nothing and read as a theory pass. Staff record the theory instead,
+        // through toggleTheoryCompleted below.
+        return false;
+    }
+
+    /**
+     * VATSSA: staff (training.update in the training's area) mark the theory as
+     * passed. Mentors and students cannot.
+     *
+     * @return bool
+     */
+    public function toggleTheoryCompleted(User $user, Training $training)
+    {
+        return $training->status->isOpen() && $user->hasPermission('training.update', $training->area);
     }
 
     /**

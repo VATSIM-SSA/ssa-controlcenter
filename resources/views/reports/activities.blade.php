@@ -88,7 +88,7 @@
                                                 <i class="fas fa-list-check"></i>
                                             @elseif($activity->type == "COMMENT")
                                                 <i class="fas fa-comment"></i>
-                                            @elseif($activity->type == 'PRETRAINING')
+                                            @elseif($activity->type == 'PRETRAINING' || $activity->type == 'THEORY')
                                                 <i class="fas fa-graduation-cap"></i>
                                             @endif
 
@@ -156,8 +156,8 @@
                                                 @if($activity->created_at != $activity->updated_at)
                                                     <span class="text-muted">(edited)</span>
                                                 @endif
-                                            @elseif($activity->type == "PRETRAINING")
-                                                Pre-training marked as
+                                            @elseif($activity->type == "PRETRAINING" || $activity->type == "THEORY")
+                                                {{ $activity->type == "THEORY" ? 'Theory' : 'Pre-training' }} marked as
                                                 <span class="badge text-bg-light">
                                                     @if($activity->new_data)
                                                         <i class="fas fa-check"></i>
