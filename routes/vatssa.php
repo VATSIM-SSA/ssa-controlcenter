@@ -1,0 +1,11 @@
+<?php
+
+use App\Http\Controllers\VatssaTheoryController;
+use Illuminate\Support\Facades\Route;
+
+/*
+| VATSSA routes. Loaded by VatssaServiceProvider with the same middleware as
+| the authenticated group in routes/web.php: web, auth, activity, suspended.
+*/
+
+Route::post('/training/{training}/action/theory', [VatssaTheoryController::class, 'update'])->name('training.action.theory');

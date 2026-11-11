@@ -7,6 +7,7 @@ use App\Providers\DivisionApiServiceProvider;
 use App\Providers\EventServiceProvider;
 use App\Providers\RouteServiceProvider;
 use App\Providers\VatsimBookingApiServiceProvider;
+use App\Providers\VatssaServiceProvider;
 use Illuminate\Support\Facades\Facade;
 use Illuminate\Support\ServiceProvider;
 
@@ -47,7 +48,7 @@ return [
     |
     */
     /* x-release-please-start-version */
-    'version' => '7.0.0',
+    'version' => '7.3.0',
     /* x-release-please-end */
 
     /*
@@ -258,6 +259,7 @@ return [
         CarbonServiceProvider::class,
         DivisionApiServiceProvider::class,
         VatsimBookingApiServiceProvider::class,
+        VatssaServiceProvider::class, // VATSSA: the fork's additions, see PATCHES.md
 
     ])->toArray(),
 

@@ -3,7 +3,7 @@
 // VATSSA config/roles.php — drafted 2026-08-26 against upstream v7.0.0.
 // This is the ONLY upstream file VATSSA modifies. Everything else is an addition.
 // Diverges from upstream in three places, all marked VATSSA:
-//   1. the roles catalogue          (six VATSSA roles replace upstream's eight)
+//   1. the roles catalogue          (VATSSA roles replace upstream's; event-staff kept as upstream wrote it)
 //   2. the roles.*.manage entries   (renamed to match the VATSSA role keys)
 //   3. the matrix                   (VATSSA's own grants)
 // The permission catalogue is otherwise upstream's, verbatim. Keep it that way:
@@ -39,6 +39,12 @@ return [
         'feedback-team' => [
             'name' => 'Feedback Team',
             'description' => 'Reviews controller feedback',
+            'scope' => 'global',
+        ],
+        // VATSSA: adopted from upstream v7.3.0 unchanged (2026-11-11).
+        'event-staff' => [
+            'name' => 'Event Staff',
+            'description' => 'Event staff with organisation-wide booking management and bulk booking access',
             'scope' => 'global',
         ],
     ],
@@ -122,6 +128,7 @@ return [
         'roles.nav-editor.manage',
         'roles.mentor.manage',
         'roles.feedback-team.manage',
+        'roles.event-staff.manage',             // admin only, through '**'
     ],
 
     'matrix' => [
@@ -187,6 +194,12 @@ return [
 
         'feedback-team' => [
             'feedback.**',                      // now includes the new feedback.update
+        ],
+
+        // Upstream's grants, verbatim: every booking, plus bulk booking.
+        'event-staff' => [
+            'bookings.manage',
+            'bookings.bypass-restrictions',
         ],
     ],
 ];

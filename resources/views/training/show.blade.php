@@ -6,6 +6,7 @@
         @can('close', $training)
             <a href="{{ route('training.action.close', $training->id) }}" onclick="return confirm('Are you sure you want to close your training?')" class="btn btn-danger"><i class="fas fa-xmark"></i> Close my training</a>
         @endcan
+        @include('vatssa.training.theory-button') {{-- VATSSA --}}
         @can('togglePreTrainingCompleted', $training)
             @if($training->pre_training_completed)
                 <a href="{{ route('training.action.pretraining', $training->id) }}" onclick="return confirm('Are you sure you want to mark this pre-training as not completed?')" class="btn btn-primary"><i class="fas fa-xmark"></i> Mark pre-training as not completed</a>
@@ -45,14 +46,7 @@
         <div class="card shadow mb-2">
             <div class="card-header bg-primary py-3 d-flex flex-row column-gap-3 pe-0">
                 <h6 class="m-0 fw-bold text-white flex-grow-1">
-                    <i class="fas fa-flag"></i>&nbsp;{{ $training->user->first_name }}'s training for
-                    @foreach($training->ratings as $rating)
-                        @if ($loop->last)
-                            {{ $rating->name }}
-                        @else
-                            {{ $rating->name . " + " }}
-                        @endif
-                    @endforeach
+                    <i class="fas fa-flag"></i>&nbsp;{{ $training->user->first_name }}'s training for {{ $training->getInlineRatings() }}
                 </h6>
 
                 @can('create', [\App\Models\Task::class])
@@ -79,10 +73,8 @@
                     <dt>State</dt>
                     <dd>
                         <i class="{{ $training->status->icon() }} text-{{ $training->status->color() }}"></i>
-                        @if($training->status === \App\Helpers\TrainingStatus::PRE_TRAINING && $training->pre_training_completed)
-                            <i class="fas fa-check text-success"></i>
-                        @endif
                         {{ $training->status->label() }}
+                        @include('vatssa.training.theory-badge') {{-- VATSSA: replaces the pre-training tick --}}
                         {{ isset($training->paused_at) ? ' (PAUSED)' : '' }}
                     </dd>
 
@@ -91,17 +83,16 @@
 
                     <dt>Level</dt>
                     <dd class="separator pb-3">
-                        @if ( is_iterable($ratings = $training->ratings->toArray()) )
-                            @for( $i = 0; $i < sizeof($ratings); $i++ )
-                                @if ( $i == (sizeof($ratings) - 1) )
-                                    {{ $ratings[$i]["name"] }}
+                        @foreach($training->ratings as $rating)
+                            <div>
+                                @if($rating->pivot->completed_at)
+                                    <i class="fas fa-check text-success"></i>&nbsp;{{ $rating->name }}
+                                    <span class="text-muted">({{ \Carbon\Carbon::parse($rating->pivot->completed_at)->toEuropeanDate() }})</span>
                                 @else
-                                    {{ $ratings[$i]["name"] . " + " }}
+                                    {{ $rating->name }}
                                 @endif
-                            @endfor
-                        @else
-                            {{ $ratings["name"] }}
-                        @endif
+                            </div>
+                        @endforeach
                     </dd>
 
                     <dt class="pt-2">Vatsim ID</dt>
@@ -151,9 +142,31 @@
                     </dd>
                 </dl>
 
-                @can('edit', [\App\Models\Training::class, $training])
-                    <a href="{{ route('training.edit', $training->id) }}" class="btn btn-outline-primary btn-icon"><i class="fas fa-pencil"></i>&nbsp;Edit training</a>
-                @endcan
+                <div class="btn-group" role="group" aria-label="Training actions">
+                    @can('edit', [\App\Models\Training::class, $training])
+                        <a href="{{ route('training.edit', $training->id) }}" class="btn btn-outline-primary btn-icon"><i class="fas fa-pencil"></i>&nbsp;Edit training</a>
+                    @endcan
+
+                    @if($showCompletionControl)
+                        @can('update', $training)
+                            <div class="btn-group" role="group">
+                                <button class="btn btn-outline-success btn-icon dropdown-toggle" type="button" id="completionMenuButton" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                                    <i class="fas fa-check me-1"></i>Complete training
+                                </button>
+                                <div class="dropdown-menu" aria-labelledby="completionMenuButton">
+                                    @if($canCompletePartially)
+                                        <button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#completePartialTraining">
+                                            <i class="fas fa-list-check me-1"></i>Complete partial training
+                                        </button>
+                                    @endif
+                                    <button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#completeWholeTraining">
+                                        <i class="fas fa-check me-1"></i>Mark training as completed
+                                    </button>
+                                </div>
+                            </div>
+                        @endcan
+                    @endif
+                </div>
             </div>
         </div>
 
@@ -259,9 +272,11 @@
                                         <i class="fas fa-circle-pause"></i>
                                     @elseif($activity->type == "ENDORSEMENT")
                                         <i class="fas fa-check-square"></i>
+                                    @elseif($activity->type == "RATING")
+                                        <i class="fas fa-list-check"></i>
                                     @elseif($activity->type == "COMMENT")
                                         <i class="fas fa-comment"></i>
-                                    @elseif($activity->type == 'PRETRAINING')
+                                    @elseif($activity->type == 'PRETRAINING' || $activity->type == 'THEORY')
                                         <i class="fas fa-graduation-cap"></i>
                                     @endif
 
@@ -332,14 +347,18 @@
                                                 @endforeach
                                             @endempty
                                         @endif
+                                    @elseif($activity->type == "RATING")
+                                        @isset($activity->rating)
+                                            <span class="badge text-bg-light">{{ $activity->rating->name }}</span> part completed
+                                        @endisset
                                     @elseif($activity->type == "COMMENT")
-                                        {!! nl2br($activity->comment) !!}
+                                        {!! nl2br(e($activity->comment)) !!}
 
                                         @if($activity->created_at != $activity->updated_at)
                                             <span class="text-muted">(edited)</span>
                                         @endif
-                                    @elseif($activity->type == "PRETRAINING")
-                                        Pre-training marked as
+                                    @elseif($activity->type == "PRETRAINING" || $activity->type == "THEORY")
+                                        {{ $activity->type == "THEORY" ? 'Theory' : 'Pre-training' }} marked as
                                         <span class="badge text-bg-light">
                                             @if($activity->new_data)
                                                 <i class="fas fa-check"></i>
@@ -370,6 +389,68 @@
                 </ul>
             </div>
         </div>
+
+        @if($soloEndorsementSummary)
+            <div class="card shadow mb-4">
+                <div class="card-header bg-primary py-3 d-flex flex-row align-items-center justify-content-between">
+                    <h6 class="m-0 fw-bold text-white">
+                        Solo Endorsements
+                    </h6>
+                </div>
+                <div class="card-body">
+                    {{-- A native details element, so the breakdown needs no collapse
+                         script and stays keyboard accessible on its own. --}}
+                    <details class="solo-endorsements" @if(! $soloEndorsementSummary['collapsed']) open @endif>
+                        <summary>
+                            Solo days remaining:
+                            <span class="{{ $soloEndorsementSummary['left'] === 0 ? 'text-danger' : 'text-success' }}">{{ $soloEndorsementSummary['left'] }}</span>
+                            of {{ $soloEndorsementSummary['total'] }}
+                        </summary>
+
+                        <div class="mt-3">
+                            <div class="text-muted mb-2">
+                                Days granted: {{ $soloEndorsementSummary['used'] }}
+                            </div>
+                            <div class="progress mb-3" role="progressbar" aria-label="Solo days used" aria-valuemin="0" aria-valuemax="{{ $soloEndorsementSummary['total'] }}" aria-valuenow="{{ min($soloEndorsementSummary['used'], $soloEndorsementSummary['total']) }}">
+                                <div class="progress-bar {{ $soloEndorsementSummary['percentage_used'] >= 100 ? 'bg-danger' : 'bg-primary' }}" style="width: {{ $soloEndorsementSummary['percentage_used'] }}%;"></div>
+                            </div>
+                            <small class="text-muted d-block mb-3">{{ $soloEndorsementSummary['percentage_used'] }}% of the allowable {{ $soloEndorsementSummary['total'] }} days used.</small>
+
+                            <div class="table-responsive">
+                                <table class="table table-sm table-leftpadded mb-0">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Granted</th>
+                                            <th>Expires</th>
+                                            <th>Days Granted</th>
+                                            <th>Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach($soloEndorsementSummary['endorsements'] as ['endorsement' => $soloEndorsement, 'days' => $soloDays])
+                                            <tr>
+                                                <td>{{ $soloEndorsement->valid_from?->toEuropeanDateTime() ?? '—' }}</td>
+                                                <td>{{ $soloEndorsement->valid_to?->toEuropeanDateTime() ?? '—' }}</td>
+                                                <td>{{ $soloEndorsement->valid_to ? $soloDays : '—' }}</td>
+                                                <td>
+                                                    @if($soloEndorsement->revoked)
+                                                        <span class="badge bg-danger">Revoked</span>
+                                                    @elseif($soloEndorsement->expired || $soloEndorsement->valid_to?->isPast())
+                                                        <span class="badge bg-warning text-dark">Expired</span>
+                                                    @else
+                                                        <span class="badge bg-success">Active</span>
+                                                    @endif
+                                                </td>
+                                            </tr>
+                                        @endforeach
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </details>
+                </div>
+            </div>
+        @endif
 
         <div class="card shadow mb-4">
             <div class="card-header bg-primary py-3 d-flex flex-row align-items-center justify-content-between">
@@ -610,6 +691,14 @@
     @endif
 @endforeach
 
+@if($showCompletionControl)
+    @can('update', $training)
+        @if($canCompletePartially)
+            @include('training.parts.completepartmodal', ['training' => $training, 'completablePart' => $completablePart, 'otherOutstandingRatings' => $otherOutstandingRatings, 'upgradeRequestedForPart' => $upgradeRequestedForPart])
+        @endif
+        @include('training.parts.completetrainingmodal', ['training' => $training, 'outstandingRatings' => $outstandingRatings, 'outstandingEndorsementRatings' => $outstandingEndorsementRatings])
+    @endcan
+@endif
 
 @endsection
 

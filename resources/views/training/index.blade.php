@@ -52,9 +52,7 @@
                             <tr>
                                 <td>
                                     <i class="{{ $training->status->icon() }} text-{{ $training->status->color() }}"></i>
-                                    @if($training->status === \App\Helpers\TrainingStatus::PRE_TRAINING && $training->pre_training_completed)
-                                        <i class="fas fa-check text-success"></i>
-                                    @endif
+                                    @include('vatssa.training.theory-badge', ['short' => true]) {{-- VATSSA: replaces the pre-training tick --}}
 
                                     @if($training->activities->where('type', 'COMMENT')->count())
 
