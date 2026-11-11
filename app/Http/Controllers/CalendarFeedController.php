@@ -14,46 +14,57 @@ use Illuminate\Support\Facades\Auth;
 
 class CalendarFeedController extends Controller
 {
+    private const HEADERS = [
+        'Content-Type' => 'text/calendar; charset=utf-8',
+        'X-Robots-Tag' => 'noindex, nofollow',
+    ];
+
+    public function __construct(private CalendarFeedService $calendarFeed) {}
+
     /**
      * Serve a user's bookings as an iCalendar feed.
      *
-     * Calendar clients cannot log in, so the token in the URL is the credential.
+     * Calendar apps cannot log in, so the token in the URL is the credential.
      */
-    public function show(string $token, CalendarFeedService $feed): Response
+    public function show(string $token): Response
     {
         $user = User::query()->where('calendar_feed_token', $token)->first();
 
         abort_if($user === null || $user->rating === VatsimRating::SUS, 404);
 
-        return response($feed->forUser($user), 200, [
-            'Content-Type' => 'text/calendar; charset=utf-8',
+        return response($this->calendarFeed->forUser($user), 200, [
+            ...self::HEADERS,
             'Content-Disposition' => 'inline; filename="bookings.ics"',
             'Cache-Control' => 'private, max-age=300',
-            'X-Robots-Tag' => 'noindex, nofollow',
         ]);
     }
 
     /**
-     * Serve every published Event Hub event as a calendar of its own.
+     * Serve every published Event Hub event as a calendar of its own, the same for everyone.
      */
-    public function events(CalendarFeedService $feed): Response
+    public function events(): Response
     {
-        abort_unless($feed->canIncludeEvents(), 404);
+        abort_unless($this->calendarFeed->hasEventHub(), 404);
 
-        return response($feed->forEvents(), 200, [
-            'Content-Type' => 'text/calendar; charset=utf-8',
+        $calendar = $this->calendarFeed->forEvents();
+
+        // Tell calendar apps to try again later, so they keep the events they already show.
+        abort_if($calendar === null, 503, headers: ['Retry-After' => '300']);
+
+        return response($calendar, 200, [
+            ...self::HEADERS,
             'Content-Disposition' => 'inline; filename="events.ics"',
             'Cache-Control' => 'public, max-age=300',
         ]);
     }
 
     /**
-     * Choose whether the feed carries every Event Hub event, or only the user's own bookings.
-     * The link stays the same, so subscribed calendars pick the change up on their next refresh.
+     * Choose whether the personal feed also carries every Event Hub event. The link stays the
+     * same, so subscribed calendars pick the change up on their next refresh.
      */
-    public function update(Request $request, CalendarFeedService $feed): RedirectResponse
+    public function update(Request $request): RedirectResponse
     {
-        abort_unless($feed->canIncludeEvents(), 404);
+        abort_unless($this->calendarFeed->hasEventHub(), 404);
 
         $user = Auth::user();
         $user->setting_calendar_include_events = $request->boolean('setting_calendar_include_events');
@@ -70,10 +81,9 @@ class CalendarFeedController extends Controller
      */
     public function reset(): RedirectResponse
     {
-        $user = Auth::user();
-        $user->regenerateCalendarFeedToken();
+        $this->calendarFeed->resetToken(Auth::user());
 
-        ActivityLogService::info(LogName::Access, 'Calendar feed link reset by ' . $user->id);
+        ActivityLogService::info(LogName::Access, 'Calendar feed link reset by ' . Auth::id());
 
         return redirect(route('user.settings') . '#calendar-subscription')
             ->withSuccess('Calendar link reset. Subscribe again with the new link.');

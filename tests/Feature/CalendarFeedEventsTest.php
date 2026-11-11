@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Booking;
 use App\Models\Position;
 use App\Models\User;
+use App\Services\CalendarFeedService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Carbon;
@@ -72,7 +73,7 @@ class CalendarFeedEventsTest extends TestCase
 
     private function feed(User $user): string
     {
-        return $this->get(route('calendar.feed', ['token' => $user->ensureCalendarFeedToken()]))->assertOk()->getContent();
+        return $this->get(route('calendar.feed', ['token' => app(CalendarFeedService::class)->tokenFor($user)]))->assertOk()->getContent();
     }
 
     #[Test]
@@ -94,10 +95,10 @@ class CalendarFeedEventsTest extends TestCase
 
         $this->actingAs($user)->post(route('user.settings.calendar'), ['setting_calendar_include_events' => '1'])
             ->assertRedirect(route('user.settings') . '#calendar-subscription');
-        $this->assertTrue($user->fresh()->setting_calendar_include_events);
+        $this->assertTrue((bool) $user->fresh()->setting_calendar_include_events);
 
         $this->actingAs($user)->post(route('user.settings.calendar'));
-        $this->assertFalse($user->fresh()->setting_calendar_include_events);
+        $this->assertFalse((bool) $user->fresh()->setting_calendar_include_events);
     }
 
     #[Test]
@@ -247,5 +248,54 @@ class CalendarFeedEventsTest extends TestCase
         $this->eventBooking($user, 'FACT_TWR', $start->copy()->addHour());
 
         $this->assertStringContainsString('SUMMARY:FACT_TWR - Cape Town Fly-in', $this->feed($user));
+    }
+
+    #[Test]
+    public function a_position_opening_before_the_event_still_belongs_to_it(): void
+    {
+        $start = Carbon::tomorrow()->setHour(16);
+        $this->fakeHub([$this->occurrence(7, $start, 5, 'Joburg Rush')]);
+
+        $user = User::factory()->create();
+        $this->eventBooking($user, 'FAOR_APP', $start->copy()->subMinutes(30));
+
+        $this->assertStringContainsString('SUMMARY:FAOR_APP - Joburg Rush', $this->feed($user));
+    }
+
+    #[Test]
+    public function the_events_calendar_asks_to_retry_rather_than_serving_nothing(): void
+    {
+        Http::fake([self::HUB . '/*' => Http::response('down', 503)]);
+
+        $this->get(route('calendar.events'))->assertStatus(503)->assertHeader('Retry-After', '300');
+    }
+
+    #[Test]
+    public function a_failing_hub_is_left_alone_for_a_minute(): void
+    {
+        Http::fake([self::HUB . '/*' => Http::response('down', 503)]);
+        $user = User::factory()->create();
+
+        $this->feed($user);
+        $this->feed($user);
+        Http::assertSentCount(1);
+
+        $this->travel(2)->minutes();
+        $this->feed($user);
+        Http::assertSentCount(2);
+    }
+
+    #[Test]
+    public function malformed_hub_dates_are_skipped_instead_of_breaking_the_feed(): void
+    {
+        $good = $this->occurrence(1, Carbon::tomorrow()->setHour(16), 3, 'Good one');
+        $bad = [...$this->occurrence(2, Carbon::tomorrow()->setHour(18), 3, 'Bad one'), 'startsAt' => 'not a date'];
+        $backwards = [...$this->occurrence(3, Carbon::tomorrow()->setHour(20), 3, 'Backwards'), 'endsAt' => Carbon::tomorrow()->setHour(19)->toIso8601String()];
+        $this->fakeHub([$good, $bad, $backwards]);
+
+        $body = $this->get(route('calendar.events'))->assertOk()->getContent();
+
+        $this->assertStringContainsString('SUMMARY:Event: Good one', $body);
+        $this->assertSame(1, substr_count($body, 'BEGIN:VEVENT'));
     }
 }

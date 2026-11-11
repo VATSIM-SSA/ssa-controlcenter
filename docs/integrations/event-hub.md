@@ -7,7 +7,7 @@ Connect the Hub to Control Center and members can also see **every published eve
 - [x] **In their own calendar**: a switch adds every event to the member's personal link. Off by default. The link stays the same, so nobody has to subscribe again.
 - [x] **As a calendar of its own**: a shared events link (`/api/calendar/events.ics`), the same for everyone, with no token as it holds nothing private. Calendar apps give it its own colour and let members hide it in one click.
 - [x] **Named event bookings**: an event booking is labelled with the event it belongs to, e.g. "FAOR_APP - Joburg Rush", whichever way the member chose.
-- [x] **Light on the Hub**: Control Center reads the Hub's public API once for all members and caches it. If the Hub can't be reached, the last list it loaded is served.
+- [x] **Light on the Hub**: Control Center reads the Hub's public API once for all members and caches it for 15 minutes. If the Hub can't be reached, the last list it loaded is served and the Hub is left alone for a minute. With no list known at all, the events calendar answers "try again later", so calendar apps keep the events they already show.
 
 ## Setup
 

@@ -67,4 +67,18 @@ class IcsCalendarTest extends TestCase
         $unfolded = str_replace("\r\n ", '', $ics);
         $this->assertStringContainsString('DESCRIPTION:' . $description, $unfolded);
     }
+
+    #[Test]
+    public function no_value_can_break_out_of_its_line(): void
+    {
+        $ics = IcsCalendar::render("Name\r\nX-EVIL:1", [$this->event([
+            'summary' => "Title\nBEGIN:VEVENT",
+            'location' => "Here\r\nEND:VCALENDAR",
+            'url' => "https://example.org/\r\nBEGIN:VEVENT",
+        ])]);
+
+        $this->assertSame(1, substr_count($ics, "\r\nBEGIN:VEVENT\r\n"));
+        $this->assertSame(1, substr_count($ics, "\r\nEND:VCALENDAR\r\n"));
+        $this->assertStringNotContainsString("\r\nX-EVIL", $ics);
+    }
 }

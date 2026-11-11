@@ -7,6 +7,7 @@ use App\Models\Booking;
 use App\Models\Position;
 use App\Models\Sweatbook;
 use App\Models\User;
+use App\Services\CalendarFeedService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use PHPUnit\Framework\Attributes\Test;
@@ -62,7 +63,7 @@ class CalendarFeedTest extends TestCase
         $othersBooking = $this->createBooking($other, $position, $start->copy()->addDays(2));
         $sweatbook = $this->createSweatbook($user, $position, $start->copy()->addDays(3));
 
-        $response = $this->get(route('calendar.feed', ['token' => $user->ensureCalendarFeedToken()]));
+        $response = $this->get(route('calendar.feed', ['token' => app(CalendarFeedService::class)->tokenFor($user)]));
 
         $response->assertOk();
         $response->assertHeader('Content-Type', 'text/calendar; charset=utf-8');
@@ -86,7 +87,7 @@ class CalendarFeedTest extends TestCase
     {
         $user = User::factory()->create(['rating' => VatsimRating::SUS]);
 
-        $this->get(route('calendar.feed', ['token' => $user->ensureCalendarFeedToken()]))->assertNotFound();
+        $this->get(route('calendar.feed', ['token' => app(CalendarFeedService::class)->tokenFor($user)]))->assertNotFound();
     }
 
     #[Test]
@@ -111,7 +112,7 @@ class CalendarFeedTest extends TestCase
     public function resetting_the_link_revokes_the_old_one(): void
     {
         $user = User::factory()->create();
-        $oldToken = $user->ensureCalendarFeedToken();
+        $oldToken = app(CalendarFeedService::class)->tokenFor($user);
 
         $this->actingAs($user)->post(route('user.settings.calendar.reset'))
             ->assertRedirect(route('user.settings') . '#calendar-subscription');
@@ -133,8 +134,20 @@ class CalendarFeedTest extends TestCase
     public function token_is_never_serialized(): void
     {
         $user = User::factory()->create();
-        $user->ensureCalendarFeedToken();
+        app(CalendarFeedService::class)->tokenFor($user);
 
         $this->assertArrayNotHasKey('calendar_feed_token', $user->fresh()->toArray());
+    }
+
+    #[Test]
+    public function feeds_are_not_held_to_the_general_api_rate_limit(): void
+    {
+        $url = route('calendar.feed', ['token' => app(CalendarFeedService::class)->tokenFor(User::factory()->create())]);
+
+        for ($request = 1; $request <= 61; $request++) {
+            $response = $this->get($url);
+        }
+
+        $response->assertOk();
     }
 }

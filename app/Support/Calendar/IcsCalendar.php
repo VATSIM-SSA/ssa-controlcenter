@@ -64,7 +64,8 @@ class IcsCalendar
         }
 
         if ($event->url !== '') {
-            $lines[] = 'URL:' . $event->url;
+            // A URI value isn't TEXT-escaped, but must stay on one line.
+            $lines[] = 'URL:' . str_replace(["\r", "\n"], '', $event->url);
         }
 
         $lines[] = 'END:VEVENT';

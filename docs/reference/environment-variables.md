@@ -101,10 +101,9 @@ Settings related to the [VATSIM integration](../integrations/vatsim.md).
 <!-- --8<-- [start:env-vars-event-hub] -->
 Settings related to the [VATSIM Event Hub integration](../integrations/event-hub.md).
 
-| Variable                      | Default value | Explanation                                                                                       |
-| ----------------------------- | ------------- | ------------------------------------------------------------------------------------------------- |
-| `EVENT_HUB_URL`               | null          | Address of your Event Hub, without `/api`. When set, members can add its events to their calendar |
-| `EVENT_HUB_CACHE_TTL_MINUTES` | 15            | How long the list of events is cached before Control Center asks the Event Hub again              |
+| Variable        | Default value | Explanation                                                                                       |
+| --------------- | ------------- | ------------------------------------------------------------------------------------------------- |
+| `EVENT_HUB_URL` | null          | Address of your Event Hub, without `/api`. When set, members can add its events to their calendar |
 <!-- --8<-- [end:env-vars-event-hub] -->
 
 ## Mail

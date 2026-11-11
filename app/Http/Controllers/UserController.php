@@ -12,7 +12,6 @@ use App\Models\AtcActivity;
 use App\Models\TrainingExamination;
 use App\Models\TrainingReport;
 use App\Models\User;
-use App\Services\CalendarFeedService;
 use App\Services\StatisticsService;
 use Carbon\Carbon;
 use GuzzleHttp\Client;
@@ -306,14 +305,11 @@ class UserController extends Controller
      *
      * @return Response
      */
-    public function settings(CalendarFeedService $calendarFeed)
+    public function settings()
     {
         $user = Auth::user();
-        $calendarLinks = $calendarFeed->subscriptionLinks($user);
-        $calendarCanIncludeEvents = $calendarFeed->canIncludeEvents();
-        $eventsCalendarLinks = $calendarFeed->eventsSubscriptionLinks();
 
-        return view('usersettings', compact('user', 'calendarLinks', 'calendarCanIncludeEvents', 'eventsCalendarLinks'));
+        return view('usersettings', compact('user'));
     }
 
     /**

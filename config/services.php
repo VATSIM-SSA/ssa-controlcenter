@@ -42,7 +42,6 @@ return [
     */
     'event_hub' => [
         'url' => env('EVENT_HUB_URL'),
-        'cache_ttl_minutes' => env('EVENT_HUB_CACHE_TTL_MINUTES', 15),
     ],
 
     'stripe' => [
