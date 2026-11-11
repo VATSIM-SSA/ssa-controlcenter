@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Position;
 use App\Models\Sweatbook;
 use App\Services\BookingService;
+use App\Support\DisplayTime;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Http\RedirectResponse;
@@ -67,7 +68,7 @@ class SweatbookController extends Controller
         $this->authorize('create', Sweatbook::class);
 
         $data = $request->validate([
-            'date' => 'required|date_format:d/m/Y|after_or_equal:today',
+            'date' => 'required|date_format:d/m/Y|after_or_equal:' . DisplayTime::today(),
             'start_at' => 'required|date_format:H:i',
             'end_at' => 'required|date_format:H:i',
             'position' => 'required|exists:positions,callsign',
@@ -90,7 +91,7 @@ class SweatbookController extends Controller
     public function update(Request $request)
     {
         $data = $request->validate([
-            'date' => 'required|date_format:d/m/Y|after_or_equal:today',
+            'date' => 'required|date_format:d/m/Y|after_or_equal:' . DisplayTime::today(),
             'start_at' => 'required|date_format:H:i',
             'end_at' => 'required|date_format:H:i',
             'position' => 'required|exists:positions,callsign',

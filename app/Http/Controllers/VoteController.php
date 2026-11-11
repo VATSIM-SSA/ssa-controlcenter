@@ -62,7 +62,7 @@ class VoteController extends Controller
         $this->authorize('store', Vote::class);
 
         $data = request()->validate([
-            'expire_date' => 'required|date_format:d/m/Y|after_or_equal:today',
+            'expire_date' => 'required|date_format:d/m/Y|after_or_equal:' . DisplayTime::today(),
             'expire_time' => 'required|regex:/^\d{2}:\d{2}$/',
             'require_active' => '',
             'require_our_member' => '',

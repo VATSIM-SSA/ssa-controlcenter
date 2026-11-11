@@ -42,8 +42,8 @@ class CarbonServiceProvider extends ServiceProvider
         });
 
         // The toUser* twins format in the signed-in user's chosen time zone (Zulu by default).
-        // Use them on pages only. E-mails and log messages keep the Zulu macros above, as
-        // their reader isn't the user who triggered them.
+        // Use them for what that user reads on screen. E-mails and log messages keep the Zulu
+        // macros above, as their reader isn't the user who triggered them.
         Carbon::macro('toUserDate', function ($includeDayName = null) {
             return DisplayTime::convert($this)->format($includeDayName ? 'D. d/m/Y' : 'd/m/Y');
         });

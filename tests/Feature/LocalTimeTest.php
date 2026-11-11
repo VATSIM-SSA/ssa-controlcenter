@@ -201,6 +201,31 @@ class LocalTimeTest extends TestCase
     }
 
     #[Test]
+    public function today_is_judged_in_the_users_zone(): void
+    {
+        // 02:00z on 11 November is still 21:00 on 10 November in New York.
+        $this->travelTo(Carbon::parse('2026-11-11 02:00:00', 'UTC'));
+        $mentor = $this->mentor('America/New_York');
+        $position = Position::factory()->create();
+
+        $this->actingAs($mentor)->post('/sweatbook/store', [
+            'date' => '10/11/2026',
+            'start_at' => '22:00',
+            'end_at' => '23:30',
+            'position' => $position->callsign,
+        ])->assertSessionHasNoErrors();
+
+        $this->assertSame('2026-11-11 03:00:00', Sweatbook::sole()->time_start->utc()->format('Y-m-d H:i:s'));
+
+        $this->actingAs($mentor)->post('/sweatbook/store', [
+            'date' => '09/11/2026',
+            'start_at' => '22:00',
+            'end_at' => '23:30',
+            'position' => $position->callsign,
+        ])->assertSessionHasErrors('date');
+    }
+
+    #[Test]
     public function an_unknown_stored_zone_falls_back_to_zulu(): void
     {
         $this->actingAs(User::factory()->create(['setting_timezone' => 'Not/AZone']));

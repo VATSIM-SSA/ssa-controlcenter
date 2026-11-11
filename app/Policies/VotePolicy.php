@@ -51,7 +51,7 @@ class VotePolicy
     {
 
         if ($vote->closed) {
-            return Response::deny('The vote closed and concluded at ' . Carbon::create($vote->end_at)->toEuropeanDateTime());
+            return Response::deny('The vote closed and concluded at ' . Carbon::create($vote->end_at)->toUserDateTime());
         }
 
         if ($vote->user->contains('id', $user->id)) {

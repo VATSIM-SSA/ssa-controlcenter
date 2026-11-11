@@ -377,7 +377,7 @@ class EndorsementController extends Controller
         ActivityLogService::warning(LogName::Endorsement, 'Shortened ' . User::find($endorsement->user_id)->name . '\'s ' . $endorsement->type . ' endorsement to date ' . $date);
         $endorsement->user->notify(new EndorsementModifiedNotification($endorsement));
 
-        return redirect()->back()->withSuccess(User::find($endorsement->user_id)->name . "'s " . $endorsement->type . ' endorsement shortened to ' . Carbon::parse($date)->toEuropeanDateTime() . '. E-mail sent to student.');
+        return redirect()->back()->withSuccess(User::find($endorsement->user_id)->name . "'s " . $endorsement->type . ' endorsement shortened to ' . Carbon::parse($date)->toUserDateTime() . '. E-mail sent to student.');
     }
 
     /**
