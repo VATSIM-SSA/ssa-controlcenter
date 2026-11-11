@@ -38,7 +38,7 @@ they carry risk.
 |---|---|
 | Code and configuration | 8 |
 | Brand assets | 10 |
-| Added files | 40 |
+| Added files | 41 |
 | Force-added past `.gitignore` | 3 |
 
 ### `config/roles.php`
@@ -218,11 +218,16 @@ Fork behaviour without editing upstream files:
   trainings only
 - loads `routes/vatssa.php` with the authenticated web middleware
   (`web`, `auth`, `activity`, `suspended`)
+- hides the **Theoretical Exam Access** request type from the training page's
+  Request menu (view composer on `training.show`) and refuses to create one
+  (`Task::creating`). The class stays so older tasks of that type still render.
+  VATSSA's theory exam runs in Moodle.
 
 **Leans on:** the public static `$activityTypes`, the ability name
-`togglePreTrainingCompleted`, the middleware aliases in `routes/web.php`, and
+`togglePreTrainingCompleted`, the `requestTypes` variable passed to
+`training.show`, the `App\Tasks\Types\TheoreticalExam` class name, the middleware aliases in `routes/web.php`, and
 `TrainingStatus::isOpen()`.
-**Detector:** `VatssaTheoryCompletedTest`.
+**Detector:** `VatssaTheoryCompletedTest`, `VatssaNoTheoryExamTaskTest`.
 
 ### `app/Http/Controllers/VatssaTheoryController.php`, `resources/views/vatssa/training/*`
 

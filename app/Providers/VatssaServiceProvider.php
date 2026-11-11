@@ -3,11 +3,15 @@
 namespace App\Providers;
 
 use App\Http\Controllers\TrainingActivityController;
+use App\Models\Task;
 use App\Models\Training;
 use App\Models\User;
+use App\Tasks\Types\TheoreticalExam;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Validation\ValidationException;
 
 /**
  * VATSSA: behaviour added on top of upstream without editing upstream files.
@@ -33,6 +37,26 @@ class VatssaServiceProvider extends ServiceProvider
         // not students. Open trainings only.
         Gate::define('toggleTheoryCompleted', function (User $user, Training $training) {
             return $training->status->isOpen() && $user->hasPermission('training.update', $training->area);
+        });
+
+        // "Theoretical Exam Access" requests are not used: VATSSA's theory exam
+        // runs in Moodle. Hidden from the training page's Request menu and
+        // refused on create. The task type class stays, so tasks created before
+        // still render.
+        View::composer('training.show', function ($view) {
+            $types = $view->getData()['requestTypes'] ?? null;
+            if (is_array($types)) {
+                $view->with('requestTypes', array_values(array_filter(
+                    $types,
+                    fn ($type) => ! $type instanceof TheoreticalExam,
+                )));
+            }
+        });
+
+        Task::creating(function (Task $task) {
+            if ($task->type === TheoreticalExam::class) {
+                throw ValidationException::withMessages(['type' => 'Theoretical exam access requests are not used in VATSSA.']);
+            }
         });
 
         if (! $this->app->routesAreCached()) {
