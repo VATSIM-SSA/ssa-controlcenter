@@ -42,10 +42,11 @@ class VatssaTest extends TestCase
         'mentor',
         'nav-editor',
         'feedback-team',
+        'event-staff',
     ];
 
     #[Test]
-    public function the_role_list_is_exactly_the_six_vatssa_roles(): void
+    public function the_role_list_is_exactly_the_vatssa_roles(): void
     {
         // Catches an upstream role reappearing after a badly resolved conflict
         // in config/roles.php, which is the most likely way this file breaks.
