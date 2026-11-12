@@ -2,60 +2,35 @@
 
 namespace App\Http\Controllers;
 
-use App\Helpers\LogName;
 use App\Models\Training;
-use App\Services\ActivityLogService;
+use App\Services\VatssaTrainingFlags;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
 /**
- * VATSSA: staff flags on a training, "Stalled" and "Requires attention".
+ * VATSSA: staff set or clear a training flag ("Requires attention", "Stalled").
  *
- * Same shape as the theory mark: the form sends the state it wants, so a
- * double click or a stale page cannot flip it back. Each flag is a nullable
- * timestamp (when it was set). The change is recorded as a staff comment on
- * the timeline, which students do not see, so no upstream view needs a new
- * activity type.
+ * The form sends the state it wants, not "flip it", so a double click or a
+ * stale page cannot undo another change. The work, locking and history live in
+ * VatssaTrainingFlags.
  */
 class VatssaTrainingFlagController extends Controller
 {
-    /**
-     * Flag key (route and form field) => column and the words used for it.
-     */
-    public const FLAGS = [
-        'stalled' => [
-            'column' => 'stalled_at',
-            'on' => 'Training marked as stalled',
-            'off' => 'Training no longer marked as stalled',
-        ],
-        'attention' => [
-            'column' => 'attention_at',
-            'on' => 'Training marked as requiring attention',
-            'off' => 'Training no longer marked as requiring attention',
-        ],
-    ];
-
-    public function update(Request $request, Training $training, string $flag): RedirectResponse
+    public function update(Request $request, Training $training, string $flag, VatssaTrainingFlags $flags): RedirectResponse
     {
-        abort_unless(isset(self::FLAGS[$flag]), 404);
+        abort_unless(isset(VatssaTrainingFlags::FLAGS[$flag]), 404);
         $this->authorize('toggleTrainingFlags', $training);
 
-        $config = self::FLAGS[$flag];
-        $newState = (bool) $request->validate([$flag => 'required|boolean'])[$flag];
-        $oldState = $training->{$config['column']} !== null;
+        $state = (bool) $request->validate([$flag => 'required|boolean'])[$flag];
+        $config = VatssaTrainingFlags::FLAGS[$flag];
 
-        if ($newState === $oldState) {
-            return redirect($training->path())->withSuccess('Nothing changed: ' . lcfirst($newState ? $config['on'] : $config['off']) . ' already');
-        }
+        $changed = $flags->set($training, $flag, $state, Auth::id());
 
-        $training->{$config['column']} = $newState ? now() : null;
-        $training->save();
+        abort_if($changed === null, 403, 'This training is closed.');
 
-        $text = $newState ? $config['on'] : $config['off'];
-        ActivityLogService::warning(LogName::Training, $text . ' on training ' . $training->id);
-        TrainingActivityController::create($training->id, 'COMMENT', null, null, Auth::id(), $text . '.');
+        $message = rtrim($state ? $config['on'] : $config['off'], '.');
 
-        return redirect($training->path())->withSuccess($text);
+        return redirect($training->path())->withSuccess($changed ? $message : 'Nothing changed: ' . lcfirst($message) . ' already');
     }
 }

@@ -3,16 +3,17 @@
 namespace App\Providers;
 
 use App\Http\Controllers\TrainingActivityController;
-use App\Http\Controllers\VatssaTrainingFlagController;
 use App\Models\Task;
 use App\Models\Training;
 use App\Models\User;
+use App\Services\VatssaTrainingFlags;
 use App\Tasks\Types\TheoreticalExam;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\ValidationException;
+use Throwable;
 
 /**
  * VATSSA: behaviour added on top of upstream without editing upstream files.
@@ -40,21 +41,7 @@ class VatssaServiceProvider extends ServiceProvider
             return $training->status->isOpen() && $user->hasPermission('training.update', $training->area);
         });
 
-        // The same people set and clear the training flags (Requires
-        // attention, Stalled).
-        Gate::define('toggleTrainingFlags', function (User $user, Training $training) {
-            return $training->status->isOpen() && $user->hasPermission('training.update', $training->area);
-        });
-
-        // A training that closes loses its flags, so a reopened one starts
-        // clean and a closed one never shows a flag nobody can clear.
-        Training::saving(function (Training $training) {
-            if ($training->isDirty('status') && ! $training->status->isOpen()) {
-                foreach (VatssaTrainingFlagController::FLAGS as $flag) {
-                    $training->{$flag['column']} = null;
-                }
-            }
-        });
+        $this->registerTrainingFlags();
 
         // "Theoretical Exam Access" requests are not used: VATSSA's theory exam
         // runs in Moodle. Hidden from the training page's Request menu and
@@ -80,5 +67,34 @@ class VatssaServiceProvider extends ServiceProvider
             Route::middleware(['web', 'auth', 'activity', 'suspended'])
                 ->group(base_path('routes/vatssa.php'));
         }
+    }
+
+    /**
+     * Training flags (Requires attention, Stalled).
+     *
+     * The same people as the theory mark set and clear them: training.update
+     * in the training's area, open trainings only. When a training closes, any
+     * flag still set is cleared and the clearing is written to the timeline, so
+     * a reopened training starts clean and a closed one never shows a flag
+     * nobody can clear. A failure to clear is reported, never thrown: the
+     * close itself (e-mail, endorsements, mentor detach) must always finish,
+     * and a leftover flag on a closed training shows nowhere. See
+     * VatssaTrainingFlags.
+     */
+    private function registerTrainingFlags(): void
+    {
+        Gate::define('toggleTrainingFlags', function (User $user, Training $training) {
+            return $training->status->isOpen() && $user->hasPermission('training.update', $training->area);
+        });
+
+        Training::saved(function (Training $training) {
+            if ($training->wasChanged('status') && ! $training->status->isOpen()) {
+                try {
+                    app(VatssaTrainingFlags::class)->clearOnClose($training);
+                } catch (Throwable $e) {
+                    report($e);
+                }
+            }
+        });
     }
 }
