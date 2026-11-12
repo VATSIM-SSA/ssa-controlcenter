@@ -11,9 +11,10 @@ use Illuminate\Support\Facades\Auth;
 /**
  * VATSSA: staff set or clear a training flag ("Requires attention", "Stalled").
  *
- * The form sends the state it wants, not "flip it", so a double click or a
- * stale page cannot undo another change. The work, locking and history live in
- * VatssaTrainingFlags.
+ * The form sends the state it wants, not "flip it", and the version of the
+ * training's timeline it was rendered with, so a double click, a stale page or
+ * a retried request cannot undo someone else's later change. The work, locking
+ * and history live in VatssaTrainingFlags.
  */
 class VatssaTrainingFlagController extends Controller
 {
@@ -22,15 +23,21 @@ class VatssaTrainingFlagController extends Controller
         abort_unless(isset(VatssaTrainingFlags::FLAGS[$flag]), 404);
         $this->authorize('toggleTrainingFlags', $training);
 
-        $state = (bool) $request->validate([$flag => 'required|boolean'])[$flag];
+        $input = $request->validate([
+            $flag => 'required|boolean',
+            'version' => 'nullable|integer|min:0',
+        ]);
+        $state = (bool) $input[$flag];
         $config = VatssaTrainingFlags::FLAGS[$flag];
-
-        $changed = $flags->set($training, $flag, $state, Auth::id());
-
-        abort_if($changed === null, 403, 'This training is closed.');
-
         $message = rtrim($state ? $config['on'] : $config['off'], '.');
 
-        return redirect($training->path())->withSuccess($changed ? $message : 'Nothing changed: ' . lcfirst($message) . ' already');
+        $result = $flags->set($training, $flag, $state, Auth::id(), isset($input['version']) ? (int) $input['version'] : null);
+
+        return match ($result) {
+            VatssaTrainingFlags::CHANGED => redirect($training->path())->withSuccess($message),
+            VatssaTrainingFlags::UNCHANGED => redirect($training->path())->withSuccess('Nothing changed: ' . lcfirst($message) . ' already'),
+            VatssaTrainingFlags::STALE => redirect($training->path())->withErrors('This training changed after you opened the page, so nothing was changed. Check the timeline and try again.'),
+            default => abort(403, 'This training is closed.'),
+        };
     }
 }

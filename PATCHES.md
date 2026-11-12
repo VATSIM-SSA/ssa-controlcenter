@@ -252,15 +252,21 @@ each was set (null = not set); migrations on the default path for the same reaso
 as the theory one. Add a flag by adding a column and an entry to
 `VatssaTrainingFlags::FLAGS`.
 
-All the work is in `VatssaTrainingFlags` (review fixes, 2026-11-12):
+All the work is in `VatssaTrainingFlags` (review fixes, #28 and after):
 - a change takes a row lock and re-reads the training, so two clicks give one
   change, and a training closed meanwhile is refused;
+- each flag form carries the training's newest timeline entry id
+  (`version()`); a change from an older page is refused ("reload and try
+  again") instead of undoing someone else's later change;
 - the change, its activity-log entry and its timeline comment are one
   transaction, so a flag never changes without its history;
-- when a training closes (`Training::saved` hook in `VatssaServiceProvider`),
-  any flag still set in the database is cleared and the clearing is written to
-  the timeline. It reads the row, not the model, so a model loaded before a flag
-  was set still clears it. The theory mark is kept.
+- when a training's status crosses between open and closed
+  (`Training::saved` hook in `VatssaServiceProvider`), flags made stale are
+  cleared from the database row with a timeline entry each: on close every
+  flag, on reopen only flags set before the reopen (a close whose own clearing
+  failed leaves them). It re-checks the status under the lock and does nothing
+  if the status has moved on since. A failure is reported, never thrown. The
+  theory mark is kept.
 
 **Upstream files:** none for the flags themselves. The buttons and badges are
 included from the VATSSA theory partials, which upstream views already include;

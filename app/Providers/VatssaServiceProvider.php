@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Helpers\TrainingStatus;
 use App\Http\Controllers\TrainingActivityController;
 use App\Models\Task;
 use App\Models\Training;
@@ -74,11 +75,10 @@ class VatssaServiceProvider extends ServiceProvider
      *
      * The same people as the theory mark set and clear them: training.update
      * in the training's area, open trainings only. When a training closes, any
-     * flag still set is cleared and the clearing is written to the timeline, so
-     * a reopened training starts clean and a closed one never shows a flag
-     * nobody can clear. A failure to clear is reported, never thrown: the
-     * close itself (e-mail, endorsements, mentor detach) must always finish,
-     * and a leftover flag on a closed training shows nowhere. See
+     * flag still set is cleared; when it reopens, any flag left from before is
+     * cleared. Each clearing is written to the timeline. A failure to clear is
+     * reported, never thrown: the status change itself (e-mail, endorsements,
+     * mentor detach) must always finish, and the next crossing cleans up. See
      * VatssaTrainingFlags.
      */
     private function registerTrainingFlags(): void
@@ -88,12 +88,19 @@ class VatssaServiceProvider extends ServiceProvider
         });
 
         Training::saved(function (Training $training) {
-            if ($training->wasChanged('status') && ! $training->status->isOpen()) {
-                try {
-                    app(VatssaTrainingFlags::class)->clearOnClose($training);
-                } catch (Throwable $e) {
-                    report($e);
-                }
+            if (! $training->wasChanged('status')) {
+                return;
+            }
+
+            $before = TrainingStatus::from((int) ($training->getPrevious()['status'] ?? $training->status->value));
+            if ($before->isOpen() === $training->status->isOpen()) {
+                return;
+            }
+
+            try {
+                app(VatssaTrainingFlags::class)->clearOnStatusChange($training, $training->updated_at ?? now());
+            } catch (Throwable $e) {
+                report($e);
             }
         });
     }
