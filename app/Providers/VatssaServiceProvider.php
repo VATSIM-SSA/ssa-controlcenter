@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Http\Controllers\TrainingActivityController;
+use App\Http\Controllers\VatssaTrainingFlagController;
 use App\Models\Task;
 use App\Models\Training;
 use App\Models\User;
@@ -37,6 +38,22 @@ class VatssaServiceProvider extends ServiceProvider
         // not students. Open trainings only.
         Gate::define('toggleTheoryCompleted', function (User $user, Training $training) {
             return $training->status->isOpen() && $user->hasPermission('training.update', $training->area);
+        });
+
+        // The same people set and clear the training flags (Requires
+        // attention, Stalled).
+        Gate::define('toggleTrainingFlags', function (User $user, Training $training) {
+            return $training->status->isOpen() && $user->hasPermission('training.update', $training->area);
+        });
+
+        // A training that closes loses its flags, so a reopened one starts
+        // clean and a closed one never shows a flag nobody can clear.
+        Training::saving(function (Training $training) {
+            if ($training->isDirty('status') && ! $training->status->isOpen()) {
+                foreach (VatssaTrainingFlagController::FLAGS as $flag) {
+                    $training->{$flag['column']} = null;
+                }
+            }
         });
 
         // "Theoretical Exam Access" requests are not used: VATSSA's theory exam
