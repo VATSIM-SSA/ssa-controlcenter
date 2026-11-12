@@ -38,7 +38,7 @@ they carry risk.
 |---|---|
 | Code and configuration | 8 |
 | Brand assets | 10 |
-| Added files | 41 |
+| Added files | 48 |
 | Force-added past `.gitignore` | 3 |
 
 ### `config/roles.php`
@@ -234,6 +234,31 @@ Fork behaviour without editing upstream files:
 The theory mark itself. The form posts the state it wants (`completed` 0/1),
 so a double click or a stale page cannot flip it back.
 **Detector:** `VatssaTheoryCompletedTest`.
+
+### Training flags (Requires attention, Stalled): `app/Http/Controllers/VatssaTrainingFlagController.php`, `resources/views/vatssa/training/flag-*`, `database/migrations/2026_11_12_120000_vatssa_add_stalled_at_to_trainings.php`, `database/migrations/2026_11_12_130000_vatssa_add_attention_at_to_trainings.php`
+
+Staff set or clear two flags on a training (2026-11-12), beside the theory mark:
+**Requires attention** (amber) and **Stalled** (red). Same people as the theory
+mark (`toggleTrainingFlags` in `VatssaServiceProvider`: `training.update` in the
+training's area, open trainings only). `trainings.attention_at` and
+`trainings.stalled_at` hold when each was set (null = not set); migrations on the
+default path for the same reason as the theory one. A training that closes loses
+both (a `Training::saving` hook in `VatssaServiceProvider`). Add a flag by adding
+a column and an entry to `VatssaTrainingFlagController::FLAGS`.
+
+**No upstream file touched.** The buttons and badges are included from the
+VATSSA theory partials (`theory-button`, `theory-badge`), which upstream views
+already include. Each change is written to the timeline as a staff COMMENT, which
+upstream already renders and hides from students, so no new activity type and no
+activity-feed edit. The badges show to the same audience as comments: the
+training's mentors and `training.activities.view` in its area.
+
+**Leans on:** the theory include points in `training/show.blade.php` and
+`training/index.blade.php`, `TrainingActivityController::create` with type
+`COMMENT`, `TrainingActivityPolicy::view` hiding COMMENT from students, the
+`status` enum cast on `Training`.
+**Detector:** `tests/Feature/VatssaTrainingStalledTest.php`,
+`tests/Feature/VatssaTrainingAttentionTest.php`.
 
 ### `database/migrations/2026_11_11_120000_vatssa_add_theory_completed_to_trainings.php`
 
