@@ -57,7 +57,7 @@ class VatssaWebsiteTest extends TestCase
         return $disk->exists($path) ? hash('sha256', $disk->get($path)) : 'missing';
     }
 
-    private function json(string $path): mixed
+    private function stored(string $path): mixed
     {
         return json_decode(Storage::disk('vatssa-homepage')->get($path), true);
     }
@@ -195,7 +195,7 @@ class VatssaWebsiteTest extends TestCase
                 ['id' => 'new-person', 'name' => 'New Person', 'role' => 'Membership'],
                 ['id' => 'vacant', 'name' => 'vacant', 'role' => 'Events Manager', 'email' => 'events@vatssa.com', 'cid' => 'VATSSA5'],
             ],
-        ], $this->json('stafflist.json'));
+        ], $this->stored('stafflist.json'));
 
         // The previous version is kept.
         $history = Storage::disk('vatssa-homepage')->files('_history');
@@ -217,7 +217,7 @@ class VatssaWebsiteTest extends TestCase
             ],
         ])->assertSessionHasNoErrors();
 
-        $this->assertSame(['sam-lee', 'sam-lee-2', 'sam-lee-3'], array_column($this->json('stafflist.json')['Team'], 'id'));
+        $this->assertSame(['sam-lee', 'sam-lee-2', 'sam-lee-3'], array_column($this->stored('stafflist.json')['Team'], 'id'));
     }
 
     #[Test]
@@ -230,7 +230,7 @@ class VatssaWebsiteTest extends TestCase
             'rows' => [['id' => 'a', 'team' => 'Team', 'name' => 'A', 'role' => 'R2']],
         ])->assertSessionHasNoErrors();
 
-        $this->assertSame(['data' => ['Team' => [['id' => 'a', 'name' => 'A', 'role' => 'R2']]]], $this->json('stafflist.json'));
+        $this->assertSame(['data' => ['Team' => [['id' => 'a', 'name' => 'A', 'role' => 'R2']]]], $this->stored('stafflist.json'));
     }
 
     #[Test]
@@ -288,7 +288,7 @@ class VatssaWebsiteTest extends TestCase
         $this->assertSame(['data' => [
             ['name' => 'First Air', 'site' => 'https://first.example/', 'signup' => 'https://first.example/join', 'tier' => 1, 'description' => 'Hub in FAOR'],
             ['name' => 'Second Air', 'site' => 'https://second.example/', 'tier' => 2],
-        ]], $this->json('rva.json'));
+        ]], $this->stored('rva.json'));
     }
 
     // -----------------------------------------------------------------
@@ -311,7 +311,7 @@ class VatssaWebsiteTest extends TestCase
             'image' => UploadedFile::fake()->image('Winner Photo.jpg', 1920, 1080),
         ])->assertSessionHasNoErrors();
 
-        $winners = $this->json('screenshot-winner.json')['data'];
+        $winners = $this->stored('screenshot-winner.json')['data'];
         $this->assertCount(2, $winners, 'the malformed entry is dropped, the valid one kept');
         $this->assertSame('New Winner - 1000003', $winners[0]['name']);
         $this->assertSame('Nov26', $winners[0]['month']);
@@ -359,7 +359,7 @@ class VatssaWebsiteTest extends TestCase
             'title' => 'Staff Meeting Minutes',
             'description' => '12 November 2026',
             'url' => 'https://files.vatssa.com/meeting-minutes/vatssa_staff_minutes_2026-11-12_public.pdf',
-        ]]], $this->json('minutes.json'));
+        ]]], $this->stored('minutes.json'));
     }
 
     #[Test]
@@ -401,8 +401,8 @@ class VatssaWebsiteTest extends TestCase
         ])->assertSessionHasNoErrors();
 
         $this->assertNotSame('version 1', Storage::disk('vatssa-policy')->get('rva_policy.pdf'));
-        $this->assertSame($url, $this->json('policies.json')['policies'][0]['url']);
-        $this->assertSame('Partner airlines, v1.2', $this->json('policies.json')['policies'][0]['description']);
+        $this->assertSame($url, $this->stored('policies.json')['policies'][0]['url']);
+        $this->assertSame('Partner airlines, v1.2', $this->stored('policies.json')['policies'][0]['description']);
 
         Http::assertSent(fn ($request) => in_array($url, $request['files'] ?? [], true)
             && in_array('https://files.vatssa.com/homepage-data/policies.json', $request['files'], true)
