@@ -226,3 +226,11 @@ th[data-field="atchours"] {
     width: 1%;
     white-space: nowrap;
 }
+
+// Training badges (Theory, Attention, Stalled) carry their words in data-label
+// and draw them here, so a bootstrap-table filter that reads the cell's text
+// (Open requests > State) lists only the training status.
+.vatssa-flag::after {
+    content: attr(data-label);
+    margin-left: .3em;
+}
