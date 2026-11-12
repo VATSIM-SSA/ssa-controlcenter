@@ -38,7 +38,7 @@ they carry risk.
 |---|---|
 | Code and configuration | 8 |
 | Brand assets | 10 |
-| Added files | 41 |
+| Added files | 46 |
 | Force-added past `.gitignore` | 3 |
 
 ### `config/roles.php`
@@ -234,6 +234,26 @@ Fork behaviour without editing upstream files:
 The theory mark itself. The form posts the state it wants (`completed` 0/1),
 so a double click or a stale page cannot flip it back.
 **Detector:** `VatssaTheoryCompletedTest`.
+
+### Training stalled: `app/Http/Controllers/VatssaStalledController.php`, `resources/views/vatssa/training/stalled-*`, `database/migrations/2026_11_12_120000_vatssa_add_stalled_at_to_trainings.php`
+
+Staff flag a training as stalled, or clear it (2026-11-12). Same people as the
+theory mark (`toggleTrainingStalled` in `VatssaServiceProvider`: `training.update`
+in the training's area, open trainings only). `trainings.stalled_at` holds when it
+was flagged (null = not stalled); migration on the default path for the same
+reason as the theory one.
+
+**No upstream file touched.** The button and the red badge are included from the
+VATSSA theory partials (`theory-button`, `theory-badge`), which upstream views
+already include. Each change is written to the timeline as a staff COMMENT, which
+upstream already renders and hides from students, so no new activity type and no
+activity-feed edit. The badge shows to the same audience as comments: the
+training's mentors and `training.activities.view` in its area.
+
+**Leans on:** the theory include points in `training/show.blade.php` and
+`training/index.blade.php`, `TrainingActivityController::create` with type
+`COMMENT`, `TrainingActivityPolicy::view` hiding COMMENT from students.
+**Detector:** `tests/Feature/VatssaTrainingStalledTest.php`.
 
 ### `database/migrations/2026_11_11_120000_vatssa_add_theory_completed_to_trainings.php`
 

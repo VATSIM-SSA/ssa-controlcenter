@@ -11,3 +11,5 @@
         @endif
     </form>
 @endcan
+{{-- VATSSA: the stalled flag rides on this include, so upstream views need no new line. --}}
+@include('vatssa.training.stalled-button')

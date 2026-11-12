@@ -39,6 +39,11 @@ class VatssaServiceProvider extends ServiceProvider
             return $training->status->isOpen() && $user->hasPermission('training.update', $training->area);
         });
 
+        // The same people flag a training as stalled, or clear the flag.
+        Gate::define('toggleTrainingStalled', function (User $user, Training $training) {
+            return $training->status->isOpen() && $user->hasPermission('training.update', $training->area);
+        });
+
         // "Theoretical Exam Access" requests are not used: VATSSA's theory exam
         // runs in Moodle. Hidden from the training page's Request menu and
         // refused on create. The task type class stays, so tasks created before
