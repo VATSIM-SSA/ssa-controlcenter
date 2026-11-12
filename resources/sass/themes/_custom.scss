@@ -214,3 +214,15 @@ a.version,
         background: linear-gradient(90deg, #0197b0, #7bd758);
     }
 }
+
+// Open requests list: the State cell now carries the Theory, Attention and
+// Stalled badges, so give it the room and let ATC Hours shrink to its content.
+// Keyed on bootstrap-table's data-field, so no upstream view is touched.
+th[data-field="state"] {
+    min-width: 18rem;
+}
+
+th[data-field="atchours"] {
+    width: 1%;
+    white-space: nowrap;
+}

@@ -103,6 +103,21 @@ class VatssaTrainingAttentionTest extends TestCase
     }
 
     #[Test]
+    public function closing_or_completing_keeps_the_theory_mark(): void
+    {
+        foreach ([TrainingStatus::COMPLETED, TrainingStatus::CLOSED_BY_STAFF] as $status) {
+            $this->training->update(['status' => TrainingStatus::ACTIVE_TRAINING->value, 'theory_completed' => true, 'attention_at' => now(), 'stalled_at' => now()]);
+
+            $this->training->update(['status' => $status->value]);
+
+            $training = $this->training->fresh();
+            $this->assertTrue((bool) $training->theory_completed, $status->name);
+            $this->assertNull($training->attention_at, $status->name);
+            $this->assertNull($training->stalled_at, $status->name);
+        }
+    }
+
+    #[Test]
     public function staff_see_the_amber_badge_and_the_student_does_not(): void
     {
         $coordinator = $this->coordinator();
