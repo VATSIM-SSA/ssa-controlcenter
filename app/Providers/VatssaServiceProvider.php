@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Http\Controllers\TrainingActivityController;
+use App\Http\Controllers\VatssaTrainingFlagController;
 use App\Models\Task;
 use App\Models\Training;
 use App\Models\User;
@@ -39,16 +40,19 @@ class VatssaServiceProvider extends ServiceProvider
             return $training->status->isOpen() && $user->hasPermission('training.update', $training->area);
         });
 
-        // The same people flag a training as stalled, or clear the flag.
-        Gate::define('toggleTrainingStalled', function (User $user, Training $training) {
+        // The same people set and clear the training flags (Requires
+        // attention, Stalled).
+        Gate::define('toggleTrainingFlags', function (User $user, Training $training) {
             return $training->status->isOpen() && $user->hasPermission('training.update', $training->area);
         });
 
-        // A training that closes stops being stalled, so a reopened one starts
+        // A training that closes loses its flags, so a reopened one starts
         // clean and a closed one never shows a flag nobody can clear.
         Training::saving(function (Training $training) {
-            if ($training->stalled_at !== null && $training->isDirty('status') && ! $training->status->isOpen()) {
-                $training->stalled_at = null;
+            if ($training->isDirty('status') && ! $training->status->isOpen()) {
+                foreach (VatssaTrainingFlagController::FLAGS as $flag) {
+                    $training->{$flag['column']} = null;
+                }
             }
         });
 
