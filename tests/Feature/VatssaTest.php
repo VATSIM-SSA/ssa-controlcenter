@@ -43,6 +43,7 @@ class VatssaTest extends TestCase
         'nav-editor',
         'feedback-team',
         'event-staff',
+        'content-editor',
     ];
 
     #[Test]

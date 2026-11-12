@@ -38,7 +38,7 @@ they carry risk.
 |---|---|
 | Code and configuration | 8 |
 | Brand assets | 10 |
-| Added files | 41 |
+| Added files | 53 |
 | Force-added past `.gitignore` | 3 |
 
 ### `config/roles.php`
@@ -49,7 +49,9 @@ upstream's, with its own permission matrix. One upstream role is kept exactly as
 upstream wrote it: `event-staff` (v7.3.0), with upstream's two booking grants and
 grantable by admin only. The permission catalogue is
 upstream's verbatim except for the `roles.*.manage` entries, which are renamed to
-match the VATSSA role keys.
+match the VATSSA role keys, and five VATSSA-only `website.*` permissions (one per
+website page) held by the global-only `content-editor` role (2026-11-12, see
+*Website content* below).
 
 **Detector:** a git merge conflict at absorption, plus
 `tests/Feature/VatssaTest.php` and upstream's own `tests/Unit/RolesConfigTest.php`
@@ -222,6 +224,8 @@ Fork behaviour without editing upstream files:
   Request menu (view composer on `training.show`) and refuses to create one
   (`Task::creating`). The class stays so older tasks of that type still render.
   VATSSA's theory exam runs in Moodle.
+- registers one `s3` filesystem disk per website bucket from
+  `config/vatssa-website.php`, so `config/filesystems.php` stays upstream's
 
 **Leans on:** the public static `$activityTypes`, the ability name
 `togglePreTrainingCompleted`, the `requestTypes` variable passed to
@@ -332,6 +336,38 @@ item directly above them.
 semantics attached, and the fix is four lines. See
 `upstream-contrib/sidebar-report-guards` below. Drop this entry the moment that
 lands.
+
+**Second, separate change (2026-11-12):** one line,
+`@include('vatssa.sidebar.website')`, after the Administration section. It renders
+the Website menu for anyone holding a `website.*` permission. This one is VATSSA's
+and stays. **Detector:** `VatssaWebsiteTest` asserts the menu on the Website page.
+
+### Website content: `app/Http/Controllers/VatssaWebsiteController.php`, `app/Services/VatssaWebsite*.php`, `config/vatssa-website.php`, `resources/views/vatssa/website/*`, `resources/views/vatssa/sidebar/website.blade.php`
+
+Staff edit the public website from CC (2026-11-12): screenshot winner, staff
+list, partner rVAs, policies, meeting minutes. One permission per page
+(`website.screenshot.manage` and so on), always checked as a **global**
+permission; the `content-editor` role holds all five and admin holds them through
+`**`. Each save writes the JSON the homepage reads into MinIO (`homepage-data`;
+PDFs into `policy` / `meeting-minutes`), copies the previous JSON to
+`homepage-data/_history/`, refuses a stale form (hash of the object at load
+time), logs to the activity log and purges the changed URLs from Cloudflare.
+
+Writes are synchronous on purpose (no queue worker in production). MinIO is
+reached as `http://minio:9000` inside Docker, never through `files.vatssa.com`.
+
+**Needs:** `league/flysystem-aws-s3-v3` (not in `composer.json` yet; the `s3`
+driver throws without it). Env: `VATSSA_MINIO_KEY`, `VATSSA_MINIO_SECRET`
+(a MinIO user limited to these three buckets), optional `VATSSA_MINIO_ENDPOINT`,
+`VATSSA_CLOUDFLARE_ZONE_ID`, `VATSSA_CLOUDFLARE_PURGE_TOKEN` (Zone > Cache Purge
+only), `VATSSA_CLOUDFLARE_PURGE_EVERYTHING`.
+
+**Leans on:** `User::hasGlobalPermission`, the `x-sidebar.section` and
+`x-sidebar.item` components, the `layouts.app` sections, `ActivityLogService`,
+and the homepage's JSON shapes (`lib/hero.ts`, `hooks/useStaff.ts`,
+`hooks/useRvas.ts`, `hooks/usePolicies.ts`, `hooks/useMinutes.ts` in
+ssa-homepage). If the homepage changes a shape, change the writer with it.
+**Detector:** `tests/Feature/VatssaWebsiteTest.php`.
 
 ## Upstream contributions in flight
 

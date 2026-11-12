@@ -2,12 +2,14 @@
 
 // VATSSA config/roles.php — drafted 2026-08-26 against upstream v7.0.0.
 // This is the ONLY upstream file VATSSA modifies. Everything else is an addition.
-// Diverges from upstream in three places, all marked VATSSA:
+// Diverges from upstream in four places, all marked VATSSA:
 //   1. the roles catalogue          (VATSSA roles replace upstream's; event-staff kept as upstream wrote it)
 //   2. the roles.*.manage entries   (renamed to match the VATSSA role keys)
-//   3. the matrix                   (VATSSA's own grants)
+//   3. the website.* permissions    (VATSSA-only: homepage, policy and minutes content)
+//   4. the matrix                   (VATSSA's own grants)
 // The permission catalogue is otherwise upstream's, verbatim. Keep it that way:
-// a permission must be listed to exist, and adding one here does not create a gate.
+// a permission must be listed to exist. AuthServiceProvider defines a gate for
+// every listed permission.
 
 return [
     'roles' => [
@@ -46,6 +48,14 @@ return [
             'name' => 'Event Staff',
             'description' => 'Event staff with organisation-wide booking management and bulk booking access',
             'scope' => 'global',
+        ],
+        // VATSSA: edits the public website content (2026-11-12). Global only:
+        // the website has no areas. Granted by admin only.
+        'content-editor' => [
+            'name' => 'Content Editor',
+            'description' => 'Edits the homepage screenshot, staff list and rVA list, and publishes policies and meeting minutes',
+            'scope' => 'global',
+            'grant_scope' => 'global',
         ],
     ],
 
@@ -119,6 +129,14 @@ return [
         'system.votes.manage',
         'system.activity-log.view',
 
+        // VATSSA: website content, one permission per page so a future role can
+        // hold just one. Checked as GLOBAL permissions only (VatssaWebsiteController).
+        'website.screenshot.manage',
+        'website.staff.manage',
+        'website.rvas.manage',
+        'website.policies.manage',
+        'website.minutes.manage',
+
         // VATSSA: grant authority, one per grantable role. Renamed from upstream's
         // director/moderator/training-staff/staff/buddy to the VATSSA role keys.
         // UserPolicy::updateRole builds "roles.{$requestedRole}.manage", so these
@@ -129,6 +147,7 @@ return [
         'roles.mentor.manage',
         'roles.feedback-team.manage',
         'roles.event-staff.manage',             // admin only, through '**'
+        'roles.content-editor.manage',          // admin only, through '**'
     ],
 
     'matrix' => [
@@ -200,6 +219,11 @@ return [
         'event-staff' => [
             'bookings.manage',
             'bookings.bypass-restrictions',
+        ],
+
+        // Every website page, nothing else.
+        'content-editor' => [
+            'website.**',
         ],
     ],
 ];

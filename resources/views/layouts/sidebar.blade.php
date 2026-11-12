@@ -164,6 +164,8 @@
 
         @endif
 
+        @include('vatssa.sidebar.website')
+
         {{-- Divider --}}
         <div class="sidebar-divider d-none d-md-block"></div>
 

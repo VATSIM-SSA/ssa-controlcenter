@@ -59,6 +59,21 @@ class VatssaServiceProvider extends ServiceProvider
             }
         });
 
+        // Website content: one MinIO disk per bucket, built from
+        // config/vatssa-website.php so config/filesystems.php stays upstream's.
+        foreach (config('vatssa-website.buckets', []) as $disk => $bucket) {
+            config(["filesystems.disks.{$disk}" => [
+                'driver' => 's3',
+                'key' => config('vatssa-website.minio.key'),
+                'secret' => config('vatssa-website.minio.secret'),
+                'region' => config('vatssa-website.minio.region'),
+                'bucket' => $bucket,
+                'endpoint' => config('vatssa-website.minio.endpoint'),
+                'use_path_style_endpoint' => true,
+                'throw' => true,
+            ]]);
+        }
+
         if (! $this->app->routesAreCached()) {
             Route::middleware(['web', 'auth', 'activity', 'suspended'])
                 ->group(base_path('routes/vatssa.php'));
