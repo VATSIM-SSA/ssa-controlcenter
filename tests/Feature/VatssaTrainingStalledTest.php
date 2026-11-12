@@ -155,7 +155,27 @@ class VatssaTrainingStalledTest extends TestCase
 
         $this->actingAs($coordinator)->get(route('requests'))
             ->assertOk()
-            ->assertSee('Stalled');
+            ->assertSee('Stalled since', false);
+    }
+
+    #[Test]
+    public function closing_a_training_clears_the_flag(): void
+    {
+        $this->training->update(['stalled_at' => now()]);
+
+        $this->training->update(['status' => TrainingStatus::CLOSED_BY_STAFF->value]);
+
+        $this->assertNull($this->training->fresh()->stalled_at);
+    }
+
+    #[Test]
+    public function a_status_change_that_stays_open_keeps_the_flag(): void
+    {
+        $this->training->update(['stalled_at' => now()]);
+
+        $this->training->update(['status' => TrainingStatus::PRE_TRAINING->value]);
+
+        $this->assertNotNull($this->training->fresh()->stalled_at);
     }
 
     #[Test]

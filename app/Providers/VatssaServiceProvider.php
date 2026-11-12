@@ -44,6 +44,14 @@ class VatssaServiceProvider extends ServiceProvider
             return $training->status->isOpen() && $user->hasPermission('training.update', $training->area);
         });
 
+        // A training that closes stops being stalled, so a reopened one starts
+        // clean and a closed one never shows a flag nobody can clear.
+        Training::saving(function (Training $training) {
+            if ($training->stalled_at !== null && $training->isDirty('status') && ! $training->status->isOpen()) {
+                $training->stalled_at = null;
+            }
+        });
+
         // "Theoretical Exam Access" requests are not used: VATSSA's theory exam
         // runs in Moodle. Hidden from the training page's Request menu and
         // refused on create. The task type class stays, so tasks created before
