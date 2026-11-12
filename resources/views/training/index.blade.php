@@ -54,11 +54,15 @@
                                     <i class="{{ $training->status->icon() }} text-{{ $training->status->color() }}"></i>
                                     @include('vatssa.training.theory-badge', ['short' => true]) {{-- VATSSA: replaces the pre-training tick --}}
 
-                                    @if($training->activities->where('type', 'COMMENT')->count())
+                                    {{-- VATSSA: only comments the viewer may see --}}
+                                    @php
+                                        $vatssaNotes = Auth::user()->can('view', [\App\Models\TrainingActivity::class, $training, 'COMMENT']) ? $training->activities->where('type', 'COMMENT') : collect();
+                                    @endphp
+                                    @if($vatssaNotes->count())
 
                                         @php
                                             $notes = "";
-                                            foreach($training->activities->where('type', 'COMMENT') as $a){
+                                            foreach($vatssaNotes as $a){
                                                 $notes .= $a->created_at->toEuropeanDate().': '.htmlentities($a->comment).'&#013;';
                                             }
                                         @endphp
