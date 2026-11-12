@@ -6,7 +6,7 @@
 
 @include('vatssa.website.partials.notices')
 
-<form action="{{ route('vatssa.website.rvas.save') }}" method="POST">
+<form action="{{ route('vatssa.website.rvas.save') }}" method="POST" enctype="multipart/form-data">
     @csrf
     <input type="hidden" name="version" value="{{ $version }}">
 
@@ -18,7 +18,7 @@
             <p>
                 One row per airline, shown on vatssa.com/about/partner-rvas in order.
                 Links must start with https://. Add an airline in an empty row at the bottom.
-                A new airline's logo is added to the homepage by Tech.
+                Logos: PNG, JPG or WebP, wide rather than tall, under 2 MB. Without one, the homepage shows its built-in logo for that airline, if it has one.
             </p>
 
             <div class="table-responsive">
@@ -31,6 +31,7 @@
                             <th>Sign-up link</th>
                             <th style="width: 6rem">Tier</th>
                             <th>Description</th>
+                            <th>Logo</th>
                             <th class="text-center">Remove</th>
                         </tr>
                     </thead>
@@ -50,6 +51,14 @@
                                     </select>
                                 </td>
                                 <td><input type="text" class="form-control form-control-sm @error("rows.$i.description") is-invalid @enderror" name="rows[{{ $i }}][description]" value="{{ old("rows.$i.description", $row['description']) }}" maxlength="500"></td>
+                                <td>
+                                    <input type="hidden" name="rows[{{ $i }}][logo]" value="{{ $row['logo'] }}">
+                                    @if(Str::startsWith($row['logo'], ['https://', config('vatssa-website.files_url')]))
+                                        <img src="{{ $row['logo'] }}" alt="" class="rounded mb-1" style="height: 2.5rem; max-width: 5rem; object-fit: contain">
+                                        <label class="d-block fs-sm text-nowrap"><input type="checkbox" class="form-check-input" name="rows[{{ $i }}][remove_logo]" value="1"> remove</label>
+                                    @endif
+                                    <input type="file" class="form-control form-control-sm @error("rows.$i.logo_file") is-invalid @enderror" name="rows[{{ $i }}][logo_file]" accept="image/png,image/jpeg,image/webp" aria-label="Logo">
+                                </td>
                                 <td class="text-center"><input type="checkbox" class="form-check-input" name="rows[{{ $i }}][delete]" value="1" @checked(old("rows.$i.delete")) aria-label="Remove this row"></td>
                             </tr>
                         @endforeach

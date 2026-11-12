@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\VatssaTheoryController;
 use App\Http\Controllers\VatssaWebsiteController;
+use App\Http\Controllers\VatssaWebsiteFilesController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -26,4 +27,18 @@ Route::prefix('website')->name('vatssa.website.')->controller(VatssaWebsiteContr
         Route::get("/{$page}", 'documents')->defaults('page', $page)->name($page);
         Route::post("/{$page}", 'saveDocuments')->defaults('page', $page)->name("{$page}.save");
     }
+});
+
+// Plain file areas and the private archive.
+Route::prefix('website')->name('vatssa.website.')->controller(VatssaWebsiteFilesController::class)->group(function () {
+    foreach (['documents', 'staff-files'] as $area) {
+        Route::get("/{$area}", 'index')->defaults('area', $area)->name($area);
+        Route::post("/{$area}/upload", 'upload')->defaults('area', $area)->name("{$area}.upload");
+        Route::post("/{$area}/archive", 'archive')->defaults('area', $area)->name("{$area}.archive");
+        Route::get("/{$area}/download", 'download')->defaults('area', $area)->name("{$area}.download");
+    }
+
+    Route::get('/archive', 'archiveIndex')->name('archive');
+    Route::get('/archive/download', 'archiveDownload')->name('archive.download');
+    Route::post('/archive/delete', 'archiveDelete')->name('archive.delete');
 });

@@ -13,7 +13,7 @@
                 <h6 class="m-0 fw-bold text-white">On the homepage now</h6>
             </div>
             <div class="card-body">
-                @if($winner && Str::startsWith($winner['link'], 'https://'))
+                @if($winner && Str::startsWith($winner['link'], ['https://', config('vatssa-website.files_url')]))
                     <img src="{{ $winner['link'] }}" alt="Current screenshot winner" class="img-fluid rounded mb-2">
                     <p class="mb-0"><strong>{{ $winner['name'] }}</strong> &middot; {{ $winner['month'] }}</p>
                 @else

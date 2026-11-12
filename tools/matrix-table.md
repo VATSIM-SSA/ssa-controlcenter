@@ -1,6 +1,6 @@
 # Expanded matrix — roles.php
 
-59 permissions x 8 roles.
+62 permissions x 8 roles.
 
 | Permission | admin | atc-training-manager | pipeline-coordinator | mentor | nav-editor | feedback-team | event-staff | content-editor |
 |---|---|---|---|---|---|---|---|---|
@@ -56,6 +56,9 @@
 | `website.rvas.manage` | O |  |  |  |  |  |  | O |
 | `website.policies.manage` | O |  |  |  |  |  |  | O |
 | `website.minutes.manage` | O |  |  |  |  |  |  | O |
+| `website.documents.manage` | O |  |  |  |  |  |  | O |
+| `website.staff-files.manage` | O |  |  |  |  |  |  | O |
+| `website.archive.manage` | O |  |  |  |  |  |  |  |
 | `roles.atc-training-manager.manage` | O |  |  |  |  |  |  |  |
 | `roles.pipeline-coordinator.manage` | O |  |  |  |  |  |  |  |
 | `roles.nav-editor.manage` | O |  |  |  |  |  |  |  |
@@ -64,4 +67,4 @@
 | `roles.event-staff.manage` | O |  |  |  |  |  |  |  |
 | `roles.content-editor.manage` | O |  |  |  |  |  |  |  |
 
-**Totals:** admin **59** · atc-training-manager **37** · pipeline-coordinator **29** · mentor **8** · nav-editor **2** · feedback-team **3** · event-staff **2** · content-editor **5**
+**Totals:** admin **62** · atc-training-manager **37** · pipeline-coordinator **29** · mentor **8** · nav-editor **2** · feedback-team **3** · event-staff **2** · content-editor **7**

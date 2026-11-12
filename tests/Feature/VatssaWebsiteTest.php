@@ -20,6 +20,8 @@ class VatssaWebsiteTest extends TestCase
 
     private const PAGES = ['screenshot', 'staff', 'rvas', 'policies', 'minutes'];
 
+    private const FILE_AREAS = ['documents', 'staff-files'];
+
     private bool $purgeSucceeds = true;
 
     protected function setUp(): void
@@ -29,6 +31,9 @@ class VatssaWebsiteTest extends TestCase
         Storage::fake('vatssa-homepage');
         Storage::fake('vatssa-policy');
         Storage::fake('vatssa-minutes');
+        Storage::fake('vatssa-documents');
+        Storage::fake('vatssa-staff-shared');
+        Storage::fake('vatssa-archive');
 
         config([
             'vatssa-website.cloudflare.zone_id' => 'zone123',
@@ -197,10 +202,11 @@ class VatssaWebsiteTest extends TestCase
             ],
         ], $this->stored('stafflist.json'));
 
-        // The previous version is kept.
-        $history = Storage::disk('vatssa-homepage')->files('_history');
+        // The previous version is kept, privately.
+        $history = Storage::disk('vatssa-archive')->files('json/staff');
         $this->assertCount(1, $history);
-        $this->assertSame($original, Storage::disk('vatssa-homepage')->get($history[0]));
+        $this->assertSame($original, Storage::disk('vatssa-archive')->get($history[0]));
+        $this->assertSame([], Storage::disk('vatssa-homepage')->files('_history'));
 
         $this->assertDatabaseHas('activity_logs', ['log_name' => 'other', 'description' => 'Website: Staff list saved (3 entries)']);
     }
@@ -353,19 +359,19 @@ class VatssaWebsiteTest extends TestCase
             ]],
         ])->assertSessionHasNoErrors();
 
-        Storage::disk('vatssa-minutes')->assertExists('vatssa_staff_minutes_2026-11-12_public.pdf');
+        Storage::disk('vatssa-minutes')->assertExists('vatssa-staff-minutes-2026-11-12-public.pdf');
         $this->assertSame(['minutes' => [[
-            'id' => 'vatssa_staff_minutes_2026-11-12_public.pdf',
+            'id' => 'vatssa-staff-minutes-2026-11-12-public.pdf',
             'title' => 'Staff Meeting Minutes',
             'description' => '12 November 2026',
-            'url' => 'https://files.vatssa.com/meeting-minutes/vatssa_staff_minutes_2026-11-12_public.pdf',
+            'url' => 'https://files.vatssa.com/meeting-minutes/vatssa-staff-minutes-2026-11-12-public.pdf',
         ]]], $this->stored('minutes.json'));
     }
 
     #[Test]
     public function an_existing_file_is_never_overwritten_from_a_new_row(): void
     {
-        Storage::disk('vatssa-policy')->put('rva_policy.pdf', 'linked from elsewhere');
+        Storage::disk('vatssa-policy')->put('rva-policy.pdf', 'linked from elsewhere');
 
         $this->actingAs($this->userWithRole('content-editor'))->post(route('vatssa.website.policies.save'), [
             'version' => 'missing',
@@ -373,11 +379,11 @@ class VatssaWebsiteTest extends TestCase
                 'id' => '',
                 'title' => 'rVA Policy',
                 'description' => 'Partner airlines',
-                'file' => UploadedFile::fake()->create('rva_policy.pdf', 100, 'application/pdf'),
+                'file' => UploadedFile::fake()->create('rva policy.pdf', 100, 'application/pdf'),
             ]],
         ])->assertSessionHasErrors('rows.0.file');
 
-        $this->assertSame('linked from elsewhere', Storage::disk('vatssa-policy')->get('rva_policy.pdf'));
+        $this->assertSame('linked from elsewhere', Storage::disk('vatssa-policy')->get('rva-policy.pdf'));
         $this->assertFalse(Storage::disk('vatssa-homepage')->exists('policies.json'));
     }
 
@@ -401,6 +407,10 @@ class VatssaWebsiteTest extends TestCase
         ])->assertSessionHasNoErrors();
 
         $this->assertNotSame('version 1', Storage::disk('vatssa-policy')->get('rva_policy.pdf'));
+        $versions = Storage::disk('vatssa-archive')->files('policy/rva_policy.pdf');
+        $this->assertCount(1, $versions);
+        $this->assertStringEndsWith('__rva_policy.pdf', $versions[0]);
+        $this->assertSame('version 1', Storage::disk('vatssa-archive')->get($versions[0]));
         $this->assertSame($url, $this->stored('policies.json')['policies'][0]['url']);
         $this->assertSame('Partner airlines, v1.2', $this->stored('policies.json')['policies'][0]['description']);
 
@@ -429,6 +439,209 @@ class VatssaWebsiteTest extends TestCase
         ])->assertSessionHasErrors('rows.0.file');
 
         $this->assertSame([], Storage::disk('vatssa-policy')->allFiles());
+    }
+
+    // -----------------------------------------------------------------
+    // Archiving instead of deleting
+    // -----------------------------------------------------------------
+
+    #[Test]
+    public function archiving_a_document_takes_it_off_the_website_but_keeps_it(): void
+    {
+        $url = 'https://files.vatssa.com/meeting-minutes/old-meeting.pdf';
+        Storage::disk('vatssa-minutes')->put('old-meeting.pdf', 'old minutes');
+        Storage::disk('vatssa-minutes')->put('new-meeting.pdf', 'new minutes');
+        Storage::disk('vatssa-homepage')->put('minutes.json', json_encode(['minutes' => [
+            ['id' => 'new-meeting.pdf', 'title' => 'New', 'description' => '2 Nov', 'url' => 'https://files.vatssa.com/meeting-minutes/new-meeting.pdf'],
+            ['id' => 'old-meeting.pdf', 'title' => 'Old', 'description' => '1 Nov', 'url' => $url],
+        ]]));
+
+        $this->actingAs($this->userWithRole('content-editor'))->post(route('vatssa.website.minutes.save'), [
+            'version' => $this->version('minutes.json'),
+            'rows' => [
+                ['id' => 'new-meeting.pdf', 'title' => 'New', 'description' => '2 Nov'],
+                ['id' => 'old-meeting.pdf', 'title' => 'Old', 'description' => '1 Nov', 'delete' => '1'],
+            ],
+        ])->assertSessionHasNoErrors();
+
+        $this->assertSame(['new-meeting.pdf'], array_column($this->stored('minutes.json')['minutes'], 'id'));
+        Storage::disk('vatssa-minutes')->assertMissing('old-meeting.pdf');
+        Storage::disk('vatssa-minutes')->assertExists('new-meeting.pdf');
+        $archived = Storage::disk('vatssa-archive')->files('meeting-minutes/old-meeting.pdf');
+        $this->assertCount(1, $archived);
+        $this->assertSame('old minutes', Storage::disk('vatssa-archive')->get($archived[0]));
+        Http::assertSent(fn ($request) => in_array($url, $request['files'] ?? [], true));
+    }
+
+    // -----------------------------------------------------------------
+    // Staff photos and rVA logos
+    // -----------------------------------------------------------------
+
+    #[Test]
+    public function a_staff_photo_is_stored_and_the_old_one_archived(): void
+    {
+        $oldPhoto = 'https://files.vatssa.com/homepage-data/staff/jane-doe-aaaaaa.png';
+        Storage::disk('vatssa-homepage')->put('staff/jane-doe-aaaaaa.png', 'old photo');
+        Storage::disk('vatssa-homepage')->put('stafflist.json', json_encode(['Team' => [
+            ['id' => 'jane-doe', 'name' => 'Jane Doe', 'role' => 'R', 'photo' => $oldPhoto],
+        ]]));
+
+        $this->actingAs($this->userWithRole('content-editor'))->post(route('vatssa.website.staff.save'), [
+            'version' => $this->version('stafflist.json'),
+            'rows' => [[
+                'id' => 'jane-doe', 'team' => 'Team', 'name' => 'Jane Doe', 'role' => 'R', 'photo' => $oldPhoto,
+                'photo_file' => UploadedFile::fake()->image('me.png', 400, 400),
+            ]],
+        ])->assertSessionHasNoErrors();
+
+        $photo = $this->stored('stafflist.json')['Team'][0]['photo'];
+        $this->assertMatchesRegularExpression('#^https://files\.vatssa\.com/homepage-data/staff/jane-doe-[a-z0-9]{6}\.png$#', $photo);
+        Storage::disk('vatssa-homepage')->assertExists(substr($photo, strlen('https://files.vatssa.com/homepage-data/')));
+        Storage::disk('vatssa-homepage')->assertMissing('staff/jane-doe-aaaaaa.png');
+        $this->assertCount(1, Storage::disk('vatssa-archive')->files('homepage-data/staff/jane-doe-aaaaaa.png'));
+    }
+
+    #[Test]
+    public function a_form_cannot_carry_an_image_that_is_not_on_the_list(): void
+    {
+        Storage::disk('vatssa-homepage')->put('rva.json', json_encode(['data' => [['name' => 'A', 'site' => 'https://a.example/', 'tier' => 1]]]));
+
+        $this->actingAs($this->userWithRole('content-editor'))->post(route('vatssa.website.rvas.save'), [
+            'version' => $this->version('rva.json'),
+            'rows' => [['name' => 'A', 'site' => 'https://a.example/', 'tier' => '1', 'logo' => 'https://evil.example/logo.png']],
+        ])->assertSessionHasErrors('rows.0.logo');
+    }
+
+    #[Test]
+    public function an_rva_logo_is_stored_and_removing_it_archives_it(): void
+    {
+        $editor = $this->userWithRole('content-editor');
+
+        $this->actingAs($editor)->post(route('vatssa.website.rvas.save'), [
+            'version' => 'missing',
+            'rows' => [['name' => 'Bonair Virtual', 'site' => 'https://a.example/', 'tier' => '1', 'logo_file' => UploadedFile::fake()->image('logo.webp', 600, 300)]],
+        ])->assertSessionHasNoErrors();
+
+        $logo = $this->stored('rva.json')['data'][0]['logo'];
+        $this->assertMatchesRegularExpression('#/homepage-data/rvas/bonair-virtual-[a-z0-9]{6}\.webp$#', $logo);
+
+        $this->actingAs($editor)->post(route('vatssa.website.rvas.save'), [
+            'version' => $this->version('rva.json'),
+            'rows' => [['name' => 'Bonair Virtual', 'site' => 'https://a.example/', 'tier' => '1', 'logo' => $logo, 'remove_logo' => '1']],
+        ])->assertSessionHasNoErrors();
+
+        $this->assertArrayNotHasKey('logo', $this->stored('rva.json')['data'][0]);
+        $this->assertSame([], Storage::disk('vatssa-homepage')->files('rvas'));
+        $this->assertCount(1, Storage::disk('vatssa-archive')->allFiles('homepage-data/rvas'));
+    }
+
+    // -----------------------------------------------------------------
+    // Other files and Staff files
+    // -----------------------------------------------------------------
+
+    #[Test]
+    public function content_editors_manage_both_file_areas_and_others_cannot(): void
+    {
+        $editor = $this->userWithRole('content-editor');
+        $manager = $this->userWithRole('atc-training-manager');
+
+        foreach (self::FILE_AREAS as $area) {
+            $this->actingAs($editor)->get(route("vatssa.website.{$area}"))->assertOk();
+            $this->actingAs($manager)->get(route("vatssa.website.{$area}"))->assertForbidden();
+            $this->actingAs($manager)->post(route("vatssa.website.{$area}.upload"), ['file' => UploadedFile::fake()->create('x.pdf', 1, 'application/pdf')])->assertForbidden();
+        }
+    }
+
+    #[Test]
+    public function an_upload_keeps_a_clean_name_and_never_overwrites_by_accident(): void
+    {
+        $editor = $this->userWithRole('content-editor');
+
+        $this->actingAs($editor)->post(route('vatssa.website.documents.upload'), [
+            'file' => UploadedFile::fake()->create('Code of Conduct 2026.pdf', 10, 'application/pdf'),
+        ])->assertSessionHasNoErrors();
+        Storage::disk('vatssa-documents')->assertExists('code-of-conduct-2026.pdf');
+
+        $this->actingAs($editor)->post(route('vatssa.website.documents.upload'), [
+            'file' => UploadedFile::fake()->create('code of conduct 2026.pdf', 20, 'application/pdf'),
+        ])->assertSessionHasErrors('file');
+        $this->assertSame([], Storage::disk('vatssa-archive')->allFiles());
+
+        $this->actingAs($editor)->post(route('vatssa.website.documents.upload'), [
+            'file' => UploadedFile::fake()->create('code of conduct 2026.pdf', 20, 'application/pdf'),
+            'replace' => '1',
+        ])->assertSessionHasNoErrors();
+        $this->assertCount(1, Storage::disk('vatssa-archive')->files('documents/code-of-conduct-2026.pdf'));
+        Http::assertSent(fn ($request) => in_array('https://files.vatssa.com/documents/code-of-conduct-2026.pdf', $request['files'] ?? [], true));
+    }
+
+    #[Test]
+    public function scripts_are_refused(): void
+    {
+        foreach (['page.html' => 'text/html', 'image.svg' => 'image/svg+xml', 'run.php' => 'text/x-php'] as $name => $mime) {
+            $this->actingAs($this->userWithRole('content-editor'))->post(route('vatssa.website.documents.upload'), [
+                'file' => UploadedFile::fake()->create($name, 1, $mime),
+            ])->assertSessionHasErrors('file');
+        }
+
+        $this->assertSame([], Storage::disk('vatssa-documents')->allFiles());
+    }
+
+    #[Test]
+    public function a_folder_is_slugged_and_archiving_moves_the_file(): void
+    {
+        $editor = $this->userWithRole('content-editor');
+
+        $this->actingAs($editor)->post(route('vatssa.website.staff-files.upload'), [
+            'file' => UploadedFile::fake()->create('Budget 2027.xlsx', 10, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'),
+            'folder' => 'Finance Team',
+        ])->assertSessionHasNoErrors();
+        Storage::disk('vatssa-staff-shared')->assertExists('finance-team/budget-2027.xlsx');
+
+        $this->actingAs($editor)->get(route('vatssa.website.staff-files.download', ['path' => 'finance-team/budget-2027.xlsx']))->assertOk();
+        $this->actingAs($editor)->get(route('vatssa.website.staff-files.download', ['path' => '../homepage-data/stafflist.json']))->assertNotFound();
+        $this->actingAs($editor)->get(route('vatssa.website.staff-files.download', ['path' => 'not-there.pdf']))->assertNotFound();
+
+        $this->actingAs($editor)->post(route('vatssa.website.staff-files.archive'), ['path' => 'finance-team/budget-2027.xlsx'])->assertSessionHasNoErrors();
+        Storage::disk('vatssa-staff-shared')->assertMissing('finance-team/budget-2027.xlsx');
+        $this->assertCount(1, Storage::disk('vatssa-archive')->files('staff-shared/finance-team/budget-2027.xlsx'));
+    }
+
+    // -----------------------------------------------------------------
+    // The archive
+    // -----------------------------------------------------------------
+
+    #[Test]
+    public function only_admin_can_see_the_archive_or_delete_for_good(): void
+    {
+        Storage::disk('vatssa-archive')->put('policy/a.pdf/20261112-000000-abcd__a.pdf', 'old');
+        $path = 'policy/a.pdf/20261112-000000-abcd__a.pdf';
+
+        $this->actingAs($this->userWithRole('content-editor'))->get(route('vatssa.website.archive'))->assertForbidden();
+        $this->actingAs($this->userWithRole('content-editor'))->post(route('vatssa.website.archive.delete'), ['path' => $path, 'confirm' => '1'])->assertForbidden();
+
+        $admin = $this->userWithRole('admin');
+        $this->actingAs($admin)->get(route('vatssa.website.archive'))->assertOk()->assertSee('a.pdf');
+        $this->actingAs($admin)->get(route('vatssa.website.archive.download', ['path' => $path]))->assertOk();
+
+        $this->actingAs($admin)->post(route('vatssa.website.archive.delete'), ['path' => $path])->assertSessionHasErrors('confirm');
+        Storage::disk('vatssa-archive')->assertExists($path);
+
+        $this->actingAs($admin)->post(route('vatssa.website.archive.delete'), ['path' => $path, 'confirm' => '1'])->assertSessionHasNoErrors();
+        Storage::disk('vatssa-archive')->assertMissing($path);
+    }
+
+    #[Test]
+    public function the_archive_permission_is_admin_only(): void
+    {
+        $roles = app(\App\Services\PermissionMatrix::class)->rolesFor('website.archive.manage');
+        $this->assertSame(['admin'], $roles);
+
+        foreach (['website.documents.manage', 'website.staff-files.manage'] as $permission) {
+            $roles = app(\App\Services\PermissionMatrix::class)->rolesFor($permission);
+            sort($roles);
+            $this->assertSame(['admin', 'content-editor'], $roles, $permission);
+        }
     }
 
     // -----------------------------------------------------------------

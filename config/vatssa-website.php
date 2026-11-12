@@ -17,10 +17,15 @@ return [
     ],
 
     // Disk name => bucket. VatssaServiceProvider registers each as a filesystem disk.
+    // Public-read buckets: homepage-data, policy, meeting-minutes, documents.
+    // Private: staff-shared, website-archive.
     'buckets' => [
         'vatssa-homepage' => 'homepage-data',
         'vatssa-policy' => 'policy',
         'vatssa-minutes' => 'meeting-minutes',
+        'vatssa-documents' => 'documents',
+        'vatssa-staff-shared' => 'staff-shared',
+        'vatssa-archive' => 'website-archive',
     ],
 
     // Public addresses, used for the links written into the JSON and for purging.
@@ -77,7 +82,32 @@ return [
         ],
     ],
 
-    // Earlier versions of each JSON are copied here (in homepage-data) before
-    // every save, so a bad save can be put back by hand.
-    'history_prefix' => '_history/',
+    // Plain file areas: a bucket listed as files, no JSON. 'public' areas give
+    // each file a files.vatssa.com link; private ones download through CC.
+    'files' => [
+        'documents' => [
+            'title' => 'Other files',
+            'permission' => 'website.documents.manage',
+            'disk' => 'vatssa-documents',
+            'public' => true,
+        ],
+        'staff-files' => [
+            'title' => 'Staff files',
+            'permission' => 'website.staff-files.manage',
+            'disk' => 'vatssa-staff-shared',
+            'public' => false,
+        ],
+    ],
+
+    // Types and size allowed in the file areas. No HTML or SVG: both run
+    // scripts when opened from files.vatssa.com.
+    'file_types' => ['pdf', 'png', 'jpg', 'jpeg', 'webp', 'docx', 'xlsx', 'pptx', 'txt', 'csv', 'zip'],
+    'file_max_kb' => 20480,
+
+    // The private archive: every replaced or archived file and every earlier
+    // JSON. Viewing it, downloading from it and deleting for good need this.
+    'archive' => [
+        'title' => 'Archive',
+        'permission' => 'website.archive.manage',
+    ],
 ];

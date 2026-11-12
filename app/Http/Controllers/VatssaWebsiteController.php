@@ -51,9 +51,15 @@ class VatssaWebsiteController extends Controller
             return $pages;
         }
 
-        foreach (config('vatssa-website.pages', []) as $key => $page) {
-            if ($user->hasGlobalPermission($page['permission'])) {
-                $pages[$key] = $page['title'];
+        $sections = array_merge(
+            config('vatssa-website.pages', []),
+            config('vatssa-website.files', []),
+            ['archive' => config('vatssa-website.archive')],
+        );
+
+        foreach ($sections as $key => $section) {
+            if (is_array($section) && $user->hasGlobalPermission($section['permission'])) {
+                $pages[$key] = $section['title'];
             }
         }
 
@@ -139,12 +145,13 @@ class VatssaWebsiteController extends Controller
                     'role' => $this->text($member['role'] ?? ''),
                     'email' => $this->text($member['email'] ?? ''),
                     'cid' => $this->text($member['cid'] ?? ''),
+                    'photo' => $this->text($member['photo'] ?? ''),
                 ];
             }
         }
 
         return view('vatssa.website.staff', [
-            'rows' => $this->withOrderAndBlanks($rows, ['team' => '', 'id' => '', 'name' => '', 'role' => '', 'email' => '', 'cid' => '']),
+            'rows' => $this->withOrderAndBlanks($rows, ['team' => '', 'id' => '', 'name' => '', 'role' => '', 'email' => '', 'cid' => '', 'photo' => '']),
             'version' => $current['version'],
             'unreadable' => $current['unreadable'],
         ]);
@@ -155,7 +162,9 @@ class VatssaWebsiteController extends Controller
         $this->authorizePage($request, 'staff');
 
         $request->validate(['version' => 'required|string', 'rows' => 'required|array|max:300']);
-        $rows = $this->keptRows($request->input('rows'), ['team', 'name', 'role', 'email', 'cid']);
+        $input = $this->rowsWithFiles($request, 'photo_file');
+        $rows = $this->keptRows($input, ['team', 'name', 'role', 'email', 'cid', 'photo_file']);
+        $currentPhotos = $this->column($this->staffGroups($this->read('staff')['data']), 'photo', true);
 
         $this->validateRows($rows, [
             'team' => 'required|string|max:60',
@@ -166,11 +175,21 @@ class VatssaWebsiteController extends Controller
             // Ids name photo files; existing ones may use capitals or dots.
             'id' => ['nullable', 'string', 'max:80', 'regex:/^[A-Za-z0-9._-]+$/'],
             'order' => 'nullable|integer|min:0|max:100000',
+            // Only a photo already on the list can be carried over.
+            'photo' => ['nullable', 'string', Rule::in($currentPhotos)],
+            'photo_file' => 'nullable|file|mimes:png,jpg,jpeg,webp|max:2048',
         ], 'Nobody would be left on the staff list. Nothing was saved.');
 
         $version = $request->input('version');
+        $removedPhotos = $this->removedImages($input, 'photo', $currentPhotos);
 
-        return $this->saving('staff', $version, function () use ($rows, $version) {
+        return $this->saving('staff', $version, function () use ($rows, $version, $removedPhotos) {
+            $archive = [];
+            $changedUrls = [];
+            foreach ($removedPhotos as $url) {
+                $this->queueImageArchive($url, 'staff/', $archive, $changedUrls);
+            }
+
             $groups = [];
             $usedIds = array_values(array_filter(array_map(fn ($row) => $row['id'] ?? null, $rows)));
             foreach ($this->sorted($rows) as $row) {
@@ -191,6 +210,10 @@ class VatssaWebsiteController extends Controller
                 if ($this->filled($row['cid'] ?? null)) {
                     $member['cid'] = $row['cid'];
                 }
+                $photo = $this->rowImage($row, 'photo', 'staff/', $row['id'], $archive, $changedUrls);
+                if ($photo !== null) {
+                    $member['photo'] = $photo;
+                }
                 $groups[$row['team']][] = $member;
             }
 
@@ -203,8 +226,9 @@ class VatssaWebsiteController extends Controller
                 : $groups;
 
             $this->store->write('staff', $payload, $version);
+            $this->archiveAll($archive, $this->column((array) $groups, 'photo', true));
 
-            return ['Staff list saved (' . count($rows) . ' entries)', []];
+            return ['Staff list saved (' . count($rows) . ' entries)', $changedUrls];
         });
     }
 
@@ -228,11 +252,12 @@ class VatssaWebsiteController extends Controller
                 'signup' => $this->text($rva['signup'] ?? ''),
                 'tier' => $this->text($rva['tier'] ?? ''),
                 'description' => $this->text($rva['description'] ?? ''),
+                'logo' => $this->text($rva['logo'] ?? ''),
             ];
         }
 
         return view('vatssa.website.rvas', [
-            'rows' => $this->withOrderAndBlanks($rows, ['name' => '', 'site' => '', 'signup' => '', 'tier' => '', 'description' => '']),
+            'rows' => $this->withOrderAndBlanks($rows, ['name' => '', 'site' => '', 'signup' => '', 'tier' => '', 'description' => '', 'logo' => '']),
             'version' => $current['version'],
             'unreadable' => $current['unreadable'],
         ]);
@@ -243,7 +268,9 @@ class VatssaWebsiteController extends Controller
         $this->authorizePage($request, 'rvas');
 
         $request->validate(['version' => 'required|string', 'rows' => 'required|array|max:100']);
-        $rows = $this->keptRows($request->input('rows'), ['name', 'site', 'signup', 'tier', 'description']);
+        $input = $this->rowsWithFiles($request, 'logo_file');
+        $rows = $this->keptRows($input, ['name', 'site', 'signup', 'tier', 'description', 'logo_file']);
+        $currentLogos = $this->column($this->dataList($this->read('rvas')['data']), 'logo');
 
         $this->validateRows($rows, [
             'name' => 'required|string|max:80',
@@ -252,11 +279,20 @@ class VatssaWebsiteController extends Controller
             'tier' => 'required|in:1,2',
             'description' => 'nullable|string|max:500',
             'order' => 'nullable|integer|min:0|max:100000',
+            'logo' => ['nullable', 'string', Rule::in($currentLogos)],
+            'logo_file' => 'nullable|file|mimes:png,jpg,jpeg,webp|max:2048',
         ], 'No airline would be left on the list. Nothing was saved.');
 
         $version = $request->input('version');
+        $removedLogos = $this->removedImages($input, 'logo', $currentLogos);
 
-        return $this->saving('rvas', $version, function () use ($rows, $version) {
+        return $this->saving('rvas', $version, function () use ($rows, $version, $removedLogos) {
+            $archive = [];
+            $changedUrls = [];
+            foreach ($removedLogos as $url) {
+                $this->queueImageArchive($url, 'rvas/', $archive, $changedUrls);
+            }
+
             $airlines = [];
             foreach ($this->sorted($rows) as $row) {
                 $airline = ['name' => $row['name'], 'site' => $row['site']];
@@ -267,12 +303,17 @@ class VatssaWebsiteController extends Controller
                 if ($this->filled($row['description'] ?? null)) {
                     $airline['description'] = $row['description'];
                 }
+                $logo = $this->rowImage($row, 'logo', 'rvas/', Str::slug($row['name']) ?: 'rva', $archive, $changedUrls);
+                if ($logo !== null) {
+                    $airline['logo'] = $logo;
+                }
                 $airlines[] = $airline;
             }
 
             $this->store->write('rvas', ['data' => $airlines], $version);
+            $this->archiveAll($archive, $this->column($airlines, 'logo'));
 
-            return ['Partner rVA list saved (' . count($airlines) . ' airlines)', []];
+            return ['Partner rVA list saved (' . count($airlines) . ' airlines)', $changedUrls];
         });
     }
 
@@ -321,14 +362,18 @@ class VatssaWebsiteController extends Controller
             }
         }
 
-        $files = $request->file('rows', []);
-        $input = (array) $request->input('rows', []);
-        foreach ($input as $key => $row) {
-            if (is_array($row) && isset($files[$key]['file'])) {
-                $input[$key]['file'] = $files[$key]['file'];
+        $input = $this->rowsWithFiles($request, 'file');
+        $rows = $this->keptRows($input, ['id', 'title', 'description', 'file']);
+
+        // Rows ticked "Archive": off the website, file moved to the private archive.
+        $keptIds = array_filter(array_map(fn ($row) => $row['id'] ?? null, $rows));
+        $archivedIds = [];
+        foreach ($input as $row) {
+            $id = is_array($row) ? ($row['id'] ?? null) : null;
+            if (! empty($row['delete']) && is_string($id) && isset($existing[$id]) && ! in_array($id, $keptIds, true)) {
+                $archivedIds[] = $id;
             }
         }
-        $rows = $this->keptRows($input, ['id', 'title', 'description', 'file']);
 
         $rules = [
             'title' => 'required|string|max:150',
@@ -369,7 +414,7 @@ class VatssaWebsiteController extends Controller
 
         $version = $request->input('version');
 
-        return $this->saving($page, $version, function () use ($page, $diskName, $rows, $existing, $newNames, $version) {
+        return $this->saving($page, $version, function () use ($page, $diskName, $rows, $existing, $newNames, $version, $archivedIds) {
             $documents = [];
             $changedUrls = [];
             $replacements = [];
@@ -396,12 +441,27 @@ class VatssaWebsiteController extends Controller
             $this->store->write($page, [config("vatssa-website.pages.{$page}.list_key") => $documents], $version);
 
             // A live file is replaced only once the JSON is saved: a conflict
-            // above leaves the old PDF untouched.
+            // above leaves the old PDF untouched. The old version is kept in
+            // the private archive first.
             foreach ($replacements as [$path, $file]) {
+                $this->store->archiveCopy($diskName, $path);
                 $this->store->putFile($diskName, $path, $file);
             }
 
-            return [config("vatssa-website.pages.{$page}.title") . ' saved (' . count($documents) . ' documents)', $changedUrls];
+            $keptUrls = array_column($documents, 'url');
+            foreach ($archivedIds as $id) {
+                $url = $existing[$id]['url'];
+                $path = $this->objectPath($diskName, $url);
+                if ($path !== null && ! in_array($url, $keptUrls, true)) {
+                    $this->store->archive($diskName, $path);
+                    $changedUrls[] = $url;
+                }
+            }
+
+            $message = config("vatssa-website.pages.{$page}.title") . ' saved (' . count($documents) . ' documents';
+            $message .= $archivedIds === [] ? ')' : ', ' . count($archivedIds) . ' archived)';
+
+            return [$message, $changedUrls];
         });
     }
 
@@ -627,14 +687,118 @@ class VatssaWebsiteController extends Controller
 
     private function fileName(UploadedFile $file, string $page): string
     {
-        $base = Str::of(pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME))
-            ->lower()
-            ->replaceMatches('/[^a-z0-9._-]+/', '_')
-            ->trim('._-')
+        // Naming convention: lowercase words joined by hyphens, from the
+        // uploaded file's own name (see the page's help text).
+        $base = Str::of(Str::slug(pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME)))
             ->limit(120, '')
+            ->trim('-')
             ->toString();
 
         return ($base === '' ? $page . '-' . now()->utc()->format('Ymd-His') : $base) . '.pdf';
+    }
+
+    /**
+     * The rows input with each row's uploaded file merged in under $field.
+     */
+    private function rowsWithFiles(Request $request, string $field): array
+    {
+        $files = $request->file('rows', []);
+        $input = (array) $request->input('rows', []);
+
+        foreach ($input as $key => $row) {
+            if (is_array($row) && isset($files[$key][$field])) {
+                $input[$key][$field] = $files[$key][$field];
+            }
+        }
+
+        return $input;
+    }
+
+    /**
+     * Every non-empty string value of $field across a list of entries, or
+     * across a map of team => entries when $grouped.
+     */
+    private function column(array $entries, string $field, bool $grouped = false): array
+    {
+        $list = $grouped ? array_merge([], ...array_values($entries)) : $entries;
+        $values = [];
+        foreach ($list as $entry) {
+            if (is_array($entry) && is_string($entry[$field] ?? null) && $entry[$field] !== '') {
+                $values[] = $entry[$field];
+            }
+        }
+
+        return array_values(array_unique($values));
+    }
+
+    /**
+     * The current images of rows ticked for removal: they go to the archive
+     * with the row.
+     */
+    private function removedImages(array $input, string $field, array $current): array
+    {
+        $removed = [];
+        foreach ($input as $row) {
+            if (is_array($row) && ! empty($row['delete']) && in_array($row[$field] ?? null, $current, true)) {
+                $removed[] = $row[$field];
+            }
+        }
+
+        return $removed;
+    }
+
+    /**
+     * A row's image after a save: a new upload, the current one, or none.
+     * A new upload gets a fresh name, so no cache shows the old picture; the
+     * file it replaces is queued for the archive.
+     */
+    private function rowImage(array $row, string $field, string $prefix, string $slug, array &$archive, array &$changedUrls): ?string
+    {
+        $current = $this->filled($row[$field] ?? null) ? $row[$field] : null;
+        $upload = $row["{$field}_file"] ?? null;
+
+        if ($upload instanceof UploadedFile) {
+            $extension = $upload->extension() === 'jpeg' ? 'jpg' : $upload->extension();
+            $path = $prefix . $slug . '-' . Str::lower(Str::random(6)) . '.' . $extension;
+            $this->store->putFile(VatssaWebsiteStore::HOMEPAGE_DISK, $path, $upload);
+            $this->queueImageArchive($current, $prefix, $archive, $changedUrls);
+
+            return $this->store->publicUrl(VatssaWebsiteStore::HOMEPAGE_DISK, $path);
+        }
+
+        if ($current !== null && ! empty($row["remove_{$field}"])) {
+            $this->queueImageArchive($current, $prefix, $archive, $changedUrls);
+
+            return null;
+        }
+
+        return $current;
+    }
+
+    /**
+     * Queue an image for the archive, but only one CC itself stored (under
+     * staff/ or rvas/ in homepage-data).
+     */
+    private function queueImageArchive(?string $url, string $prefix, array &$archive, array &$changedUrls): void
+    {
+        $path = $url === null ? null : $this->objectPath(VatssaWebsiteStore::HOMEPAGE_DISK, $url);
+        if ($path !== null && str_starts_with($path, $prefix) && ! in_array($path, $archive, true)) {
+            $archive[] = $path;
+            $changedUrls[] = $url;
+        }
+    }
+
+    /**
+     * Archive images that left the list, unless the saved list still uses one
+     * (a hand-edited file can share an image between entries).
+     */
+    private function archiveAll(array $paths, array $stillUsedUrls): void
+    {
+        foreach ($paths as $path) {
+            if (! in_array($this->store->publicUrl(VatssaWebsiteStore::HOMEPAGE_DISK, $path), $stillUsedUrls, true)) {
+                $this->store->archive(VatssaWebsiteStore::HOMEPAGE_DISK, $path);
+            }
+        }
     }
 
     /**

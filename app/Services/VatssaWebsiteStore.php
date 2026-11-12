@@ -22,6 +22,8 @@ class VatssaWebsiteStore
 {
     public const HOMEPAGE_DISK = 'vatssa-homepage';
 
+    public const ARCHIVE_DISK = 'vatssa-archive';
+
     /**
      * The JSON object for a page, as stored.
      *
@@ -73,10 +75,8 @@ class VatssaWebsiteStore
         $json = json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR) . "\n";
 
         if ($current !== null) {
-            // Random suffix: two saves in the same second keep both copies.
-            $stamp = now()->utc()->format('Ymd-His') . '-' . Str::lower(Str::random(4));
-            $history = config('vatssa-website.history_prefix') . pathinfo($path, PATHINFO_FILENAME) . "-{$stamp}.json";
-            $this->put($disk, $history, $current);
+            // The previous JSON goes to the private archive bucket.
+            $this->put($this->disk(self::ARCHIVE_DISK), 'json/' . $page . '/' . $this->stamp() . '.json', $current);
         }
 
         $this->put($disk, $path, $json);
@@ -102,6 +102,90 @@ class VatssaWebsiteStore
                 fclose($stream);
             }
         }
+    }
+
+    /**
+     * Copy an object into the private archive, keeping it where it is. Used
+     * before a file is replaced, so every earlier version is kept.
+     *
+     * Archive layout: <bucket>/<object path>/<UTC stamp>__<file name>, so all
+     * versions of one file sit together.
+     */
+    public function archiveCopy(string $diskName, string $path): ?string
+    {
+        $source = $this->disk($diskName);
+        if (! $source->exists($path)) {
+            return null;
+        }
+
+        $bucket = config("vatssa-website.buckets.{$diskName}");
+        $target = $bucket . '/' . $path . '/' . $this->stamp() . '__' . basename($path);
+        $stream = $source->readStream($path);
+
+        try {
+            $this->put($this->disk(self::ARCHIVE_DISK), $target, $stream);
+        } finally {
+            if (is_resource($stream)) {
+                fclose($stream);
+            }
+        }
+
+        return $target;
+    }
+
+    /**
+     * Move an object into the private archive: it stops being public (or
+     * listed) but is never lost. Copy first, delete only once the copy exists.
+     */
+    public function archive(string $diskName, string $path): void
+    {
+        if ($this->archiveCopy($diskName, $path) === null) {
+            return;
+        }
+
+        if ($this->disk($diskName)->delete($path) === false) {
+            throw new RuntimeException("MinIO refused to remove {$path} after archiving it.");
+        }
+    }
+
+    /**
+     * Every object in a bucket, newest first.
+     *
+     * @return array<int, array{path: string, size: int, modified: int}>
+     */
+    public function listFiles(string $diskName): array
+    {
+        $disk = $this->disk($diskName);
+        $files = [];
+
+        foreach ($disk->allFiles() as $path) {
+            $files[] = [
+                'path' => $path,
+                'size' => (int) $disk->size($path),
+                'modified' => (int) $disk->lastModified($path),
+            ];
+        }
+
+        usort($files, fn ($a, $b) => $b['modified'] <=> $a['modified'] ?: strcmp($a['path'], $b['path']));
+
+        return $files;
+    }
+
+    public function delete(string $diskName, string $path): void
+    {
+        if ($this->disk($diskName)->delete($path) === false) {
+            throw new RuntimeException("MinIO refused to delete {$path}.");
+        }
+    }
+
+    /**
+     * A stream of an object, for downloads from private buckets through CC.
+     *
+     * @return resource|null
+     */
+    public function readStream(string $diskName, string $path)
+    {
+        return $this->disk($diskName)->readStream($path);
     }
 
     /**
@@ -179,6 +263,12 @@ class VatssaWebsiteStore
         }
 
         return $path;
+    }
+
+    private function stamp(): string
+    {
+        // Random suffix: two writes in the same second keep both copies.
+        return now()->utc()->format('Ymd-His') . '-' . Str::lower(Str::random(4));
     }
 
     private function version(?string $raw): string

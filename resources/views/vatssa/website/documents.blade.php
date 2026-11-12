@@ -17,9 +17,17 @@
         <div class="card-body">
             <p>
                 One row per PDF, shown on the website in order.
-                To add one, fill in an empty row at the bottom and choose the PDF; it keeps its file name, so name it well first.
-                To publish a new version of an existing one, choose the new PDF on its row: it replaces the old file under the same name, so existing links keep working.
-                Removing a row takes it off the website, but the file itself stays, so old links still open.
+                To add one, fill in an empty row at the bottom and choose the PDF.
+                To publish a new version, choose the new PDF on its row: it replaces the old file under the same name, so existing links keep working, and the old version is kept in the private archive.
+                <strong>Archive</strong> takes an entry off the website and moves its file to the private archive: its public link stops working, but nothing is lost.
+            </p>
+            <p class="fs-sm text-muted">
+                File names: the PDF keeps its own name in lowercase with hyphens, so name it before uploading.
+                @if($page === 'minutes')
+                    Use <code>meeting-type-yyyy-mm-dd.pdf</code>, for example <code>staff-meeting-2026-11-12.pdf</code> or <code>town-hall-2026-08-23.pdf</code>.
+                @else
+                    Use the policy's name without a version or date, for example <code>rva-policy.pdf</code>: new versions replace it under the same name, and earlier versions stay in the archive.
+                @endif
             </p>
             @if($page === 'minutes')
                 <p>Use the meeting date as the description, like <em>8 September 2026</em>. Only upload the public version.</p>
@@ -33,7 +41,7 @@
                             <th>Title</th>
                             <th>{{ $page === 'minutes' ? 'Meeting date' : 'Description' }}</th>
                             <th>PDF</th>
-                            <th class="text-center">Remove</th>
+                            <th class="text-center">Archive</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -47,12 +55,12 @@
                                 <td><input type="text" class="form-control form-control-sm @error("rows.$i.description") is-invalid @enderror" name="rows[{{ $i }}][description]" value="{{ old("rows.$i.description", $row['description']) }}" maxlength="300"></td>
                                 <td>
                                     {{-- Only https links: the JSON can be edited outside CC. --}}
-                                    @if(Str::startsWith($row['url'], 'https://'))
+                                    @if(Str::startsWith($row['url'], ['https://', config('vatssa-website.files_url')]))
                                         <a href="{{ $row['url'] }}" target="_blank" rel="noopener" class="d-block fs-sm text-break">{{ $row['id'] }}</a>
                                     @endif
                                     <input type="file" class="form-control form-control-sm @error("rows.$i.file") is-invalid @enderror" name="rows[{{ $i }}][file]" accept="application/pdf" aria-label="{{ $row['url'] !== '' ? 'Replace PDF' : 'PDF' }}">
                                 </td>
-                                <td class="text-center"><input type="checkbox" class="form-check-input" name="rows[{{ $i }}][delete]" value="1" @checked(old("rows.$i.delete")) aria-label="Remove this row"></td>
+                                <td class="text-center"><input type="checkbox" class="form-check-input" name="rows[{{ $i }}][delete]" value="1" @checked(old("rows.$i.delete")) aria-label="Archive this entry"></td>
                             </tr>
                         @endforeach
                     </tbody>

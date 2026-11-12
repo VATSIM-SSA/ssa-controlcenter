@@ -136,6 +136,9 @@ return [
         'website.rvas.manage',
         'website.policies.manage',
         'website.minutes.manage',
+        'website.documents.manage',
+        'website.staff-files.manage',
+        'website.archive.manage',               // view the archive, delete for good
 
         // VATSSA: grant authority, one per grantable role. Renamed from upstream's
         // director/moderator/training-staff/staff/buddy to the VATSSA role keys.
@@ -221,9 +224,11 @@ return [
             'bookings.bypass-restrictions',
         ],
 
-        // Every website page, nothing else.
+        // Every website page, nothing else. Not the archive: deleting for good
+        // stays with admin until a role is chosen for it.
         'content-editor' => [
             'website.**',
+            '!website.archive.manage',
         ],
     ],
 ];
