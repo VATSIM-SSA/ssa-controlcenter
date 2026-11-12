@@ -502,6 +502,29 @@ class VatssaWebsiteTest extends TestCase
     }
 
     #[Test]
+    public function a_person_blanked_off_the_list_does_not_leave_a_public_photo(): void
+    {
+        $photo = 'https://files.vatssa.com/homepage-data/staff/old-person-bbbbbb.png';
+        Storage::disk('vatssa-homepage')->put('staff/old-person-bbbbbb.png', 'photo');
+        Storage::disk('vatssa-homepage')->put('stafflist.json', json_encode(['Team' => [
+            ['id' => 'keep', 'name' => 'Keep', 'role' => 'R'],
+            ['id' => 'old-person', 'name' => 'Old Person', 'role' => 'R', 'photo' => $photo],
+        ]]));
+
+        // The editor cleared the text fields instead of ticking Remove.
+        $this->actingAs($this->userWithRole('content-editor'))->post(route('vatssa.website.staff.save'), [
+            'version' => $this->version('stafflist.json'),
+            'rows' => [
+                ['id' => 'keep', 'team' => 'Team', 'name' => 'Keep', 'role' => 'R'],
+                ['id' => 'old-person', 'team' => '', 'name' => '', 'role' => '', 'photo' => $photo],
+            ],
+        ])->assertSessionHasNoErrors();
+
+        Storage::disk('vatssa-homepage')->assertMissing('staff/old-person-bbbbbb.png');
+        $this->assertCount(1, Storage::disk('vatssa-archive')->allFiles('homepage-data/staff'));
+    }
+
+    #[Test]
     public function a_form_cannot_carry_an_image_that_is_not_on_the_list(): void
     {
         Storage::disk('vatssa-homepage')->put('rva.json', json_encode(['data' => [['name' => 'A', 'site' => 'https://a.example/', 'tier' => 1]]]));

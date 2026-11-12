@@ -55,7 +55,7 @@
                                     <input type="hidden" name="rows[{{ $i }}][logo]" value="{{ $row['logo'] }}">
                                     @if(Str::startsWith($row['logo'], ['https://', config('vatssa-website.files_url')]))
                                         <img src="{{ $row['logo'] }}" alt="" class="rounded mb-1" style="height: 2.5rem; max-width: 5rem; object-fit: contain">
-                                        <label class="d-block fs-sm text-nowrap"><input type="checkbox" class="form-check-input" name="rows[{{ $i }}][remove_logo]" value="1"> remove</label>
+                                        <label class="d-block fs-sm text-nowrap"><input type="checkbox" class="form-check-input" name="rows[{{ $i }}][remove_logo]" value="1" @checked(old("rows.$i.remove_logo"))> remove</label>
                                     @endif
                                     <input type="file" class="form-control form-control-sm @error("rows.$i.logo_file") is-invalid @enderror" name="rows[{{ $i }}][logo_file]" accept="image/png,image/jpeg,image/webp" aria-label="Logo">
                                 </td>

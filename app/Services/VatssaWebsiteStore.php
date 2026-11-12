@@ -3,6 +3,9 @@
 namespace App\Services;
 
 use Illuminate\Contracts\Filesystem\Filesystem;
+use Illuminate\Filesystem\AwsS3V3Adapter;
+use League\Flysystem\FileAttributes;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -120,10 +123,24 @@ class VatssaWebsiteStore
 
         $bucket = config("vatssa-website.buckets.{$diskName}");
         $target = $bucket . '/' . $path . '/' . $this->stamp() . '__' . basename($path);
+        $archive = $this->disk(self::ARCHIVE_DISK);
+
+        // On MinIO, copy inside the server (CopyObject): nothing passes through
+        // PHP, so a large legacy file cannot hit memory or time limits.
+        if ($source instanceof AwsS3V3Adapter && $archive instanceof AwsS3V3Adapter) {
+            $source->getClient()->copyObject([
+                'Bucket' => config('vatssa-website.buckets.' . self::ARCHIVE_DISK),
+                'Key' => $target,
+                'CopySource' => rawurlencode($bucket) . '/' . implode('/', array_map('rawurlencode', explode('/', $path))),
+            ]);
+
+            return $target;
+        }
+
         $stream = $source->readStream($path);
 
         try {
-            $this->put($this->disk(self::ARCHIVE_DISK), $target, $stream);
+            $this->put($archive, $target, $stream);
         } finally {
             if (is_resource($stream)) {
                 fclose($stream);
@@ -155,15 +172,17 @@ class VatssaWebsiteStore
      */
     public function listFiles(string $diskName): array
     {
-        $disk = $this->disk($diskName);
         $files = [];
 
-        foreach ($disk->allFiles() as $path) {
-            $files[] = [
-                'path' => $path,
-                'size' => (int) $disk->size($path),
-                'modified' => (int) $disk->lastModified($path),
-            ];
+        // One listing with sizes and dates included: no request per object.
+        foreach ($this->disk($diskName)->getDriver()->listContents('', true) as $item) {
+            if ($item instanceof FileAttributes) {
+                $files[] = [
+                    'path' => $item->path(),
+                    'size' => (int) $item->fileSize(),
+                    'modified' => (int) $item->lastModified(),
+                ];
+            }
         }
 
         usort($files, fn ($a, $b) => $b['modified'] <=> $a['modified'] ?: strcmp($a['path'], $b['path']));
@@ -179,13 +198,20 @@ class VatssaWebsiteStore
     }
 
     /**
-     * A stream of an object, for downloads from private buckets through CC.
-     *
-     * @return resource|null
+     * True only for an object (not a folder prefix).
      */
-    public function readStream(string $diskName, string $path)
+    public function fileExists(string $diskName, string $path): bool
     {
-        return $this->disk($diskName)->readStream($path);
+        return $this->disk($diskName)->fileExists($path);
+    }
+
+    /**
+     * A download response for an object in a private bucket, with its type
+     * and size set.
+     */
+    public function download(string $diskName, string $path): StreamedResponse
+    {
+        return $this->disk($diskName)->download($path, basename($path));
     }
 
     /**

@@ -62,8 +62,9 @@ class VatssaWebsiteFilesController extends Controller
         $clientExtension = strtolower($file->getClientOriginalExtension());
         $extension = in_array($clientExtension, config('vatssa-website.file_types'), true) ? $clientExtension : $file->extension();
         $path = $this->fileName($file->getClientOriginalName(), $extension);
-        if ($this->filled($input['folder'] ?? null)) {
-            $path = Str::slug($input['folder']) . '/' . $path;
+        $folder = Str::slug($input['folder'] ?? '');
+        if ($folder !== '') {
+            $path = $folder . '/' . $path;
         }
 
         try {
@@ -195,23 +196,36 @@ class VatssaWebsiteFilesController extends Controller
     {
         $path = $request->input('path');
 
-        abort_unless(is_string($path) && $path !== '' && ! str_contains($path, '..'), 404);
-        abort_unless(in_array($path, array_column($this->list($diskName), 'path'), true), 404);
+        abort_unless(is_string($path) && $path !== '' && ! self::hasDotSegment($path), 404);
+
+        try {
+            $exists = $this->store->fileExists($diskName, $path);
+        } catch (Throwable $e) {
+            Log::error('VATSSA website: exists check failed', ['disk' => $diskName, 'message' => $e->getMessage()]);
+            abort(503, 'File storage cannot be reached right now. Tech has the details in the log.');
+        }
+        abort_unless($exists, 404);
 
         return $path;
     }
 
     private function stream(string $diskName, string $path): StreamedResponse
     {
-        $stream = $this->store->readStream($diskName, $path);
-        abort_if($stream === null, 404);
+        try {
+            return $this->store->download($diskName, $path);
+        } catch (Throwable $e) {
+            // Gone between the check and the read, or storage down.
+            Log::warning('VATSSA website: download failed', ['disk' => $diskName, 'path' => $path, 'message' => $e->getMessage()]);
+            abort(404);
+        }
+    }
 
-        return response()->streamDownload(function () use ($stream) {
-            fpassthru($stream);
-            if (is_resource($stream)) {
-                fclose($stream);
-            }
-        }, basename($path));
+    /**
+     * A '.' or '..' segment. Names like "minutes..final.pdf" are fine.
+     */
+    public static function hasDotSegment(string $path): bool
+    {
+        return array_intersect(explode('/', $path), ['.', '..']) !== [];
     }
 
     /**

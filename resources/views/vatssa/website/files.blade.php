@@ -74,7 +74,7 @@
                                         <td class="text-end text-nowrap">{{ number_format($file['size'] / 1024, 0) }} KB</td>
                                         <td class="text-nowrap">{{ gmdate('Y-m-d H:i', $file['modified']) }}</td>
                                         <td class="text-end">
-                                            <form action="{{ route('vatssa.website.' . $area . '.archive') }}" method="POST" class="d-inline" onsubmit="return confirm('Move {{ addslashes($file['path']) }} to the archive?{{ $public ? ' Its public link will stop working.' : '' }}');">
+                                            <form action="{{ route('vatssa.website.' . $area . '.archive') }}" method="POST" class="d-inline" onsubmit="return confirm({{ \Illuminate\Support\Js::from('Move ' . $file['path'] . ' to the archive?' . ($public ? ' Its public link will stop working.' : '')) }});">
                                                 @csrf
                                                 <input type="hidden" name="path" value="{{ $file['path'] }}">
                                                 <button type="submit" class="btn btn-sm btn-outline-secondary">Archive</button>
