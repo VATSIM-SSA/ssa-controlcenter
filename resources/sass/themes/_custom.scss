@@ -215,28 +215,32 @@ a.version,
     }
 }
 
-// Open requests list: the State cell now carries the Theory, Attention and
-// Stalled badges, so give it the room and let ATC Hours shrink to its content.
-// Keyed on bootstrap-table's data-field, so no upstream view is touched.
-th[data-field="state"] {
-    min-width: 12rem;
-}
+// Open requests list only (its table is the one with data-cookie-id-table
+// "trainings"; My students, Closed requests and Member overview reuse the same
+// data-field names and must not change). Keyed on attributes, so no upstream
+// view is touched.
+table[data-cookie-id-table="trainings"] {
+    // The State cell carries the Theory, Attention and Stalled badges.
+    th[data-field="state"] {
+        min-width: 12rem;
+    }
 
-th[data-field="atchours"] {
-    width: 1%;
-    white-space: nowrap;
-}
+    th[data-field="atchours"] {
+        width: 1%;
+        white-space: nowrap;
+    }
 
-// Every row one line high: cells such as "Southern Africa" or the
-// Familiarisation type wrapped in narrow columns, so rows had different
-// heights. Only State may wrap (it carries the badges). The table scrolls
-// sideways on narrow screens instead.
-table[data-cookie-id-table="trainings"] td {
-    white-space: nowrap;
-}
+    // Every row one line high: cells such as "Southern Africa" or the
+    // Familiarisation type wrapped in narrow columns, so rows had different
+    // heights. Only State may wrap. The table scrolls sideways on narrow
+    // screens instead.
+    td {
+        white-space: nowrap;
+    }
 
-table[data-cookie-id-table="trainings"] td:first-child {
-    white-space: normal;
+    td:first-child {
+        white-space: normal;
+    }
 }
 
 // Training badges (Theory, Attention, Stalled) carry their words in data-label

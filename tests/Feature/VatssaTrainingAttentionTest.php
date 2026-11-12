@@ -249,6 +249,11 @@ class VatssaTrainingAttentionTest extends TestCase
 
         $this->assertMatchesRegularExpression('/\.vatssa-flag::after\s*\{[^}]*content:\s*attr\(data-label\)/', $scss);
         $this->assertStringContainsString('@import "themes/custom"', file_get_contents(resource_path('sass/app.scss')));
+
+        // Column rules stay inside the Open requests table: other lists reuse
+        // the same data-field names.
+        $this->assertDoesNotMatchRegularExpression('/^th\[data-field=/m', $scss);
+        $this->assertStringContainsString('table[data-cookie-id-table="trainings"] {', $scss);
     }
 
     #[Test]

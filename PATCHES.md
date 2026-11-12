@@ -266,7 +266,10 @@ All the work is in `VatssaTrainingFlags` (review fixes, 2026-11-12):
 included from the VATSSA theory partials, which upstream views already include;
 history is a staff COMMENT, which upstream renders and hides from students; the
 badge words are drawn by CSS from `data-label` (`.vatssa-flag` in
-`_custom.scss`) so the Open requests State filter lists only the status. The
+`_custom.scss`) so the Open requests State filter lists only the status. The Open
+requests column rules (State width, ATC Hours, one-line rows) are scoped to
+`table[data-cookie-id-table="trainings"]`, because My students, Closed requests
+and Member overview reuse the same `data-field` names. The
 hover-note guard in `training/index.blade.php` is listed under *Theory mark*.
 
 **Leans on:** the theory include points in `training/show.blade.php` and
