@@ -2,16 +2,18 @@
 
 namespace Tests\Feature;
 
+use App\Http\Controllers\VatssaDiscordSyncController;
 use App\Models\ApiKey;
 use App\Models\Area;
 use App\Models\AtcActivity;
 use App\Models\Endorsement;
 use App\Models\Training;
-use App\Http\Controllers\VatssaDiscordSyncController;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Testing\TestResponse;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
@@ -29,6 +31,7 @@ class VatssaDiscordSyncTest extends TestCase
     {
         parent::setUp();
         $this->member = User::factory()->create();
+        config(['vatssa.discord_bot_token' => self::TOKEN]);
     }
 
     private function withRole(?string $role, bool $inArea = false): User
@@ -41,11 +44,14 @@ class VatssaDiscordSyncTest extends TestCase
         return $user->fresh();
     }
 
-    private function requests()
+    private function requests(): Collection
     {
         return DB::table('vatssa_discord_sync_requests')->where('source', 'button')->get();
     }
 
+    /**
+     * @return array<int, array{0: string, 1: bool}>
+     */
     public static function allowed(): array
     {
         return [['admin', false], ['atc-training-manager', true], ['pipeline-coordinator', true], ['mentor', true]];
@@ -56,6 +62,9 @@ class VatssaDiscordSyncTest extends TestCase
     public function staff_can_request_a_sync(string $role, bool $inArea): void
     {
         $staff = $this->withRole($role, $inArea);
+        if ($role === 'mentor') {
+            $this->teach($staff, $this->member);
+        }
 
         $this->actingAs($staff)->post(route('vatssa.user.discord-sync', $this->member->id))
             ->assertRedirect(route('user.show', $this->member->id))->assertSessionHas('success');
@@ -106,7 +115,7 @@ class VatssaDiscordSyncTest extends TestCase
     }
 
     #[Test]
-    public function the_bot_reads_requests_after_its_cursor_with_a_read_only_key(): void
+    public function the_bot_reads_requests_after_its_cursor_with_its_token_only(): void
     {
         ApiKey::create(['id' => 'bot-key', 'name' => 'role sync', 'read_only' => true, 'created_at' => now()]);
         $start = (int) DB::table('vatssa_discord_sync_requests')->max('id');
@@ -117,11 +126,12 @@ class VatssaDiscordSyncTest extends TestCase
         $url = route('api.vatssa.discord-sync.index');
         $this->getJson($url)->assertUnauthorized();
         $this->getJson($url, ['Authorization' => 'Bearer wrong'])->assertUnauthorized();
+        $this->getJson($url, ['Authorization' => 'Bearer bot-key'])->assertUnauthorized();
 
-        $this->getJson($url . '?after=' . $ids[0], ['Authorization' => 'Bearer bot-key'])->assertOk()
+        $this->getJson($url . '?after=' . $ids[0], ['Authorization' => 'Bearer ' . self::TOKEN])->assertOk()
             ->assertJsonPath('data', [['id' => $ids[1], 'user_id' => 1002, 'source' => 'button'], ['id' => $ids[2], 'user_id' => 1003, 'source' => 'button']]);
-        $this->getJson($url . '?after=' . $start, ['Authorization' => 'Bearer bot-key'])->assertJsonCount(3, 'data');
-        $this->getJson($url . '?after=x', ['Authorization' => 'Bearer bot-key'])->assertUnprocessable();
+        $this->getJson($url . '?after=' . $start, ['Authorization' => 'Bearer ' . self::TOKEN])->assertJsonCount(3, 'data');
+        $this->getJson($url . '?after=x', ['Authorization' => 'Bearer ' . self::TOKEN])->assertUnprocessable();
     }
 
     #[Test]
@@ -143,7 +153,7 @@ class VatssaDiscordSyncTest extends TestCase
         ApiKey::create(['id' => 'bot-key', 'name' => 'role sync', 'read_only' => true, 'created_at' => now()]);
         $id = DB::table('vatssa_discord_sync_requests')->insertGetId(['user_id' => 5, 'requested_by' => 1, 'created_at' => now()]);
 
-        $this->getJson(route('api.vatssa.discord-sync.index') . '?after=' . ($id + 50), ['Authorization' => 'Bearer bot-key'])
+        $this->getJson(route('api.vatssa.discord-sync.index') . '?after=' . ($id + 50), ['Authorization' => 'Bearer ' . self::TOKEN])
             ->assertOk()->assertExactJson(['data' => [], 'max_id' => $id]);
     }
 
@@ -173,14 +183,7 @@ class VatssaDiscordSyncTest extends TestCase
         $this->assertEquals(['done', 'added atc_twr'], [$row->status, $row->detail]);
         $this->assertNotNull($row->finished_at);
 
-        $this->postJson($this->resultUrl($id), $body, ['Authorization' => 'Bearer ' . self::TOKEN])->assertNoContent(); // repeat
-    }
-
-    #[Test]
-    public function the_bot_token_cannot_read_the_feed(): void
-    {
-        config(['vatssa.discord_bot_token' => self::TOKEN]);
-        $this->getJson(route('api.vatssa.discord-sync.index'), ['Authorization' => 'Bearer ' . self::TOKEN])->assertUnauthorized();
+        $this->postJson($this->resultUrl($id), $body, ['Authorization' => 'Bearer ' . self::TOKEN])->assertNoContent();
     }
 
     #[Test]
@@ -213,15 +216,16 @@ class VatssaDiscordSyncTest extends TestCase
             ->assertDontSee('<b>role is above the bot</b>', false);
     }
 
-    private function sendPresence(array $members, bool $complete = true, string $token = self::TOKEN)
+    /**
+     * @param  array<int, array{cid: int, discord_id: string, name?: string|null}>  $members
+     */
+    private function sendPresence(array $members, bool $complete = true, string $token = self::TOKEN, ?float $at = null): TestResponse
     {
-        config(['vatssa.discord_bot_token' => self::TOKEN]);
-
-        return $this->postJson(route('api.vatssa.discord-presence'), ['complete' => $complete, 'members' => $members],
+        return $this->postJson(route('api.vatssa.discord-presence'), ['complete' => $complete, 'at' => $at ?? microtime(true), 'members' => $members],
             ['Authorization' => 'Bearer ' . $token]);
     }
 
-    private function profile()
+    private function profile(): TestResponse
     {
         return $this->actingAs($this->withRole('admin'))->get(route('user.show', $this->member->id))->assertOk();
     }
@@ -230,10 +234,10 @@ class VatssaDiscordSyncTest extends TestCase
     public function presence_needs_the_bot_token(): void
     {
         ApiKey::create(['id' => 'edit-key', 'name' => 'x', 'read_only' => false, 'created_at' => now()]);
-        $m = [['cid' => $this->member->id, 'discord_id' => '123456789012345678', 'name' => 'alice']];
+        $members = [['cid' => $this->member->id, 'discord_id' => '123456789012345678', 'name' => 'alice']];
 
-        $this->sendPresence($m, true, 'wrong')->assertUnauthorized();
-        $this->sendPresence($m, true, 'edit-key')->assertUnauthorized();
+        $this->sendPresence($members, true, 'wrong')->assertUnauthorized();
+        $this->sendPresence($members, true, 'edit-key')->assertUnauthorized();
         $this->assertSame(0, DB::table('vatssa_discord_presence')->count());
     }
 
@@ -241,27 +245,28 @@ class VatssaDiscordSyncTest extends TestCase
     public function presence_is_validated(): void
     {
         $good = ['cid' => 5, 'discord_id' => '123456789012345678', 'name' => 'a'];
-        $this->sendPresence([])->assertUnprocessable(); // complete and empty: a fault
+        $this->sendPresence([])->assertUnprocessable();
         $this->sendPresence([['cid' => 5, 'discord_id' => '1.23e17']])->assertUnprocessable();
         $this->sendPresence([['cid' => 0, 'discord_id' => '123456789012345678']])->assertUnprocessable();
         $this->sendPresence([[...$good, 'name' => str_repeat('x', 101)]])->assertUnprocessable();
-        $this->sendPresence([], false)->assertNoContent(); // incomplete and empty: nothing to add
+        $this->sendPresence([], false)->assertNoContent();
         $this->sendPresence([$good])->assertNoContent();
     }
 
     #[Test]
     public function a_complete_list_replaces_and_an_incomplete_one_only_adds(): void
     {
-        $a = ['cid' => 1, 'discord_id' => '111111111111111111', 'name' => 'a'];
-        $b = ['cid' => 2, 'discord_id' => '222222222222222222', 'name' => 'b'];
-        $c = ['cid' => 3, 'discord_id' => '333333333333333333', 'name' => 'c'];
+        [$one, $two, $three] = User::factory()->count(3)->create()->pluck('id')->all();
+        $a = ['cid' => $one, 'discord_id' => '111111111111111111', 'name' => 'a'];
+        $b = ['cid' => $two, 'discord_id' => '222222222222222222', 'name' => 'b'];
+        $c = ['cid' => $three, 'discord_id' => '333333333333333333', 'name' => 'c'];
 
         $this->sendPresence([$a, $b])->assertNoContent();
         $this->sendPresence([$c], false)->assertNoContent();
-        $this->assertEqualsCanonicalizing([1, 2, 3], DB::table('vatssa_discord_presence')->pluck('user_id')->all());
+        $this->assertEqualsCanonicalizing([$one, $two, $three], DB::table('vatssa_discord_presence')->pluck('user_id')->all());
 
         $this->sendPresence([$b])->assertNoContent();
-        $this->assertSame([2], DB::table('vatssa_discord_presence')->pluck('user_id')->all());
+        $this->assertSame([$two], DB::table('vatssa_discord_presence')->pluck('user_id')->all());
         $this->assertSame('222222222222222222', DB::table('vatssa_discord_presence')->value('discord_id'));
     }
 
@@ -400,8 +405,9 @@ class VatssaDiscordSyncTest extends TestCase
         ApiKey::create(['id' => 'bot-key', 'name' => 'role sync', 'read_only' => true, 'created_at' => now()]);
         $start = (int) DB::table('vatssa_discord_sync_requests')->max('id');
         Endorsement::factory()->create(['user_id' => $this->member->id, 'type' => 'SOLO']);
+        $this->travel(VatssaDiscordSyncController::AUTO_SETTLE_SECONDS + 1)->seconds();
 
-        $this->getJson(route('api.vatssa.discord-sync.index') . '?after=' . $start, ['Authorization' => 'Bearer bot-key'])
+        $this->getJson(route('api.vatssa.discord-sync.index') . '?after=' . $start, ['Authorization' => 'Bearer ' . self::TOKEN])
             ->assertJsonPath('data.0.source', 'auto')->assertJsonPath('data.0.user_id', $this->member->id);
 
         $admin = $this->withRole('admin');
@@ -428,7 +434,7 @@ class VatssaDiscordSyncTest extends TestCase
         $ids = collect(range(1, 100))->map(fn ($i) => DB::table('vatssa_discord_sync_requests')
             ->insertGetId(['user_id' => $i, 'requested_by' => 1, 'created_at' => now()]));
 
-        $this->getJson(route('api.vatssa.discord-sync.index'), ['Authorization' => 'Bearer bot-key'])->assertOk();
+        $this->getJson(route('api.vatssa.discord-sync.index'), ['Authorization' => 'Bearer ' . self::TOKEN])->assertOk();
         foreach ($ids as $id) {
             $this->postJson($this->resultUrl($id), ['status' => 'done'], ['Authorization' => 'Bearer ' . self::TOKEN])->assertNoContent();
         }
@@ -468,5 +474,108 @@ class VatssaDiscordSyncTest extends TestCase
         DB::table('vatssa_discord_sync_requests')->insert(['user_id' => $this->member->id, 'requested_by' => 1, 'source' => 'auto', 'created_at' => now()->subMinutes(10)]);
         $this->actingAs($this->withRole('admin'))->get(route('user.show', $this->member->id))
             ->assertSee('Not picked up by the bot')->assertDontSee('waiting for the bot');
+    }
+
+    private function teach(User $mentor, User $student): void
+    {
+        $training = Training::factory()->create(['user_id' => $student->id, 'area_id' => Area::factory()->create()->id]);
+        $mentor->teaches()->attach($training->id, ['expire_at' => now()->addYear()]);
+    }
+
+    #[Test]
+    public function a_mentor_can_sync_only_members_they_teach(): void
+    {
+        $mentor = $this->withRole('mentor', true);
+        $stranger = User::factory()->create();
+
+        $this->actingAs($mentor)->post(route('vatssa.user.discord-sync', $stranger->id))->assertForbidden();
+        $this->teach($mentor, $this->member);
+        $this->actingAs($mentor->fresh())->post(route('vatssa.user.discord-sync', $this->member->id))->assertRedirect();
+        $this->assertSame([$this->member->id], $this->requests()->pluck('user_id')->all());
+    }
+
+    private function feed(int $after): TestResponse
+    {
+        return $this->getJson(route('api.vatssa.discord-sync.index') . '?after=' . $after, ['Authorization' => 'Bearer ' . self::TOKEN]);
+    }
+
+    #[Test]
+    public function automatic_requests_settle_before_the_bot_sees_them(): void
+    {
+        $start = (int) DB::table('vatssa_discord_sync_requests')->max('id');
+        VatssaDiscordSyncController::queueAuto($this->member->id);
+        $button = DB::table('vatssa_discord_sync_requests')->insertGetId(['user_id' => 7, 'requested_by' => 1, 'source' => 'button', 'created_at' => now()]);
+
+        $this->feed($start)->assertJsonCount(0, 'data');
+
+        $this->travel(VatssaDiscordSyncController::AUTO_SETTLE_SECONDS + 1)->seconds();
+        $this->feed($start)->assertJsonCount(2, 'data')->assertJsonPath('data.1.id', $button);
+    }
+
+    #[Test]
+    public function an_automatic_or_finished_request_never_swallows_a_button_press(): void
+    {
+        $admin = $this->withRole('admin');
+        VatssaDiscordSyncController::queueAuto($this->member->id);
+        $this->actingAs($admin)->post(route('vatssa.user.discord-sync', $this->member->id));
+        $this->assertCount(1, $this->requests());
+
+        DB::table('vatssa_discord_sync_requests')->where('source', 'button')->update(['status' => 'done', 'finished_at' => now()]);
+        $this->actingAs($admin)->post(route('vatssa.user.discord-sync', $this->member->id));
+        $this->assertCount(2, $this->requests());
+    }
+
+    #[Test]
+    public function moving_a_training_to_another_student_queues_both(): void
+    {
+        $other = User::factory()->create();
+        $training = Training::factory()->create(['user_id' => $this->member->id, 'area_id' => Area::factory()->create()->id]);
+        DB::table('vatssa_discord_sync_requests')->delete();
+
+        $training->user_id = $other->id;
+        $training->save();
+
+        $this->assertEqualsCanonicalizing([$this->member->id, $other->id],
+            DB::table('vatssa_discord_sync_requests')->where('source', 'auto')->pluck('user_id')->all());
+    }
+
+    #[Test]
+    public function pseudonymised_and_deleted_members_are_forgotten_and_stay_forgotten(): void
+    {
+        $gone = User::factory()->create();
+        foreach ([$this->member, $gone] as $user) {
+            DB::table('vatssa_discord_sync_requests')->insert(['user_id' => $user->id, 'requested_by' => 1, 'created_at' => now()]);
+        }
+        $this->sendPresence([
+            ['cid' => $this->member->id, 'discord_id' => '100000000000000001', 'name' => 'a'],
+            ['cid' => $gone->id, 'discord_id' => '100000000000000002', 'name' => 'b'],
+        ])->assertNoContent();
+
+        $this->member->email = VatssaDiscordSyncController::PSEUDONYMISED_EMAIL;
+        $this->member->save();
+        $gone->delete();
+
+        foreach ([$this->member->id, $gone->id] as $cid) {
+            $this->assertSame(0, DB::table('vatssa_discord_sync_requests')->where('user_id', $cid)->count());
+            $this->assertSame(0, DB::table('vatssa_discord_presence')->where('user_id', $cid)->count());
+        }
+
+        $this->sendPresence([
+            ['cid' => $this->member->id, 'discord_id' => '100000000000000001', 'name' => 'a'],
+            ['cid' => $gone->id, 'discord_id' => '100000000000000002', 'name' => 'b'],
+        ])->assertNoContent();
+        $this->assertSame(0, DB::table('vatssa_discord_presence')->count());
+    }
+
+    #[Test]
+    public function an_older_complete_list_cannot_replace_a_newer_one(): void
+    {
+        $new = [['cid' => $this->member->id, 'discord_id' => '100000000000000001', 'name' => 'new']];
+        $old = [['cid' => $this->member->id, 'discord_id' => '100000000000000009', 'name' => 'old']];
+
+        $this->sendPresence($new, true, self::TOKEN, 2000.0)->assertNoContent();
+        $this->sendPresence($old, true, self::TOKEN, 1000.0)->assertConflict();
+        $this->assertSame(['new'], DB::table('vatssa_discord_presence')->pluck('name')->all());
+        $this->sendPresence($old, false, self::TOKEN, 1000.0)->assertNoContent();
     }
 }

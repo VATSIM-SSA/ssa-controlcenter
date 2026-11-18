@@ -2,29 +2,46 @@
 
 namespace App\Http\Controllers;
 
+use anlutro\LaravelSettings\Facade as Setting;
 use App\Helpers\LogName;
 use App\Models\User;
 use App\Services\ActivityLogService;
-use anlutro\LaravelSettings\Facade as Setting;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 /**
- * VATSSA: the "Sync Discord roles" button on a user's profile.
+ * VATSSA: the Discord role sync, CC side.
  *
- * CC never calls the bot. The button writes a row; the bot polls index() with
- * its read-only API key and a cursor (the last id it handled), syncs the member,
- * then reports the outcome to result() with a separate bot token that can do
- * nothing else. The bot always recomputes the roles from scratch, so a request
- * handled twice does nothing extra.
+ * CC never calls the bot. The profile button and the model listeners in
+ * VatssaServiceProvider write rows; the bot reads them with its own token and a
+ * cursor (the last id it handled), syncs the member, and reports the outcome and
+ * the server's member list back with the same token. The bot always recomputes
+ * roles from scratch, so a request handled twice does nothing extra.
  */
 class VatssaDiscordSyncController extends Controller
 {
     private const TABLE = 'vatssa_discord_sync_requests';
+
+    private const PRESENCE = 'vatssa_discord_presence';
+
+    /**
+     * An automatic request is queued from inside a save, before that request has
+     * attached the endorsement's ratings, areas or positions. The feed holds it back
+     * this long, so the bot never reads half-written data.
+     */
+    public const AUTO_SETTLE_SECONDS = 5;
+
+    /**
+     * CC's pseudonymised users carry this address (UserDelete).
+     */
+    public const PSEUDONYMISED_EMAIL = 'void@void.void';
 
     /**
      * Every status the bot may report, with the words the profile shows.
@@ -43,18 +60,20 @@ class VatssaDiscordSyncController extends Controller
 
     public function store(User $user): RedirectResponse
     {
-        $this->authorize('vatssaDiscordSync');
+        $this->authorize('vatssaDiscordSync', $user);
 
         self::prune();
 
-        // A double click or a refresh within a minute adds nothing.
-        $recent = DB::table(self::TABLE)->where('user_id', $user->id)
-            ->where('created_at', '>', now()->subMinute())->exists();
+        // Check and insert under one lock per member, so two clicks cannot both pass the check.
+        Cache::lock('vatssa-discord-sync:' . $user->id, 5)->block(3, function () use ($user) {
+            $outstanding = DB::table(self::TABLE)->where('user_id', $user->id)->where('source', 'button')
+                ->whereNull('finished_at')->where('created_at', '>', now()->subMinute())->exists();
 
-        if (! $recent) {
-            DB::table(self::TABLE)->insert(['user_id' => $user->id, 'requested_by' => Auth::id(), 'source' => 'button', 'created_at' => now()]);
-            ActivityLogService::info(LogName::Role, 'Discord role sync requested for ' . $user->id);
-        }
+            if (! $outstanding) {
+                DB::table(self::TABLE)->insert(['user_id' => $user->id, 'requested_by' => Auth::id(), 'source' => 'button', 'created_at' => now()]);
+                ActivityLogService::info(LogName::Role, 'Discord role sync requested for ' . $user->id);
+            }
+        });
 
         return redirect()->route('user.show', $user->id)
             ->withSuccess('Discord role sync requested. If ' . $user->first_name . ' is on Discord, their roles update within a minute.');
@@ -69,8 +88,11 @@ class VatssaDiscordSyncController extends Controller
      * duplicate costs one "no change" sync. Never throws: a failure here must not
      * break the endorsement, training or role save that triggered it.
      */
-    public static function queueAuto(int $userId): void
+    public static function queueAuto(?int $userId): void
     {
+        if (! $userId) {
+            return;
+        }
         try {
             self::prune();
             DB::table(self::TABLE)->insert(['user_id' => $userId, 'requested_by' => null, 'source' => 'auto', 'created_at' => now()]);
@@ -80,9 +102,22 @@ class VatssaDiscordSyncController extends Controller
     }
 
     /**
-     * Keep the table short: requests older than 30 days go, except the newest row.
-     * The bot treats max(id) going down as a database restore, so pruning must
-     * never empty the table.
+     * A member was deleted or pseudonymised: drop their sync history and their
+     * Discord link. presence() refuses to store them again. Never throws.
+     */
+    public static function forgetUser(int $userId): void
+    {
+        try {
+            DB::table(self::TABLE)->where('user_id', $userId)->delete();
+            DB::table(self::PRESENCE)->where('user_id', $userId)->delete();
+        } catch (\Throwable $e) {
+            report($e);
+        }
+    }
+
+    /**
+     * Requests older than 30 days go, except the newest row: the bot treats max(id)
+     * going down as a database restore, so pruning must never empty the table.
      */
     private static function prune(): void
     {
@@ -92,15 +127,20 @@ class VatssaDiscordSyncController extends Controller
     }
 
     /**
-     * Bot API: requests after the cursor, oldest first. Older than a day is dropped:
-     * the bot's own sweep has long since caught up with those. `max_id` lets the bot
-     * notice the table going backwards (a restore) and reset its cursor.
+     * Bot API: requests after the cursor, oldest first, up to the first automatic
+     * request younger than AUTO_SETTLE_SECONDS. Stopping there, rather than skipping
+     * it, keeps the cursor from jumping past it. Older than a day is dropped: the
+     * bot's sweep has long since caught up. `max_id` lets the bot notice a restore.
      */
     public function index(Request $request): JsonResponse
     {
         $after = (int) ($request->validate(['after' => 'sometimes|integer|min:0'])['after'] ?? 0);
 
+        $settling = DB::table(self::TABLE)->where('id', '>', $after)->where('source', 'auto')
+            ->where('created_at', '>', now()->subSeconds(self::AUTO_SETTLE_SECONDS))->min('id');
+
         $rows = DB::table(self::TABLE)->where('id', '>', $after)
+            ->when($settling, fn ($query) => $query->where('id', '<', $settling))
             ->where('created_at', '>', now()->subDay())
             ->orderBy('id')->limit(100)->get(['id', 'user_id', 'source']);
 
@@ -127,42 +167,56 @@ class VatssaDiscordSyncController extends Controller
     }
 
     /**
-     * Bot API: who is in the Discord server, sent after every sweep.
+     * Bot API: who is in the Discord server.
      *
-     * complete = true: VATSIM answered for every member, so the list replaces what
-     * CC had and anyone missing has left. complete = false: some lookups failed, so
-     * the rows are added or refreshed and nobody is removed. Only a complete list
-     * moves "checked at", which is what the profile trusts.
+     * complete = true (after a sweep, VATSIM answered for everyone): the list replaces
+     * the table. complete = false (a join, a button press, or a sweep with failed
+     * lookups): rows are added or refreshed, nobody is removed. `at` is when the bot
+     * started building the list; a complete list older than the last one applied is
+     * refused, so a slow or retried sweep can never overwrite a newer one. Only CIDs of
+     * CC users who are neither deleted nor pseudonymised are stored. An empty complete
+     * list is refused on purpose: it is far likelier a bot fault than a fact.
      */
     public function presence(Request $request): Response
     {
         $data = $request->validate([
             'complete' => 'required|boolean',
+            'at' => 'required|numeric|min:0',
             'members' => 'present|array|max:50000',
             'members.*.cid' => 'required|integer|min:1',
             'members.*.discord_id' => ['required', 'string', 'regex:/^\d{15,21}$/'],
             'members.*.name' => 'nullable|string|max:100',
         ]);
 
-        // An empty complete list would mark everyone as gone: a fault, not a fact.
         abort_if($data['complete'] && empty($data['members']), 422, 'A complete list cannot be empty.');
 
+        $generatedAt = (float) $data['at'];
+        if ($data['complete'] && $generatedAt < (float) Setting::get('vatssaDiscordPresenceGeneration', 0)) {
+            abort(409, 'An older list than the one already applied.');
+        }
+
+        $known = User::whereIn('id', collect($data['members'])->pluck('cid')->unique())
+            ->where('email', '!=', self::PSEUDONYMISED_EMAIL)->pluck('id')->flip();
+
         $now = now();
-        $rows = array_map(fn ($m) => [
-            'discord_id' => $m['discord_id'], 'user_id' => $m['cid'], 'name' => $m['name'] ?? null, 'seen_at' => $now,
-        ], $data['members']);
+        $rows = collect($data['members'])
+            ->filter(fn (array $member) => $known->has($member['cid']))
+            ->map(fn (array $member) => [
+                'discord_id' => $member['discord_id'], 'user_id' => $member['cid'], 'name' => $member['name'] ?? null, 'seen_at' => $now,
+            ])->values()->all();
 
         DB::transaction(function () use ($data, $rows) {
             if ($data['complete']) {
-                DB::table('vatssa_discord_presence')->delete();
+                DB::table(self::PRESENCE)->delete();
             }
             foreach (array_chunk($rows, 500) as $chunk) {
-                DB::table('vatssa_discord_presence')->upsert($chunk, ['discord_id'], ['user_id', 'name', 'seen_at']);
+                DB::table(self::PRESENCE)->upsert($chunk, ['discord_id'], ['user_id', 'name', 'seen_at']);
             }
         });
 
         if ($data['complete']) {
             Setting::set('vatssaDiscordPresenceAt', $now->toIso8601String());
+            Setting::set('vatssaDiscordPresenceGeneration', $generatedAt);
             Setting::save();
         }
 
@@ -173,15 +227,17 @@ class VatssaDiscordSyncController extends Controller
      * For the profile: the member's Discord accounts and when the bot last sent a
      * complete list. 'at' is null when it never has, or not in the last two hours:
      * then CC does not know, and says so.
+     *
+     * @return array{at: Carbon|null, accounts: Collection<int, object{discord_id: string, user_id: int, name: string|null, seen_at: string}>}
      */
     public static function presenceFor(int $userId): array
     {
         $at = Setting::get('vatssaDiscordPresenceAt');
-        $at = $at ? \Illuminate\Support\Carbon::parse($at) : null;
+        $at = $at ? Carbon::parse($at) : null;
 
         return [
             'at' => $at && $at->gt(now()->subHours(2)) ? $at : null,
-            'accounts' => DB::table('vatssa_discord_presence')->where('user_id', $userId)->orderBy('name')->get(),
+            'accounts' => DB::table(self::PRESENCE)->where('user_id', $userId)->orderBy('name')->get(),
         ];
     }
 

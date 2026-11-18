@@ -11,9 +11,9 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('vatssa_discord_presence', function (Blueprint $table) {
-            $table->string('discord_id', 21)->primary(); // a snowflake: kept as text, never a float
-            $table->unsignedBigInteger('user_id')->index(); // CID
-            $table->string('name', 100)->nullable(); // Discord username
+            $table->string('discord_id', 21)->primary();
+            $table->unsignedBigInteger('user_id')->index();
+            $table->string('name', 100)->nullable();
             $table->timestamp('seen_at');
         });
     }

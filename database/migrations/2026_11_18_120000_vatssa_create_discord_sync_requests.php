@@ -12,11 +12,11 @@ return new class extends Migration
     {
         Schema::create('vatssa_discord_sync_requests', function (Blueprint $table) {
             $table->id();
-            $table->unsignedBigInteger('user_id')->index(); // the member's CID (users.id)
-            $table->unsignedBigInteger('requested_by')->nullable(); // null = queued automatically
-            $table->string('source', 10)->default('button'); // button | auto
+            $table->unsignedBigInteger('user_id')->index();
+            $table->unsignedBigInteger('requested_by')->nullable();
+            $table->string('source', 10)->default('button');
             $table->timestamp('created_at')->useCurrent()->index();
-            $table->string('status', 20)->nullable(); // set by the bot; null = not handled yet
+            $table->string('status', 20)->nullable();
             $table->string('detail', 500)->nullable();
             $table->timestamp('finished_at')->nullable();
         });

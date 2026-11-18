@@ -1,5 +1,5 @@
 {{-- VATSSA: ask the Discord role sync bot to re-sync this member now, and show how the last request ended. Included from user/show.blade.php. --}}
-@can('vatssaDiscordSync')
+@can('vatssaDiscordSync', $user)
     @php($vatssaSync = \App\Http\Controllers\VatssaDiscordSyncController::latestFor($user->id))
     @php($vatssaDiscord = \App\Http\Controllers\VatssaDiscordSyncController::presenceFor($user->id))
     <dl class="mb-2">
