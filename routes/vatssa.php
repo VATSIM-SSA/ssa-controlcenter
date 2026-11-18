@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\VatssaDiscordSyncController;
 use App\Http\Controllers\VatssaTheoryController;
 use App\Http\Controllers\VatssaTrainingFlagController;
 use App\Services\VatssaTrainingFlags;
@@ -16,3 +17,5 @@ foreach (array_keys(VatssaTrainingFlags::FLAGS) as $flag) {
         ->defaults('flag', $flag)
         ->name("training.action.{$flag}");
 }
+Route::post('/user/{user}/discord-sync', [VatssaDiscordSyncController::class, 'store'])
+    ->middleware('throttle:30,1,vatssa-discord-button')->name('vatssa.user.discord-sync');

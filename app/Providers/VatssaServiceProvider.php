@@ -3,6 +3,10 @@
 namespace App\Providers;
 
 use App\Http\Controllers\TrainingActivityController;
+use App\Http\Controllers\VatssaDiscordSyncController;
+use App\Models\AtcActivity;
+use App\Models\Endorsement;
+use App\Models\RoleAssignment;
 use App\Models\Task;
 use App\Models\Training;
 use App\Models\User;
@@ -63,10 +67,73 @@ class VatssaServiceProvider extends ServiceProvider
             }
         });
 
+        // "Sync Discord roles" on a profile: users.manage (admin, ATC Training
+        // Manager, Pipeline Coordinator) for anyone; a mentor only for a member
+        // they teach, the same people UserPolicy::view lets them see.
+        Gate::define('vatssaDiscordSync', function (User $user, User $target) {
+            return $user->hasPermission('users.manage')
+                || ($user->hasPermission('training.mentor') && $user->isTeaching($target));
+        });
+
+        $this->registerDiscordSyncListeners();
+
         if (! $this->app->routesAreCached()) {
             Route::middleware(['web', 'auth', 'activity', 'suspended'])
                 ->group(base_path('routes/vatssa.php'));
+            // Not the 'api' group: its throttle:60,1 counter is shared with /api/users,
+            // and one batch of instant-sync results is up to 100 calls. Own counter.
+            Route::prefix('api')->middleware(['throttle:600,1,vatssa-discord-bot', 'bindings'])
+                ->group(base_path('routes/vatssa-api.php'));
         }
+    }
+
+    /**
+     * Instant Discord role sync: when CC data that decides a role changes, queue
+     * that member for the role sync bot (it polls every 10 seconds).
+     *
+     * A row moved to another member queues both. Training uses created + updated,
+     * not saved: wasRecentlyCreated stays true for the whole request, so a later
+     * save of a new training would queue again. Bulk query updates fire no events
+     * (UpdateAtcActivity, UpdateAtcReactivate, UpdateMemberDetails,
+     * Training::expireInterests); the bot's 15-minute sweep catches those. A
+     * deleted or pseudonymised user loses their sync history and Discord link.
+     */
+    private function registerDiscordSyncListeners(): void
+    {
+        $queue = function ($model): void {
+            VatssaDiscordSyncController::queueAuto((int) $model->user_id);
+            if ($model->wasChanged('user_id')) {
+                VatssaDiscordSyncController::queueAuto((int) $model->getOriginal('user_id'));
+            }
+        };
+
+        Endorsement::saved($queue);
+        Endorsement::deleted($queue);
+        RoleAssignment::saved($queue);
+        RoleAssignment::deleted($queue);
+        Training::created($queue);
+        Training::updated(function (Training $training) use ($queue) {
+            if ($training->wasChanged(['status', 'user_id'])) {
+                $queue($training);
+            }
+        });
+        Training::deleted($queue);
+        AtcActivity::created($queue);
+        AtcActivity::updated(function (AtcActivity $activity) use ($queue) {
+            if ($activity->wasChanged(['atc_active', 'user_id'])) {
+                $queue($activity);
+            }
+        });
+        AtcActivity::deleted($queue);
+
+        User::updated(function (User $user) {
+            if ($user->wasChanged('email') && $user->email === VatssaDiscordSyncController::PSEUDONYMISED_EMAIL) {
+                VatssaDiscordSyncController::forgetUser($user->id);
+            } elseif ($user->wasChanged(['rating', 'division'])) {
+                VatssaDiscordSyncController::queueAuto($user->id);
+            }
+        });
+        User::deleted(fn (User $user) => VatssaDiscordSyncController::forgetUser($user->id));
     }
 
     /**
