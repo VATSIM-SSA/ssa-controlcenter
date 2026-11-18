@@ -582,7 +582,7 @@ class VatssaDiscordSyncTest extends TestCase
     #[Test]
     public function a_pseudonymised_member_who_logs_in_again_gets_their_link_back(): void
     {
-        $members = [[cid => $this->member->id, discord_id => 100000000000000001, name => back]];
+        $members = [['cid' => $this->member->id, 'discord_id' => '100000000000000001', 'name' => 'back']];
         $realEmail = $this->member->email;
 
         $this->member->email = VatssaDiscordSyncController::PSEUDONYMISED_EMAIL;
