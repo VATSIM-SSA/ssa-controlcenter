@@ -85,7 +85,7 @@ class VatssaServiceProvider extends ServiceProvider
         if (! $this->app->routesAreCached()) {
             Route::middleware(['web', 'auth', 'activity', 'suspended'])
                 ->group(base_path('routes/vatssa.php'));
-            Route::prefix('api')->middleware(['api', 'api-token'])
+            Route::prefix('api')->middleware('api')
                 ->group(base_path('routes/vatssa-api.php'));
         }
     }

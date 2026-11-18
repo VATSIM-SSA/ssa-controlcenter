@@ -14,6 +14,9 @@ return new class extends Migration
             $table->unsignedBigInteger('user_id')->index(); // the member's CID (users.id)
             $table->unsignedBigInteger('requested_by');
             $table->timestamp('created_at')->useCurrent()->index();
+            $table->string('status', 20)->nullable(); // set by the bot; null = not handled yet
+            $table->string('detail', 500)->nullable();
+            $table->timestamp('finished_at')->nullable();
         });
     }
 

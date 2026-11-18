@@ -38,7 +38,7 @@ they carry risk.
 |---|---|
 | Code and configuration | 9 |
 | Brand assets | 10 |
-| Added files | 53 |
+| Added files | 55 |
 | Force-added past `.gitignore` | 3 |
 
 ### `config/roles.php`
@@ -272,7 +272,7 @@ training's mentors and `training.activities.view` in its area.
 **Detector:** `tests/Feature/VatssaTrainingStalledTest.php`,
 `tests/Feature/VatssaTrainingAttentionTest.php`.
 
-### Discord sync button: `app/Http/Controllers/VatssaDiscordSyncController.php`, `routes/vatssa-api.php`, `resources/views/vatssa/user/discord-sync.blade.php`, `database/migrations/2026_11_18_120000_vatssa_create_discord_sync_requests.php`
+### Discord sync button: `app/Http/Controllers/VatssaDiscordSyncController.php`, `app/Http/Middleware/VatssaDiscordBotToken.php`, `config/vatssa.php`, `routes/vatssa-api.php`, `resources/views/vatssa/user/discord-sync.blade.php`, `database/migrations/2026_11_18_120000_vatssa_create_discord_sync_requests.php`
 
 "Sync Discord roles" on a user's profile (2026-11-18) asks the role sync bot
 (`ssa-discord-bot`) to re-sync that member now instead of at its next 15-minute
@@ -282,9 +282,14 @@ sweep. Gate `vatssaDiscordSync` in `VatssaServiceProvider`: `users.manage`
 **CC never calls the bot.** The button writes a row to
 `vatssa_discord_sync_requests` (CID, who, when; a second click within a minute
 adds nothing). The bot polls `GET /api/vatssa/discord-sync-requests?after=<last id>`
-with its read-only API key. Rows older than a day are not served. The routes
-file is loaded by `VatssaServiceProvider` under `/api` with `api` + `api-token`,
-the same as upstream's `/api/users`.
+with its read-only API key; the answer carries `max_id` so the bot notices a
+restore. Rows older than a day are not served. The bot reports each outcome to
+`POST /api/vatssa/discord-sync-requests/{id}/result` with `VATSSA_DISCORD_BOT_TOKEN`
+(`config/vatssa.php`), checked by `VatssaDiscordBotToken`. That token is not a CC
+API key and opens nothing else; unset, the route refuses everyone. The profile
+shows the last request's status under the button. Each press deletes requests
+older than 30 days. The routes file is loaded by `VatssaServiceProvider` under
+`/api` with the `api` group; each route names its own authentication.
 
 **Leans on:** the `api-token` middleware alias and `ApiKey` bearer lookup, the
 `user.show` route name, `User::hasPermission` with no area meaning "any area".

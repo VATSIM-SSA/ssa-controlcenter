@@ -111,8 +111,97 @@ class VatssaDiscordSyncTest extends TestCase
         $this->getJson($url, ['Authorization' => 'Bearer wrong'])->assertUnauthorized();
 
         $this->getJson($url . '?after=' . $ids[0], ['Authorization' => 'Bearer bot-key'])->assertOk()
-            ->assertExactJson(['data' => [['id' => $ids[1], 'user_id' => 1002], ['id' => $ids[2], 'user_id' => 1003]]]);
+            ->assertJsonPath('data', [['id' => $ids[1], 'user_id' => 1002], ['id' => $ids[2], 'user_id' => 1003]]);
         $this->getJson($url, ['Authorization' => 'Bearer bot-key'])->assertJsonCount(3, 'data');
         $this->getJson($url . '?after=x', ['Authorization' => 'Bearer bot-key'])->assertUnprocessable();
+    }
+
+    #[Test]
+    public function pressing_the_button_prunes_requests_older_than_30_days(): void
+    {
+        $old = DB::table('vatssa_discord_sync_requests')->insertGetId(['user_id' => 1, 'requested_by' => 1, 'created_at' => now()->subDays(31)]);
+        $kept = DB::table('vatssa_discord_sync_requests')->insertGetId(['user_id' => 1, 'requested_by' => 1, 'created_at' => now()->subDays(29)]);
+
+        $this->actingAs($this->withRole('admin'))->post(route('vatssa.user.discord-sync', $this->member->id));
+
+        $ids = $this->requests()->pluck('id')->all();
+        $this->assertNotContains($old, $ids);
+        $this->assertContains($kept, $ids);
+    }
+
+    #[Test]
+    public function the_feed_reports_the_highest_id_even_past_the_cursor(): void
+    {
+        ApiKey::create(['id' => 'bot-key', 'name' => 'role sync', 'read_only' => true, 'created_at' => now()]);
+        $id = DB::table('vatssa_discord_sync_requests')->insertGetId(['user_id' => 5, 'requested_by' => 1, 'created_at' => now()]);
+
+        $this->getJson(route('api.vatssa.discord-sync.index') . '?after=' . ($id + 50), ['Authorization' => 'Bearer bot-key'])
+            ->assertOk()->assertExactJson(['data' => [], 'max_id' => $id]);
+    }
+
+    private function resultUrl(int $id): string
+    {
+        return route('api.vatssa.discord-sync.result', $id);
+    }
+
+    #[Test]
+    public function results_need_the_bot_token_and_nothing_else(): void
+    {
+        $id = DB::table('vatssa_discord_sync_requests')->insertGetId(['user_id' => 5, 'requested_by' => 1, 'created_at' => now()]);
+        ApiKey::create(['id' => 'edit-key', 'name' => 'x', 'read_only' => false, 'created_at' => now()]);
+        $body = ['status' => 'done', 'detail' => 'added atc_twr'];
+
+        config(['vatssa.discord_bot_token' => null]); // not configured: closed to everyone
+        $this->postJson($this->resultUrl($id), $body, ['Authorization' => 'Bearer '])->assertUnauthorized();
+
+        config(['vatssa.discord_bot_token' => 'bot-secret']);
+        $this->postJson($this->resultUrl($id), $body)->assertUnauthorized();
+        $this->postJson($this->resultUrl($id), $body, ['Authorization' => 'Bearer wrong'])->assertUnauthorized();
+        $this->postJson($this->resultUrl($id), $body, ['Authorization' => 'Bearer edit-key'])->assertUnauthorized();
+        $this->assertNull(DB::table('vatssa_discord_sync_requests')->find($id)->status);
+
+        $this->postJson($this->resultUrl($id), $body, ['Authorization' => 'Bearer bot-secret'])->assertNoContent();
+        $row = DB::table('vatssa_discord_sync_requests')->find($id);
+        $this->assertEquals(['done', 'added atc_twr'], [$row->status, $row->detail]);
+        $this->assertNotNull($row->finished_at);
+
+        $this->postJson($this->resultUrl($id), $body, ['Authorization' => 'Bearer bot-secret'])->assertNoContent(); // repeat
+    }
+
+    #[Test]
+    public function the_bot_token_cannot_read_the_feed(): void
+    {
+        config(['vatssa.discord_bot_token' => 'bot-secret']);
+        $this->getJson(route('api.vatssa.discord-sync.index'), ['Authorization' => 'Bearer bot-secret'])->assertUnauthorized();
+    }
+
+    #[Test]
+    public function results_are_validated(): void
+    {
+        config(['vatssa.discord_bot_token' => 'bot-secret']);
+        $auth = ['Authorization' => 'Bearer bot-secret'];
+        $id = DB::table('vatssa_discord_sync_requests')->insertGetId(['user_id' => 5, 'requested_by' => 1, 'created_at' => now()]);
+
+        $this->postJson($this->resultUrl($id), ['status' => 'hacked'], $auth)->assertUnprocessable();
+        $this->postJson($this->resultUrl($id), ['status' => 'done', 'detail' => str_repeat('x', 501)], $auth)->assertUnprocessable();
+        $this->postJson($this->resultUrl($id + 1000), ['status' => 'done'], $auth)->assertNotFound();
+        $this->post('/api/vatssa/discord-sync-requests/abc/result', ['status' => 'done'], $auth)->assertNotFound();
+    }
+
+    #[Test]
+    public function the_profile_shows_how_the_last_request_ended(): void
+    {
+        $admin = $this->withRole('admin');
+        $page = fn () => $this->actingAs($admin)->get(route('user.show', $this->member->id))->assertOk();
+
+        $page()->assertDontSee('Last sync')->assertDontSee('waiting for the bot');
+
+        $id = DB::table('vatssa_discord_sync_requests')->insertGetId(['user_id' => $this->member->id, 'requested_by' => $admin->id, 'created_at' => now()]);
+        $page()->assertSee('waiting for the bot');
+
+        DB::table('vatssa_discord_sync_requests')->where('id', $id)
+            ->update(['status' => 'failed', 'detail' => '<b>role is above the bot</b>', 'finished_at' => now()]);
+        $page()->assertSee('Last sync: Failed', false)->assertSee('&lt;b&gt;role is above the bot&lt;/b&gt;', false)
+            ->assertDontSee('<b>role is above the bot</b>', false);
     }
 }
