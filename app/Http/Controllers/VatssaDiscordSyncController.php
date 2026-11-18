@@ -45,21 +45,46 @@ class VatssaDiscordSyncController extends Controller
     {
         $this->authorize('vatssaDiscordSync');
 
-        // Housekeeping: the table only grows when someone presses the button,
-        // so this is where it is kept short.
-        DB::table(self::TABLE)->where('created_at', '<', now()->subDays(30))->delete();
+        self::prune();
 
         // A double click or a refresh within a minute adds nothing.
         $recent = DB::table(self::TABLE)->where('user_id', $user->id)
             ->where('created_at', '>', now()->subMinute())->exists();
 
         if (! $recent) {
-            DB::table(self::TABLE)->insert(['user_id' => $user->id, 'requested_by' => Auth::id(), 'created_at' => now()]);
+            DB::table(self::TABLE)->insert(['user_id' => $user->id, 'requested_by' => Auth::id(), 'source' => 'button', 'created_at' => now()]);
             ActivityLogService::info(LogName::Role, 'Discord role sync requested for ' . $user->id);
         }
 
         return redirect()->route('user.show', $user->id)
             ->withSuccess('Discord role sync requested. If ' . $user->first_name . ' is on Discord, their roles update within a minute.');
+    }
+
+    /**
+     * Instant sync: queue a member because CC data that decides one of their roles
+     * just changed. Called from the model listeners in VatssaServiceProvider.
+     *
+     * No coalescing on purpose: the bot may already have read an earlier row, and a
+     * skipped row would leave this change waiting for the 15-minute sweep. A
+     * duplicate costs one "no change" sync. Never throws: a failure here must not
+     * break the endorsement, training or role save that triggered it.
+     */
+    public static function queueAuto(int $userId): void
+    {
+        try {
+            self::prune();
+            DB::table(self::TABLE)->insert(['user_id' => $userId, 'requested_by' => null, 'source' => 'auto', 'created_at' => now()]);
+        } catch (\Throwable $e) {
+            report($e);
+        }
+    }
+
+    /**
+     * Keep the table short: requests older than 30 days go.
+     */
+    private static function prune(): void
+    {
+        DB::table(self::TABLE)->where('created_at', '<', now()->subDays(30))->delete();
     }
 
     /**
@@ -73,7 +98,7 @@ class VatssaDiscordSyncController extends Controller
 
         $rows = DB::table(self::TABLE)->where('id', '>', $after)
             ->where('created_at', '>', now()->subDay())
-            ->orderBy('id')->limit(100)->get(['id', 'user_id']);
+            ->orderBy('id')->limit(100)->get(['id', 'user_id', 'source']);
 
         return response()->json(['data' => $rows, 'max_id' => (int) DB::table(self::TABLE)->max('id')]);
     }

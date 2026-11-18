@@ -4,9 +4,13 @@ namespace Tests\Feature;
 
 use App\Models\ApiKey;
 use App\Models\Area;
+use App\Models\AtcActivity;
+use App\Models\Endorsement;
+use App\Models\Training;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
@@ -36,7 +40,7 @@ class VatssaDiscordSyncTest extends TestCase
 
     private function requests()
     {
-        return DB::table('vatssa_discord_sync_requests')->get();
+        return DB::table('vatssa_discord_sync_requests')->where('source', 'button')->get();
     }
 
     public static function allowed(): array
@@ -102,6 +106,7 @@ class VatssaDiscordSyncTest extends TestCase
     public function the_bot_reads_requests_after_its_cursor_with_a_read_only_key(): void
     {
         ApiKey::create(['id' => 'bot-key', 'name' => 'role sync', 'read_only' => true, 'created_at' => now()]);
+        $start = (int) DB::table('vatssa_discord_sync_requests')->max('id');
         $ids = collect([1, 2, 3])->map(fn ($i) => DB::table('vatssa_discord_sync_requests')->insertGetId(
             ['user_id' => 1000 + $i, 'requested_by' => 1, 'created_at' => now()]));
         DB::table('vatssa_discord_sync_requests')->insert(['user_id' => 9, 'requested_by' => 1, 'created_at' => now()->subDays(2)]);
@@ -111,8 +116,8 @@ class VatssaDiscordSyncTest extends TestCase
         $this->getJson($url, ['Authorization' => 'Bearer wrong'])->assertUnauthorized();
 
         $this->getJson($url . '?after=' . $ids[0], ['Authorization' => 'Bearer bot-key'])->assertOk()
-            ->assertJsonPath('data', [['id' => $ids[1], 'user_id' => 1002], ['id' => $ids[2], 'user_id' => 1003]]);
-        $this->getJson($url, ['Authorization' => 'Bearer bot-key'])->assertJsonCount(3, 'data');
+            ->assertJsonPath('data', [['id' => $ids[1], 'user_id' => 1002, 'source' => 'button'], ['id' => $ids[2], 'user_id' => 1003, 'source' => 'button']]);
+        $this->getJson($url . '?after=' . $start, ['Authorization' => 'Bearer bot-key'])->assertJsonCount(3, 'data');
         $this->getJson($url . '?after=x', ['Authorization' => 'Bearer bot-key'])->assertUnprocessable();
     }
 
@@ -296,5 +301,111 @@ class VatssaDiscordSyncTest extends TestCase
     public function only_staff_see_the_discord_line(): void
     {
         $this->actingAs($this->withRole(null))->get(route('user.show', $this->member->id))->assertDontSee('VATSSA Discord');
+    }
+
+    private function autoRows(?int $userId = null): int
+    {
+        return DB::table('vatssa_discord_sync_requests')->where('source', 'auto')
+            ->when($userId, fn ($q) => $q->where('user_id', $userId))->count();
+    }
+
+    #[Test]
+    public function endorsement_changes_queue_the_member(): void
+    {
+        $e = Endorsement::factory()->create(['user_id' => $this->member->id, 'type' => 'SOLO']);
+        $this->assertSame(1, $this->autoRows($this->member->id));
+
+        $e->revoked = true;
+        $e->save();
+        $this->assertSame(2, $this->autoRows($this->member->id));
+
+        $e->delete();
+        $this->assertSame(3, $this->autoRows($this->member->id));
+        $this->assertNull(DB::table('vatssa_discord_sync_requests')->where('source', 'auto')->value('requested_by'));
+    }
+
+    #[Test]
+    public function training_queues_on_create_and_status_change_only(): void
+    {
+        $t = Training::factory()->create(['user_id' => $this->member->id, 'area_id' => Area::factory()->create()->id, 'status' => 0]);
+        $this->assertSame(1, $this->autoRows($this->member->id));
+
+        $t->touch();
+        $this->assertSame(1, $this->autoRows($this->member->id));
+
+        $t->status = 2;
+        $t->save();
+        $this->assertSame(2, $this->autoRows($this->member->id));
+    }
+
+    #[Test]
+    public function role_grants_and_revokes_queue_the_member(): void
+    {
+        $a = $this->member->roleAssignments()->create(['role' => 'mentor', 'area_id' => Area::factory()->create()->id]);
+        $this->assertSame(1, $this->autoRows($this->member->id));
+        $a->delete();
+        $this->assertSame(2, $this->autoRows($this->member->id));
+    }
+
+    #[Test]
+    public function roster_changes_queue_but_hours_do_not(): void
+    {
+        $area = Area::factory()->create();
+        $a = AtcActivity::create(['user_id' => $this->member->id, 'area_id' => $area->id, 'hours' => 0, 'atc_active' => true]);
+        $this->assertSame(1, $this->autoRows($this->member->id));
+
+        $a->hours = 12;
+        $a->save();
+        $this->assertSame(1, $this->autoRows($this->member->id));
+
+        $a->atc_active = false;
+        $a->save();
+        $this->assertSame(2, $this->autoRows($this->member->id));
+    }
+
+    #[Test]
+    public function only_rating_or_division_changes_on_a_user_queue(): void
+    {
+        $this->member->last_activity = now();
+        $this->member->first_name = 'Changed';
+        $this->member->save();
+        $this->assertSame(0, $this->autoRows($this->member->id));
+
+        $this->member->rating = $this->member->rating === 4 ? 5 : 4;
+        $this->member->save();
+        $this->assertSame(1, $this->autoRows($this->member->id));
+
+        $this->member->division = $this->member->division === 'ZZZ' ? 'YYY' : 'ZZZ';
+        $this->member->save();
+        $this->assertSame(2, $this->autoRows($this->member->id));
+    }
+
+    #[Test]
+    public function a_broken_queue_never_breaks_the_save(): void
+    {
+        Schema::drop('vatssa_discord_sync_requests');
+
+        $e = Endorsement::factory()->create(['user_id' => $this->member->id, 'type' => 'SOLO']);
+
+        $this->assertTrue($e->exists);
+        $this->assertDatabaseHas('endorsements', ['id' => $e->id]);
+    }
+
+    #[Test]
+    public function the_feed_and_profile_say_when_a_sync_was_automatic(): void
+    {
+        ApiKey::create(['id' => 'bot-key', 'name' => 'role sync', 'read_only' => true, 'created_at' => now()]);
+        $start = (int) DB::table('vatssa_discord_sync_requests')->max('id');
+        Endorsement::factory()->create(['user_id' => $this->member->id, 'type' => 'SOLO']);
+
+        $this->getJson(route('api.vatssa.discord-sync.index') . '?after=' . $start, ['Authorization' => 'Bearer bot-key'])
+            ->assertJsonPath('data.0.source', 'auto')->assertJsonPath('data.0.user_id', $this->member->id);
+
+        $admin = $this->withRole('admin');
+        $this->actingAs($admin)->get(route('user.show', $this->member->id))->assertSee('Change detected');
+
+        DB::table('vatssa_discord_sync_requests')->where('user_id', $this->member->id)
+            ->update(['status' => 'done', 'detail' => 'added solo', 'finished_at' => now()]);
+        $this->actingAs($admin)->get(route('user.show', $this->member->id))->assertSee('Last sync (automatic): Done', false);
     }
 }

@@ -3,6 +3,10 @@
 namespace App\Providers;
 
 use App\Http\Controllers\TrainingActivityController;
+use App\Http\Controllers\VatssaDiscordSyncController;
+use App\Models\AtcActivity;
+use App\Models\Endorsement;
+use App\Models\RoleAssignment;
 use App\Http\Controllers\VatssaTrainingFlagController;
 use App\Models\Task;
 use App\Models\Training;
@@ -80,6 +84,39 @@ class VatssaServiceProvider extends ServiceProvider
         // Pipeline Coordinator (users.manage), and mentors in any area.
         Gate::define('vatssaDiscordSync', function (User $user) {
             return $user->hasPermission('users.manage') || $user->hasPermission('training.mentor');
+        });
+
+        // Instant Discord role sync: when CC data that decides a role changes,
+        // queue that member for the role sync bot (it polls every 10 seconds).
+        // Bulk query updates fire no events (UpdateAtcActivity, UpdateAtcReactivate,
+        // UpdateMemberDetails, Training::expireInterests); the bot's 15-minute
+        // sweep catches those.
+        $queue = fn ($model) => VatssaDiscordSyncController::queueAuto((int) $model->user_id);
+        Endorsement::saved($queue);
+        Endorsement::deleted($queue);
+        RoleAssignment::saved($queue);
+        RoleAssignment::deleted($queue);
+        // created + updated, not saved: wasRecentlyCreated stays true for the whole
+        // request, so a later save of a new row would queue again.
+        Training::created($queue);
+        Training::updated(function (Training $training) use ($queue) {
+            if ($training->wasChanged('status')) {
+                $queue($training);
+            }
+        });
+        Training::deleted($queue);
+        AtcActivity::created($queue);
+        AtcActivity::updated(function (AtcActivity $activity) use ($queue) {
+            if ($activity->wasChanged('atc_active')) {
+                $queue($activity);
+            }
+        });
+        AtcActivity::deleted($queue);
+        // A user is saved on every page view; only rating and division matter.
+        User::updated(function (User $user) {
+            if ($user->wasChanged(['rating', 'division'])) {
+                VatssaDiscordSyncController::queueAuto($user->id);
+            }
         });
 
         if (! $this->app->routesAreCached()) {

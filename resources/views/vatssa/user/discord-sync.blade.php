@@ -24,11 +24,11 @@
     @if($vatssaSync)
         <small class="d-block text-muted mt-1">
             @if($vatssaSync->finished_at)
-                Last sync: {{ \App\Http\Controllers\VatssaDiscordSyncController::STATUSES[$vatssaSync->status] ?? $vatssaSync->status }},
+                Last sync{{ ($vatssaSync->source ?? 'button') === 'auto' ? ' (automatic)' : '' }}: {{ \App\Http\Controllers\VatssaDiscordSyncController::STATUSES[$vatssaSync->status] ?? $vatssaSync->status }},
                 {{ \Illuminate\Support\Carbon::parse($vatssaSync->finished_at)->diffForHumans() }}.
                 @if($vatssaSync->detail){{ $vatssaSync->detail }}@endif
             @else
-                Requested {{ \Illuminate\Support\Carbon::parse($vatssaSync->created_at)->diffForHumans() }}, waiting for the bot.
+                {{ ($vatssaSync->source ?? 'button') === 'auto' ? 'Change detected' : 'Requested' }} {{ \Illuminate\Support\Carbon::parse($vatssaSync->created_at)->diffForHumans() }}, waiting for the bot.
             @endif
         </small>
     @endif

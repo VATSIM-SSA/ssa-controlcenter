@@ -290,6 +290,13 @@ API key and opens nothing else; unset, the route refuses everyone. The profile
 shows the last request's status under the button. Each press deletes requests
 older than 30 days.
 
+**Instant sync.** `VatssaServiceProvider` also listens to `Endorsement`, `RoleAssignment`,
+`Training` (create, delete, `status` change), `AtcActivity` (create, delete, `atc_active`
+change) and `User` (`rating` or `division` change) and calls
+`VatssaDiscordSyncController::queueAuto()`, which writes a `source = auto` row and
+never throws. Bulk query updates fire no events and are left to the bot's sweep.
+**Leans on:** those models' Eloquent events and `user_id` columns.
+
 **Discord presence.** After each sweep the bot posts every server member it can
 link to a CID to `POST /api/vatssa/discord-presence` (bot token). A complete list
 replaces `vatssa_discord_presence` and sets the setting `vatssaDiscordPresenceAt`;
