@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Helpers\LogName;
 use App\Models\User;
 use App\Services\ActivityLogService;
+use anlutro\LaravelSettings\Facade as Setting;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -94,6 +95,65 @@ class VatssaDiscordSyncController extends Controller
         abort_unless($updated || DB::table(self::TABLE)->where('id', $id)->exists(), 404);
 
         return response()->noContent();
+    }
+
+    /**
+     * Bot API: who is in the Discord server, sent after every sweep.
+     *
+     * complete = true: VATSIM answered for every member, so the list replaces what
+     * CC had and anyone missing has left. complete = false: some lookups failed, so
+     * the rows are added or refreshed and nobody is removed. Only a complete list
+     * moves "checked at", which is what the profile trusts.
+     */
+    public function presence(Request $request): Response
+    {
+        $data = $request->validate([
+            'complete' => 'required|boolean',
+            'members' => 'present|array|max:50000',
+            'members.*.cid' => 'required|integer|min:1',
+            'members.*.discord_id' => ['required', 'string', 'regex:/^\d{15,21}$/'],
+            'members.*.name' => 'nullable|string|max:100',
+        ]);
+
+        // An empty complete list would mark everyone as gone: a fault, not a fact.
+        abort_if($data['complete'] && empty($data['members']), 422, 'A complete list cannot be empty.');
+
+        $now = now();
+        $rows = array_map(fn ($m) => [
+            'discord_id' => $m['discord_id'], 'user_id' => $m['cid'], 'name' => $m['name'] ?? null, 'seen_at' => $now,
+        ], $data['members']);
+
+        DB::transaction(function () use ($data, $rows) {
+            if ($data['complete']) {
+                DB::table('vatssa_discord_presence')->delete();
+            }
+            foreach (array_chunk($rows, 500) as $chunk) {
+                DB::table('vatssa_discord_presence')->upsert($chunk, ['discord_id'], ['user_id', 'name', 'seen_at']);
+            }
+        });
+
+        if ($data['complete']) {
+            Setting::set('vatssaDiscordPresenceAt', $now->toIso8601String());
+            Setting::save();
+        }
+
+        return response()->noContent();
+    }
+
+    /**
+     * For the profile: the member's Discord accounts and when the bot last sent a
+     * complete list. 'at' is null when it never has, or not in the last two hours:
+     * then CC does not know, and says so.
+     */
+    public static function presenceFor(int $userId): array
+    {
+        $at = Setting::get('vatssaDiscordPresenceAt');
+        $at = $at ? \Illuminate\Support\Carbon::parse($at) : null;
+
+        return [
+            'at' => $at && $at->gt(now()->subHours(2)) ? $at : null,
+            'accounts' => DB::table('vatssa_discord_presence')->where('user_id', $userId)->orderBy('name')->get(),
+        ];
     }
 
     /**

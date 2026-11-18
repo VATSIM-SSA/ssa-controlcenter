@@ -16,3 +16,5 @@ Route::get('/vatssa/discord-sync-requests', [VatssaDiscordSyncController::class,
 // Write a result: only the bot's own token, never a CC API key.
 Route::post('/vatssa/discord-sync-requests/{id}/result', [VatssaDiscordSyncController::class, 'result'])
     ->middleware(VatssaDiscordBotToken::class)->whereNumber('id')->name('api.vatssa.discord-sync.result');
+Route::post('/vatssa/discord-presence', [VatssaDiscordSyncController::class, 'presence'])
+    ->middleware(VatssaDiscordBotToken::class)->name('api.vatssa.discord-presence');

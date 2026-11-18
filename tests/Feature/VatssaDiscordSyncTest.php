@@ -204,4 +204,97 @@ class VatssaDiscordSyncTest extends TestCase
         $page()->assertSee('Last sync: Failed', false)->assertSee('&lt;b&gt;role is above the bot&lt;/b&gt;', false)
             ->assertDontSee('<b>role is above the bot</b>', false);
     }
+
+    private function sendPresence(array $members, bool $complete = true, string $token = 'bot-secret')
+    {
+        config(['vatssa.discord_bot_token' => 'bot-secret']);
+
+        return $this->postJson(route('api.vatssa.discord-presence'), ['complete' => $complete, 'members' => $members],
+            ['Authorization' => 'Bearer ' . $token]);
+    }
+
+    private function profile()
+    {
+        return $this->actingAs($this->withRole('admin'))->get(route('user.show', $this->member->id))->assertOk();
+    }
+
+    #[Test]
+    public function presence_needs_the_bot_token(): void
+    {
+        ApiKey::create(['id' => 'edit-key', 'name' => 'x', 'read_only' => false, 'created_at' => now()]);
+        $m = [['cid' => $this->member->id, 'discord_id' => '123456789012345678', 'name' => 'alice']];
+
+        $this->sendPresence($m, true, 'wrong')->assertUnauthorized();
+        $this->sendPresence($m, true, 'edit-key')->assertUnauthorized();
+        $this->assertSame(0, DB::table('vatssa_discord_presence')->count());
+    }
+
+    #[Test]
+    public function presence_is_validated(): void
+    {
+        $good = ['cid' => 5, 'discord_id' => '123456789012345678', 'name' => 'a'];
+        $this->sendPresence([])->assertUnprocessable(); // complete and empty: a fault
+        $this->sendPresence([['cid' => 5, 'discord_id' => '1.23e17']])->assertUnprocessable();
+        $this->sendPresence([['cid' => 0, 'discord_id' => '123456789012345678']])->assertUnprocessable();
+        $this->sendPresence([[...$good, 'name' => str_repeat('x', 101)]])->assertUnprocessable();
+        $this->sendPresence([], false)->assertNoContent(); // incomplete and empty: nothing to add
+        $this->sendPresence([$good])->assertNoContent();
+    }
+
+    #[Test]
+    public function a_complete_list_replaces_and_an_incomplete_one_only_adds(): void
+    {
+        $a = ['cid' => 1, 'discord_id' => '111111111111111111', 'name' => 'a'];
+        $b = ['cid' => 2, 'discord_id' => '222222222222222222', 'name' => 'b'];
+        $c = ['cid' => 3, 'discord_id' => '333333333333333333', 'name' => 'c'];
+
+        $this->sendPresence([$a, $b])->assertNoContent();
+        $this->sendPresence([$c], false)->assertNoContent();
+        $this->assertEqualsCanonicalizing([1, 2, 3], DB::table('vatssa_discord_presence')->pluck('user_id')->all());
+
+        $this->sendPresence([$b])->assertNoContent();
+        $this->assertSame([2], DB::table('vatssa_discord_presence')->pluck('user_id')->all());
+        $this->assertSame('222222222222222222', DB::table('vatssa_discord_presence')->value('discord_id'));
+    }
+
+    #[Test]
+    public function the_profile_says_whether_the_member_is_on_discord(): void
+    {
+        $this->profile()->assertSee('Unknown: the role sync bot has not reported recently.');
+
+        $this->sendPresence([['cid' => 99, 'discord_id' => '999999999999999999', 'name' => 'someone']]);
+        $this->profile()->assertSee('Not on the VATSSA Discord')->assertSee('Checked');
+
+        $this->sendPresence([['cid' => $this->member->id, 'discord_id' => '123456789012345678', 'name' => '<i>alice</i>']]);
+        $this->profile()->assertSee('On the VATSSA Discord as')
+            ->assertSee('@&lt;i&gt;alice&lt;/i&gt;', false)->assertDontSee('<i>alice</i>', false)
+            ->assertDontSee('several accounts');
+
+        $this->sendPresence([
+            ['cid' => $this->member->id, 'discord_id' => '123456789012345678', 'name' => 'alice'],
+            ['cid' => $this->member->id, 'discord_id' => '123456789012345679', 'name' => 'alice2'],
+        ]);
+        $this->profile()->assertSee('several accounts');
+    }
+
+    #[Test]
+    public function an_incomplete_list_does_not_count_as_checked(): void
+    {
+        $this->sendPresence([['cid' => $this->member->id, 'discord_id' => '123456789012345678', 'name' => 'alice']], false);
+        $this->profile()->assertSee('Unknown: the role sync bot has not reported recently.');
+    }
+
+    #[Test]
+    public function a_stale_check_shows_as_unknown(): void
+    {
+        $this->sendPresence([['cid' => $this->member->id, 'discord_id' => '123456789012345678', 'name' => 'alice']]);
+        $this->travel(3)->hours();
+        $this->profile()->assertSee('Unknown: the role sync bot has not reported recently.')->assertDontSee('On the VATSSA Discord as');
+    }
+
+    #[Test]
+    public function only_staff_see_the_discord_line(): void
+    {
+        $this->actingAs($this->withRole(null))->get(route('user.show', $this->member->id))->assertDontSee('VATSSA Discord');
+    }
 }

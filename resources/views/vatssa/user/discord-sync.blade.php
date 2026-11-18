@@ -1,6 +1,22 @@
 {{-- VATSSA: ask the Discord role sync bot to re-sync this member now, and show how the last request ended. Included from user/show.blade.php. --}}
 @can('vatssaDiscordSync')
     @php($vatssaSync = \App\Http\Controllers\VatssaDiscordSyncController::latestFor($user->id))
+    @php($vatssaDiscord = \App\Http\Controllers\VatssaDiscordSyncController::presenceFor($user->id))
+    <dl class="mb-2">
+        <dt>Discord</dt>
+        <dd>
+            @if(! $vatssaDiscord['at'])
+                <span class="text-muted">Unknown: the role sync bot has not reported recently.</span>
+            @elseif($vatssaDiscord['accounts']->isEmpty())
+                Not on the VATSSA Discord
+            @else
+                On the VATSSA Discord as
+                {{ $vatssaDiscord['accounts']->map(fn ($a) => '@' . ($a->name ?? $a->discord_id))->implode(', ') }}
+                @if($vatssaDiscord['accounts']->count() > 1)<span class="text-danger">(several accounts)</span>@endif
+            @endif
+            @if($vatssaDiscord['at'])<small class="d-block text-muted">Checked {{ $vatssaDiscord['at']->diffForHumans() }}</small>@endif
+        </dd>
+    </dl>
     <form method="POST" action="{{ route('vatssa.user.discord-sync', $user->id) }}">
         @csrf
         <button type="submit" class="btn btn-sm btn-outline-primary"><i class="fab fa-discord"></i> Sync Discord roles</button>

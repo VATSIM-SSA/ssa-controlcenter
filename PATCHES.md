@@ -38,7 +38,7 @@ they carry risk.
 |---|---|
 | Code and configuration | 9 |
 | Brand assets | 10 |
-| Added files | 55 |
+| Added files | 56 |
 | Force-added past `.gitignore` | 3 |
 
 ### `config/roles.php`
@@ -272,7 +272,7 @@ training's mentors and `training.activities.view` in its area.
 **Detector:** `tests/Feature/VatssaTrainingStalledTest.php`,
 `tests/Feature/VatssaTrainingAttentionTest.php`.
 
-### Discord sync button: `app/Http/Controllers/VatssaDiscordSyncController.php`, `app/Http/Middleware/VatssaDiscordBotToken.php`, `config/vatssa.php`, `routes/vatssa-api.php`, `resources/views/vatssa/user/discord-sync.blade.php`, `database/migrations/2026_11_18_120000_vatssa_create_discord_sync_requests.php`
+### Discord sync button: `app/Http/Controllers/VatssaDiscordSyncController.php`, `app/Http/Middleware/VatssaDiscordBotToken.php`, `config/vatssa.php`, `routes/vatssa-api.php`, `resources/views/vatssa/user/discord-sync.blade.php`, `database/migrations/2026_11_18_120000_vatssa_create_discord_sync_requests.php`, `database/migrations/2026_11_18_130000_vatssa_create_discord_presence.php`
 
 "Sync Discord roles" on a user's profile (2026-11-18) asks the role sync bot
 (`ssa-discord-bot`) to re-sync that member now instead of at its next 15-minute
@@ -288,7 +288,17 @@ restore. Rows older than a day are not served. The bot reports each outcome to
 (`config/vatssa.php`), checked by `VatssaDiscordBotToken`. That token is not a CC
 API key and opens nothing else; unset, the route refuses everyone. The profile
 shows the last request's status under the button. Each press deletes requests
-older than 30 days. The routes file is loaded by `VatssaServiceProvider` under
+older than 30 days.
+
+**Discord presence.** After each sweep the bot posts every server member it can
+link to a CID to `POST /api/vatssa/discord-presence` (bot token). A complete list
+replaces `vatssa_discord_presence` and sets the setting `vatssaDiscordPresenceAt`;
+an incomplete one (some VATSIM lookups failed) only adds. The profile shows "On
+the VATSSA Discord as @name", "Not on the VATSSA Discord", or "Unknown" when no
+complete list arrived in the last two hours. Staff only (same gate). This stores
+Discord ID against CID in CC: covered by the pending privacy amendment.
+
+The routes file is loaded by `VatssaServiceProvider` under
 `/api` with the `api` group; each route names its own authentication.
 
 **Leans on:** the `api-token` middleware alias and `ApiKey` bearer lookup, the
