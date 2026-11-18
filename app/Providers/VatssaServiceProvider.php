@@ -76,9 +76,17 @@ class VatssaServiceProvider extends ServiceProvider
             }
         });
 
+        // "Sync Discord roles" on a profile: admin, ATC Training Manager and
+        // Pipeline Coordinator (users.manage), and mentors in any area.
+        Gate::define('vatssaDiscordSync', function (User $user) {
+            return $user->hasPermission('users.manage') || $user->hasPermission('training.mentor');
+        });
+
         if (! $this->app->routesAreCached()) {
             Route::middleware(['web', 'auth', 'activity', 'suspended'])
                 ->group(base_path('routes/vatssa.php'));
+            Route::prefix('api')->middleware(['api', 'api-token'])
+                ->group(base_path('routes/vatssa-api.php'));
         }
     }
 }

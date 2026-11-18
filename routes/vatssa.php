@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\VatssaDiscordSyncController;
 use App\Http\Controllers\VatssaTheoryController;
 use App\Http\Controllers\VatssaTrainingFlagController;
 use Illuminate\Support\Facades\Route;
@@ -15,3 +16,4 @@ foreach (array_keys(VatssaTrainingFlagController::FLAGS) as $flag) {
         ->defaults('flag', $flag)
         ->name("training.action.{$flag}");
 }
+Route::post('/user/{user}/discord-sync', [VatssaDiscordSyncController::class, 'store'])->name('vatssa.user.discord-sync');

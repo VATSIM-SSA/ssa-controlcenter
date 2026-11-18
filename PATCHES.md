@@ -23,9 +23,9 @@ underneath an added file. So each section below names its own detector, and
 
 ## Modified upstream files
 
-Eighteen, but they are two different things and should be read as such.
+Nineteen, but they are two different things and should be read as such.
 
-**Eight are code and configuration.** These are the real divergence. Each one is
+**Nine are code and configuration.** These are the real divergence. Each one is
 a conflict on some future release, each needs judgement to resolve, and this
 list growing is the thing to resist.
 
@@ -36,9 +36,9 @@ they carry risk.
 
 | | Count |
 |---|---|
-| Code and configuration | 8 |
+| Code and configuration | 9 |
 | Brand assets | 10 |
-| Added files | 48 |
+| Added files | 53 |
 | Force-added past `.gitignore` | 3 |
 
 ### `config/roles.php`
@@ -129,6 +129,18 @@ the badge on Open requests and the missing pre-training button.
 **What to check when it conflicts.** Re-add the includes wherever upstream now
 renders the state and the title buttons. If upstream reworks the activity feed,
 keep `THEORY` rendering like `PRETRAINING`.
+
+### Discord sync button: `user/show.blade.php`
+
+**Why it diverges.** The profile page has no slot to plug into. One line,
+`@include('vatssa.user.discord-sync')`, at the bottom of the profile card
+(2026-11-18).
+
+**Detector:** `tests/Feature/VatssaDiscordSyncTest.php` asserts the button shows
+to staff and not to a plain member.
+
+**What to check when it conflicts.** Re-add the include inside whichever card
+now shows the VATSIM ID and name.
 
 ---
 
@@ -259,6 +271,24 @@ training's mentors and `training.activities.view` in its area.
 `status` enum cast on `Training`.
 **Detector:** `tests/Feature/VatssaTrainingStalledTest.php`,
 `tests/Feature/VatssaTrainingAttentionTest.php`.
+
+### Discord sync button: `app/Http/Controllers/VatssaDiscordSyncController.php`, `routes/vatssa-api.php`, `resources/views/vatssa/user/discord-sync.blade.php`, `database/migrations/2026_11_18_120000_vatssa_create_discord_sync_requests.php`
+
+"Sync Discord roles" on a user's profile (2026-11-18) asks the role sync bot
+(`ssa-discord-bot`) to re-sync that member now instead of at its next 15-minute
+sweep. Gate `vatssaDiscordSync` in `VatssaServiceProvider`: `users.manage`
+(admin, ATM, Pipeline Coordinator) or `training.mentor` in any area.
+
+**CC never calls the bot.** The button writes a row to
+`vatssa_discord_sync_requests` (CID, who, when; a second click within a minute
+adds nothing). The bot polls `GET /api/vatssa/discord-sync-requests?after=<last id>`
+with its read-only API key. Rows older than a day are not served. The routes
+file is loaded by `VatssaServiceProvider` under `/api` with `api` + `api-token`,
+the same as upstream's `/api/users`.
+
+**Leans on:** the `api-token` middleware alias and `ApiKey` bearer lookup, the
+`user.show` route name, `User::hasPermission` with no area meaning "any area".
+**Detector:** `tests/Feature/VatssaDiscordSyncTest.php`.
 
 ### `database/migrations/2026_11_11_120000_vatssa_add_theory_completed_to_trainings.php`
 
