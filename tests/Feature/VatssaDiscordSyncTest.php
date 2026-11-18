@@ -60,8 +60,8 @@ class VatssaDiscordSyncTest extends TestCase
     #[Test]
     public function others_are_refused(): void
     {
-        foreach ([null, 'buddy', 'event-staff'] as $role) {
-            $this->actingAs($this->withRole($role, true))
+        foreach ([[null, false], ['nav-editor', true], ['event-staff', false], ['feedback-team', false]] as [$role, $inArea]) {
+            $this->actingAs($this->withRole($role, $inArea))
                 ->post(route('vatssa.user.discord-sync', $this->member->id))->assertForbidden();
         }
         $this->post(route('vatssa.user.discord-sync', $this->member->id));
