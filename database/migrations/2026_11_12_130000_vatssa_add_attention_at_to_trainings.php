@@ -4,8 +4,10 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-// VATSSA: staff flag a training as requiring attention. Null = not flagged;
-// otherwise when it was flagged. Set and cleared by hand from the training page.
+/**
+ * VATSSA: staff flag a training as requiring attention. Null = not set;
+ * otherwise when it was set. See App\Services\VatssaTrainingFlags.
+ */
 return new class extends Migration
 {
     public function up(): void
