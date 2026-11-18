@@ -122,7 +122,9 @@ class VatssaServiceProvider extends ServiceProvider
         if (! $this->app->routesAreCached()) {
             Route::middleware(['web', 'auth', 'activity', 'suspended'])
                 ->group(base_path('routes/vatssa.php'));
-            Route::prefix('api')->middleware('api')
+            // Not the 'api' group: its throttle:60,1 counter is shared with /api/users,
+            // and one batch of instant-sync results is up to 100 calls. Own counter.
+            Route::prefix('api')->middleware(['throttle:600,1,vatssa-discord-bot', 'bindings'])
                 ->group(base_path('routes/vatssa-api.php'));
         }
     }

@@ -297,6 +297,12 @@ change) and `User` (`rating` or `division` change) and calls
 never throws. Bulk query updates fire no events and are left to the bot's sweep.
 **Leans on:** those models' Eloquent events and `user_id` columns.
 
+**Limits.** The API routes file runs under `throttle:600,1,vatssa-discord-bot` and
+`bindings`, not the `api` group, whose 60/min counter is shared with `/api/users`.
+The button: `throttle:30,1,vatssa-discord-button`. The bot token must be 32+
+characters or the routes refuse everyone. Pruning never deletes the newest row.
+**Leans on:** the `bindings` middleware alias and `ThrottleRequests`' prefix argument.
+
 **Discord presence.** After each sweep the bot posts every server member it can
 link to a CID to `POST /api/vatssa/discord-presence` (bot token). A complete list
 replaces `vatssa_discord_presence` and sets the setting `vatssaDiscordPresenceAt`;

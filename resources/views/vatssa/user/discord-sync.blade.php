@@ -27,6 +27,8 @@
                 Last sync{{ ($vatssaSync->source ?? 'button') === 'auto' ? ' (automatic)' : '' }}: {{ \App\Http\Controllers\VatssaDiscordSyncController::STATUSES[$vatssaSync->status] ?? $vatssaSync->status }},
                 {{ \Illuminate\Support\Carbon::parse($vatssaSync->finished_at)->diffForHumans() }}.
                 @if($vatssaSync->detail){{ $vatssaSync->detail }}@endif
+            @elseif(\Illuminate\Support\Carbon::parse($vatssaSync->created_at)->lt(now()->subMinutes(5)))
+                Not picked up by the bot. The bot's 15-minute sweep updates the roles anyway.
             @else
                 {{ ($vatssaSync->source ?? 'button') === 'auto' ? 'Change detected' : 'Requested' }} {{ \Illuminate\Support\Carbon::parse($vatssaSync->created_at)->diffForHumans() }}, waiting for the bot.
             @endif

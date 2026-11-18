@@ -80,11 +80,15 @@ class VatssaDiscordSyncController extends Controller
     }
 
     /**
-     * Keep the table short: requests older than 30 days go.
+     * Keep the table short: requests older than 30 days go, except the newest row.
+     * The bot treats max(id) going down as a database restore, so pruning must
+     * never empty the table.
      */
     private static function prune(): void
     {
-        DB::table(self::TABLE)->where('created_at', '<', now()->subDays(30))->delete();
+        $newest = DB::table(self::TABLE)->max('id');
+        DB::table(self::TABLE)->where('created_at', '<', now()->subDays(30))
+            ->where('id', '<', (int) $newest)->delete();
     }
 
     /**

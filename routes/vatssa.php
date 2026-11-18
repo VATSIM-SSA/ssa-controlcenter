@@ -16,4 +16,5 @@ foreach (array_keys(VatssaTrainingFlagController::FLAGS) as $flag) {
         ->defaults('flag', $flag)
         ->name("training.action.{$flag}");
 }
-Route::post('/user/{user}/discord-sync', [VatssaDiscordSyncController::class, 'store'])->name('vatssa.user.discord-sync');
+Route::post('/user/{user}/discord-sync', [VatssaDiscordSyncController::class, 'store'])
+    ->middleware('throttle:30,1,vatssa-discord-button')->name('vatssa.user.discord-sync');
