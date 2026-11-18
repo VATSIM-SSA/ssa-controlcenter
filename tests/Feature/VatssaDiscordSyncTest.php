@@ -578,4 +578,21 @@ class VatssaDiscordSyncTest extends TestCase
         $this->assertSame(['new'], DB::table('vatssa_discord_presence')->pluck('name')->all());
         $this->sendPresence($old, false, self::TOKEN, 1000.0)->assertNoContent();
     }
+
+    #[Test]
+    public function a_pseudonymised_member_who_logs_in_again_gets_their_link_back(): void
+    {
+        $members = [[cid => $this->member->id, discord_id => 100000000000000001, name => back]];
+        $realEmail = $this->member->email;
+
+        $this->member->email = VatssaDiscordSyncController::PSEUDONYMISED_EMAIL;
+        $this->member->save();
+        $this->sendPresence($members)->assertNoContent();
+        $this->assertSame(0, DB::table('vatssa_discord_presence')->count());
+
+        $this->member->email = $realEmail;
+        $this->member->save();
+        $this->sendPresence($members)->assertNoContent();
+        $this->assertSame(['back'], DB::table('vatssa_discord_presence')->pluck('name')->all());
+    }
 }
