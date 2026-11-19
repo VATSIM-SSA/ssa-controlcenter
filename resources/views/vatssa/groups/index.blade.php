@@ -20,7 +20,15 @@
                             <tr>
                                 <td><a href="{{ route('vatssa.groups.show', $group) }}">{{ $group->name }}</a>@if($group->description)<br><span class="text-muted">{{ $group->description }}</span>@endif</td>
                                 <td>{{ $group->current_members_count }}</td>
-                                <td>{{ $group->currentManagers->map(fn ($manager) => $manager->user?->name)->filter()->implode(', ') ?: 'Staff only' }}</td>
+                                <td>
+                                    @foreach($group->currentManagers as $manager)
+                                        <div>{{ $manager->user?->name }} <span class="text-muted">{{ $manager->user_id }}</span> <span class="badge bg-light text-dark border">{{ $manager->can_manage_settings ? 'Members and settings' : 'Members only' }}</span></div>
+                                    @endforeach
+                                    @php($others = $staffManagers->reject(fn ($staff) => $group->currentManagers->contains('user_id', $staff['user']->id)))
+                                    @if($others->isNotEmpty())
+                                        <div class="text-muted small" title="Manage every group through the Manage groups permission">Manage groups: {{ $others->map(fn ($staff) => $staff['user']->name . ' (' . $staff['user']->id . ')')->implode(', ') }}</div>
+                                    @endif
+                                </td>
                             </tr>
                         @endforeach
                         </tbody>

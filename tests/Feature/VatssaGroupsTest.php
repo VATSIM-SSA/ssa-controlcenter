@@ -65,13 +65,13 @@ class VatssaGroupsTest extends TestCase
     #[Test]
     public function bulk_add_parses_any_list_skips_duplicates_and_accepts_people_without_an_account(): void
     {
-        $known = User::factory()->create();
-        $this->actingAs($this->admin)->post(route('vatssa.groups.members.add', $this->group), ['cids' => "{$known->id}, 1234567\n1234567;8765432"])
+        $known = User::factory()->create(['id' => 1500001]);
+        $this->actingAs($this->admin)->post(route('vatssa.groups.members.add', $this->group), ['cids' => "{$known->id}, 1234567\n1234567;2765432"])
             ->assertSessionHas('success', fn ($message) => str_contains($message, '3 added') && str_contains($message, '1234567'));
 
-        $this->assertSame(array_values(collect([$known->id, 1234567, 8765432])->sort()->all()), $this->memberCids());
+        $this->assertSame(array_values(collect([$known->id, 1234567, 2765432])->sort()->all()), $this->memberCids());
 
-        $this->actingAs($this->admin)->post(route('vatssa.groups.members.add', $this->group), ['cids' => '1234567 7777777'])
+        $this->actingAs($this->admin)->post(route('vatssa.groups.members.add', $this->group), ['cids' => '1234567 2777777'])
             ->assertSessionHas('success', fn ($message) => str_contains($message, '1 added, 1 already'));
         $this->actingAs($this->admin)->post(route('vatssa.groups.members.add', $this->group), ['cids' => 'none here'])->assertSessionHasErrors('cids');
     }
@@ -234,7 +234,7 @@ class VatssaGroupsTest extends TestCase
         $this->actingAs($this->admin)->post(route('vatssa.groups.archive', $this->group));
 
         $this->actingAs($this->admin)->get(route('vatssa.groups.show', $this->group))->assertOk()
-            ->assertSee('Read-only')->assertSee('<fieldset disabled', false)->assertDontSee('name="members[]"', false);
+            ->assertSee('Read-only')->assertSee('title="Restore the group to change it"', false)->assertDontSee('name="members[]"', false);
         $this->actingAs($this->admin)->post(route('vatssa.groups.members.add', $this->group), ['cids' => '1000002'])->assertForbidden();
         $this->actingAs($this->admin)->post(route('vatssa.groups.members.remove', $this->group), ['members' => [1000001]])->assertForbidden();
         $this->actingAs($this->admin)->patch(route('vatssa.groups.update', $this->group), ['name' => 'X'])->assertForbidden();
@@ -288,5 +288,29 @@ class VatssaGroupsTest extends TestCase
 
         $this->assertSame(0, substr_count($page, 'Manage groups permission (Administrator)'));
         $this->assertSame(1, substr_count($page, '<span class="text-muted">' . $this->admin->id . '</span>'));
+    }
+
+    #[Test]
+    public function only_valid_vatsim_cids_are_accepted(): void
+    {
+        $this->actingAs($this->admin)->post(route('vatssa.groups.members.add', $this->group), ['cids' => '101'])
+            ->assertSessionHasErrors(['cids' => 'Not valid VATSIM CIDs: 101. A CID is a number from 800000 to 3000000 (or a VATSIM sandbox account, 10000001 to 10000011).']);
+        $response = $this->actingAs($this->admin)->post(route('vatssa.groups.members.add', $this->group), ['cids' => '101, 799999, 0800000, 3000001, 10000012, 800000, 2768227, 3000000, 10000001, 10000011']);
+        $message = session('success');
+        $this->assertStringContainsString('5 added', $message);
+        $this->assertStringContainsString('Not valid CIDs, skipped: 101, 799999, 0800000, 3000001, 10000012.', $message);
+        $this->assertSame([800000, 2768227, 3000000, 10000001, 10000011], $this->memberCids());
+    }
+
+    #[Test]
+    public function members_are_listed_by_name_and_people_without_an_account_last(): void
+    {
+        $zed = User::factory()->create(['id' => 1000003, 'first_name' => 'Zed', 'last_name' => 'Last']);
+        $amy = User::factory()->create(['id' => 1000009, 'first_name' => 'Amy', 'last_name' => 'First']);
+        $this->actingAs($this->admin)->post(route('vatssa.groups.members.add', $this->group), ['cids' => "2000000, {$zed->id}, 900000, {$amy->id}"]);
+
+        $page = $this->actingAs($this->admin)->get(route('vatssa.groups.show', $this->group))->getContent();
+        preg_match_all('/name="members\[\]" value="(\d+)"/', $page, $order);
+        $this->assertSame(['1000009', '1000003', '900000', '2000000'], $order[1]);
     }
 }

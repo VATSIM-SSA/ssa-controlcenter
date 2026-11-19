@@ -20,6 +20,20 @@ use Illuminate\Support\Collection;
  */
 class VatssaGroup extends Model
 {
+    /**
+     * A VATSIM CID: VATSIM's first was 800000; the highest issued is about 2 770 000
+     * (Nov 2026). 3 000 000 leaves room to grow and still catches typos. Raise it when
+     * VATSIM gets close.
+     */
+    public const CID_MIN = 800000;
+
+    public const CID_MAX = 3000000;
+
+    /**
+     * VATSIM's development sandbox accounts (auth-dev.vatsim.net), as CC's own seeder uses.
+     */
+    public const SANDBOX_CIDS = [10000001, 10000011];
+
     protected $table = 'vatssa_groups';
 
     protected $fillable = ['name', 'description', 'created_by'];
@@ -54,6 +68,16 @@ class VatssaGroup extends Model
     public function isArchived(): bool
     {
         return $this->archived_at !== null;
+    }
+
+    public static function isValidCid(string|int $cid): bool
+    {
+        if (! preg_match('/^[1-9]\d{5,7}$/', (string) $cid)) {
+            return false;
+        }
+
+        return ((int) $cid >= self::CID_MIN && (int) $cid <= self::CID_MAX)
+            || ((int) $cid >= self::SANDBOX_CIDS[0] && (int) $cid <= self::SANDBOX_CIDS[1]);
     }
 
     public static function isStaff(User $user): bool

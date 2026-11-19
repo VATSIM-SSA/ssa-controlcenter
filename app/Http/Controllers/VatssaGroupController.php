@@ -30,6 +30,7 @@ class VatssaGroupController extends Controller
         return view('vatssa.groups.index', [
             'groups' => VatssaGroup::visibleTo($user)->whereNull('archived_at')->withCount('currentMembers')
                 ->with('currentManagers.user')->orderBy('name')->get(),
+            'staffManagers' => VatssaGroup::staffManagers(),
             'archived' => VatssaGroup::isStaff($user)
                 ? VatssaGroup::whereNotNull('archived_at')->withCount('currentMembers')->latest('archived_at')->get()
                 : collect(),
@@ -54,8 +55,8 @@ class VatssaGroupController extends Controller
 
         return view('vatssa.groups.show', [
             'group' => $group,
-            'members' => $group->currentMembers()->with('user')->orderBy('user_id')->get(),
-            'managers' => $group->currentManagers()->with('user')->orderBy('user_id')->get(),
+            'members' => $this->alphabetical($group->currentMembers()->with('user')->get()),
+            'managers' => $this->alphabetical($group->currentManagers()->with('user')->get()),
             'events' => $group->events()->latest('id')->limit(200)->get(),
             'names' => $this->names($group),
             'canMembers' => $group->membersEditableBy($request->user()),
@@ -88,9 +89,11 @@ class VatssaGroupController extends Controller
     public function addMembers(Request $request, VatssaGroup $group): RedirectResponse
     {
         abort_unless($group->membersEditableBy($request->user()), 403);
-        $cids = $this->parseCids($request->validate(['cids' => 'required|string|max:20000'])['cids']);
+        [$cids, $invalid] = $this->parseCids($request->validate(['cids' => 'required|string|max:20000'])['cids']);
         if ($cids->isEmpty()) {
-            return back()->withErrors(['cids' => 'No VATSIM IDs found.']);
+            return back()->withErrors(['cids' => $invalid->isNotEmpty()
+                ? 'Not valid VATSIM CIDs: ' . $invalid->implode(', ') . '. A CID is a number from 800000 to 3000000 (or a VATSIM sandbox account, 10000001 to 10000011).'
+                : 'No VATSIM CIDs found.']);
         }
 
         $already = $group->currentMembers()->whereIn('user_id', $cids)->pluck('user_id')->map(fn ($cid) => (int) $cid);
@@ -103,7 +106,8 @@ class VatssaGroupController extends Controller
         $noAccount = $new->diff(User::whereIn('id', $new)->pluck('id'));
 
         return back()->with('success', $new->count() . ' added' . ($already->isNotEmpty() ? ', ' . $already->count() . ' already in the group' : '') . '.'
-            . ($noAccount->isNotEmpty() ? ' Not signed in to CC yet: ' . $noAccount->implode(', ') . '. They are in the group already.' : ''));
+            . ($noAccount->isNotEmpty() ? ' Not signed in to CC yet: ' . $noAccount->implode(', ') . '. They are in the group already.' : '')
+            . ($invalid->isNotEmpty() ? ' Not valid CIDs, skipped: ' . $invalid->implode(', ') . '.' : ''));
     }
 
     /**
@@ -115,7 +119,7 @@ class VatssaGroupController extends Controller
         $data = $request->validate(['members' => 'sometimes|array', 'members.*' => 'integer', 'cids' => 'nullable|string|max:20000']);
 
         $cids = collect($data['members'] ?? [])->map(fn ($cid) => (int) $cid)
-            ->merge($this->parseCids($data['cids'] ?? ''))->unique()->values();
+            ->merge($this->parseCids($data['cids'] ?? '')[0])->unique()->values();
         $rows = $group->currentMembers()->whereIn('user_id', $cids)->get();
         foreach ($rows as $row) {
             $row->forceFill(['removed_at' => now(), 'removed_by' => $request->user()->id])->save();
@@ -229,13 +233,37 @@ class VatssaGroupController extends Controller
     }
 
     /**
-     * @return Collection<int, int>
+     * Every number in the text, split into valid VATSIM CIDs and everything else.
+     *
+     * @return array{0: Collection<int, int>, 1: Collection<int, string>}
      */
-    private function parseCids(string $text): Collection
+    private function parseCids(string $text): array
     {
-        preg_match_all('/\b\d{1,8}\b/', $text, $matches);
+        preg_match_all('/\d+/', $text, $matches);
+        // Strict: a loose unique() treats 0800000 and 800000 as the same and drops one.
+        $numbers = collect(array_values(array_unique($matches[0], SORT_STRING)));
 
-        return collect($matches[0])->map(fn ($cid) => (int) $cid)->filter()->unique()->values();
+        return [
+            $numbers->filter(fn (string $number) => VatssaGroup::isValidCid($number))->map(fn (string $number) => (int) $number)->unique()->values(),
+            $numbers->reject(fn (string $number) => VatssaGroup::isValidCid($number))->values(),
+        ];
+    }
+
+    /**
+     * By name; people with no CC account yet (no name) last, by CID.
+     *
+     * @template T of VatssaGroupMember|VatssaGroupManager
+     *
+     * @param  \Illuminate\Database\Eloquent\Collection<int, T>  $rows
+     * @return Collection<int, T>
+     */
+    private function alphabetical(\Illuminate\Database\Eloquent\Collection $rows): Collection
+    {
+        return $rows->sortBy([
+            fn ($a, $b) => ($a->user === null) <=> ($b->user === null),
+            fn ($a, $b) => strcasecmp($a->user?->name ?? '', $b->user?->name ?? ''),
+            fn ($a, $b) => $a->user_id <=> $b->user_id,
+        ])->values();
     }
 
     private function queueMembers(VatssaGroup $group): void

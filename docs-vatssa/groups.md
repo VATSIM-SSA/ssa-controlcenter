@@ -17,18 +17,21 @@ A group is a name and a list of people: the hit squad, an event team, streamers.
 
 Managers do not need a staff role. The managers list on each group shows everyone who can manage it: the group's own managers, and the staff who manage every group through the Manage groups permission (those cannot be removed there; their access comes from their role).
 
-**Adding members.** Type or paste VATSIM CIDs into **Add members**, separated by commas, and press **Add to group**. The summary says how many were added, how many were already in the group, and which IDs have never signed in to Control Center. Those people are in the group straight away; they do not need an account first.
+**The page.** The teal header holds every action: **Add members**, **Add manager**, **Settings** (each opens a pop-up) and **Archive group**. Below are the members and the managers; the history is folded underneath. Members and managers are sorted by name; people with no CC account yet come last, by CID.
 
-**Removing members.** Tick members in the list (or the box at the top to tick all); a **Remove N selected** button appears. Or paste CIDs into **Add members** and press **Remove these CIDs**. The list shows current members only; who was removed, and when, is in **History**.
+**Adding members.** Press **Add members**, type or paste VATSIM CIDs separated by commas, and press **Add to group**. A CID is a number from 800000 to 3000000, or one of VATSIM's eleven sandbox test accounts (10000001 to 10000011). Anything else, such as 101, is skipped and listed back to you. The summary says how many were added, how many were already in the group, and which IDs have never signed in to Control Center. Those people are in the group straight away; they do not need an account first.
 
-**Managers.** Under **Add a manager**, enter their VATSIM CID and choose **Members only** or **Members and settings** (a "Members and settings" manager can only appoint "Members only" managers). They must have signed in to Control Center at least once. Staff can change a manager's level with the drop-down next to their name.
+**Removing members.** Tick members in the list (or the box at the top to tick all); a **Remove N selected** button appears. Or open **Add members**, paste CIDs and press **Remove these CIDs instead**. The list shows current members only; who was removed, and when, is in **History**.
 
-**Archive and delete.** Staff press **Archive group** at the top of the page. An archived group gives no Discord roles, disappears from its managers' view, and is **read-only for everyone**, staff included: the forms are greyed out until someone presses **Restore group**. Only an archived group can be deleted: **Delete group…** opens a pop-up where you type the group's name to confirm. Deleting cannot be undone.
+**Managers.** Press **Add manager**, enter their VATSIM CID and choose what they can manage. **Members only:** add and remove members, nothing else. **Members and settings:** also rename the group, change its description, and add or remove Members only managers; they cannot archive or delete the group. They must have signed in to Control Center at least once. Staff can change a manager's level with the drop-down next to their name.
+
+**Archive and delete.** Staff press **Archive group** at the top of the page. An archived group gives no Discord roles, disappears from its managers' view, and is **read-only for everyone**, staff included: the buttons are greyed out until someone presses **Restore group**. Only an archived group can be deleted: **Delete group…** opens a pop-up where you type the group's name to confirm. Deleting cannot be undone.
 
 **History.** Every change (created, renamed, member added or removed, manager added or removed, archived, restored) is listed under **History** on the group page, with who did it and when.
 
 ## How it works
 
+- **CIDs:** `VatssaGroup::isValidCid()`: 800000 to 3000000 (`CID_MIN`, `CID_MAX`; raise the maximum when VATSIM's highest CID gets close, about 2 770 000 in November 2026) or the sandbox accounts 10000001 to 10000011 (`SANDBOX_CIDS`).
 - **Tables:** `vatssa_groups`, `vatssa_group_members`, `vatssa_group_managers`, `vatssa_group_events`. Members and managers are kept by VATSIM ID (`user_id`) with no foreign key to `users`, so people without an account can be members. Rows are never deleted, only given `removed_at`. Deleting a group removes its rows with it.
 - **Code:** `App\Models\VatssaGroup` holds the rights (`membersEditableBy`, `settingsEditableBy`, `visibleTo`); `App\Http\Controllers\VatssaGroupController`; views in `resources/views/vatssa/groups/`; routes in `routes/vatssa.php` under `/groups`.
 - **Permission:** `vatssa.groups.manage`, in the catalogue in `config/roles.php`. Admin has it through `**`. Grant it to another role in the matrix to share it.
