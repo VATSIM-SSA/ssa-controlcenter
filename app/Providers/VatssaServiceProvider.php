@@ -10,6 +10,8 @@ use App\Models\RoleAssignment;
 use App\Models\Task;
 use App\Models\Training;
 use App\Models\User;
+use App\Models\VatssaGroupManager;
+use App\Models\VatssaGroupMember;
 use App\Services\VatssaTrainingFlags;
 use App\Tasks\Types\TheoreticalExam;
 use Illuminate\Support\Facades\Gate;
@@ -133,7 +135,12 @@ class VatssaServiceProvider extends ServiceProvider
                 VatssaDiscordSyncController::queueAuto($user->id);
             }
         });
-        User::deleted(fn (User $user) => VatssaDiscordSyncController::forgetUser($user->id));
+        User::deleted(function (User $user) {
+            VatssaDiscordSyncController::forgetUser($user->id);
+            // Erasure: a deleted member leaves every group and stops managing any.
+            VatssaGroupMember::where('user_id', $user->id)->delete();
+            VatssaGroupManager::where('user_id', $user->id)->delete();
+        });
     }
 
     /**
