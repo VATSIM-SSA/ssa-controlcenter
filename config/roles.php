@@ -122,6 +122,8 @@ return [
         // VATSSA: grant authority, one per grantable role. Renamed from upstream's
         // director/moderator/training-staff/staff/buddy to the VATSSA role keys.
         // UserPolicy::updateRole builds "roles.{$requestedRole}.manage", so these
+        // VATSSA: groups (VatssaGroup). Admin holds it through '**'.
+        'vatssa.groups.manage',
         // MUST stay spelled exactly like the keys above or nobody can grant anything.
         'roles.atc-training-manager.manage',
         'roles.pipeline-coordinator.manage',

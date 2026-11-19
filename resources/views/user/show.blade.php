@@ -89,6 +89,7 @@
                     @endcan
 
                 </dl>
+                @include('vatssa.user.discord-sync') {{-- VATSSA --}}
             </div>
         </div>
 

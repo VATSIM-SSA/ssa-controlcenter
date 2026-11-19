@@ -91,6 +91,8 @@
 
         @endif
 
+        @include('vatssa.sidebar.groups') {{-- VATSSA --}}
+
         {{-- Nav Item - Pages Collapse Menu --}}
         @php
             $areas = \App\Models\Area::all();
