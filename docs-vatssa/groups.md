@@ -32,13 +32,14 @@ Managers do not need a staff role. The managers list on each group shows everyon
 ## How it works
 
 - **CIDs:** `VatssaGroup::isValidCid()`: 800000 to 3000000 (`CID_MIN`, `CID_MAX`; raise the maximum when VATSIM's highest CID gets close, about 2 770 000 in November 2026) or the sandbox accounts 10000001 to 10000011 (`SANDBOX_CIDS`).
-- **Tables:** `vatssa_groups`, `vatssa_group_members`, `vatssa_group_managers`, `vatssa_group_events`. Members and managers are kept by VATSIM ID (`user_id`) with no foreign key to `users`, so people without an account can be members. Rows are never deleted, only given `removed_at`. Deleting a group removes its rows with it.
+- **Tables:** `vatssa_groups`, `vatssa_group_members`, `vatssa_group_managers`, `vatssa_group_events`. Members and managers are kept by VATSIM ID (`user_id`) with no foreign key to `users`, so people without an account can be members. Removing someone keeps their row and sets `removed_at`, so history stays complete; the only rows ever deleted are a permanently deleted or pseudonymised user's (erasure) and a deleted group's. A stored column, `current_user_id`, holds the CID only while the row is current, and a unique index on it means one person can never be a current member (or manager) twice.
+- **Locking:** every change to a group runs in one transaction with the group's row locked and the group read again, so two changes cannot interleave, permissions and archived state are re-checked against what is stored, and a change and its history line are written together.
 - **Code:** `App\Models\VatssaGroup` holds the rights (`membersEditableBy`, `settingsEditableBy`, `visibleTo`); `App\Http\Controllers\VatssaGroupController`; views in `resources/views/vatssa/groups/`; routes in `routes/vatssa.php` under `/groups`.
 - **Permission:** `vatssa.groups.manage`, in the catalogue in `config/roles.php`. Admin has it through `**`. Grant it to another role in the matrix to share it.
 - **Discord:** any change to a membership row (added, removed, deleted) queues that member for the Discord role sync, through model listeners in `VatssaServiceProvider`, so every code path does it, not only the page. Archive, restore and delete queue all current members.
 - **Names** are unique, archived groups included.
 - **Concurrency:** adding and removing members runs under one cache lock per group, so two managers adding the same CID at once cannot create two rows.
-- **Privacy:** a permanently deleted user (`UserDelete`) leaves every group and stops managing any, and their CID is removed from every group's history and from the added by, removed by, created by and archived by fields (`VatssaGroup::forgetUser`).
+- **Privacy:** a permanently deleted or pseudonymised user (`UserDelete`) leaves every group and stops managing any, and their CID is removed from every group's history and from the added by, removed by, created by and archived by fields (`VatssaGroup::forgetUser`).
 - **API**, for any Control Center API key (read-only is enough). Archived groups never appear.
   - `GET /api/vatssa/groups`: active groups, each with `id`, `name`, `description` and `members` (VATSIM IDs).
   - `GET /api/vatssa/members/{cid}`: one VATSIM ID's active groups. Works for an ID with no account.

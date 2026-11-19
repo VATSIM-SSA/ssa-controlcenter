@@ -12,8 +12,9 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 /**
@@ -79,19 +80,22 @@ class VatssaGroupController extends Controller
             ['name.unique' => 'A group with that name already exists (it may be archived).'],
         );
 
-        if ($data['name'] !== $group->name) {
-            $group->record('renamed', null, $group->name . ' → ' . $data['name'], $request->user()->id);
-        }
-        if (($data['description'] ?? null) !== $group->description) {
-            $group->record('described', null, $data['description'] ?? null, $request->user()->id);
-        }
-        $group->update($data);
+        $this->locked($group, function (VatssaGroup $group) use ($request, $data) {
+            abort_unless($group->settingsEditableBy($request->user()), 403);
+            if ($data['name'] !== $group->name) {
+                $group->record('renamed', null, $group->name . ' → ' . $data['name'], $request->user()->id);
+            }
+            if (array_key_exists('description', $data) && $data['description'] !== $group->description) {
+                $group->record('described', null, $data['description'], $request->user()->id);
+            }
+            $group->update($data);
+        });
 
         return back()->with('success', 'Group saved.');
     }
 
     /**
-     * Add one VATSIM ID or a pasted list, any separators. People who have never signed in
+     * Add one VATSIM CID or a pasted list, any separators. People who have never signed in
      * to CC can be added; their membership counts the moment they exist.
      */
     public function addMembers(Request $request, VatssaGroup $group): RedirectResponse
@@ -104,9 +108,8 @@ class VatssaGroupController extends Controller
                 : 'No VATSIM CIDs found.']);
         }
 
-        // One change to a group's members at a time, so two managers adding the same CID
-        // at once cannot both pass the "already a member" check.
-        [$already, $new] = Cache::lock('vatssa-group-members:' . $group->id, 30)->block(10, function () use ($group, $cids, $request) {
+        [$already, $new] = $this->locked($group, function (VatssaGroup $group) use ($request, $cids) {
+            abort_unless($group->membersEditableBy($request->user()), 403);
             $already = $group->currentMembers()->whereIn('user_id', $cids)->pluck('user_id')->map(fn ($cid) => (int) $cid);
             $new = $cids->diff($already)->values();
             foreach ($new as $cid) {
@@ -124,16 +127,17 @@ class VatssaGroupController extends Controller
     }
 
     /**
-     * Remove ticked members (`members[]`) and/or a pasted list of VATSIM IDs (`cids`).
+     * Remove ticked members (`members[]`) and/or a pasted list of VATSIM CIDs (`cids`).
      */
     public function removeMembers(Request $request, VatssaGroup $group): RedirectResponse
     {
         abort_unless($group->membersEditableBy($request->user()), 403);
         $data = $request->validate(['members' => 'sometimes|array', 'members.*' => 'integer', 'cids' => 'nullable|string|max:20000']);
+        [$pasted, $invalid] = $this->parseCids($data['cids'] ?? '');
+        $cids = collect($data['members'] ?? [])->map(fn ($cid) => (int) $cid)->merge($pasted)->unique()->values();
 
-        $cids = collect($data['members'] ?? [])->map(fn ($cid) => (int) $cid)
-            ->merge($this->parseCids($data['cids'] ?? '')[0])->unique()->values();
-        $rows = Cache::lock('vatssa-group-members:' . $group->id, 30)->block(10, function () use ($group, $cids, $request) {
+        $rows = $this->locked($group, function (VatssaGroup $group) use ($request, $cids) {
+            abort_unless($group->membersEditableBy($request->user()), 403);
             $rows = $group->currentMembers()->whereIn('user_id', $cids)->get();
             foreach ($rows as $row) {
                 $row->forceFill(['removed_at' => now(), 'removed_by' => $request->user()->id])->save();
@@ -142,12 +146,16 @@ class VatssaGroupController extends Controller
 
             return $rows;
         });
+        $notMembers = $pasted->diff($rows->pluck('user_id')->map(fn ($cid) => (int) $cid));
 
-        return back()->with('success', $rows->count() . ' removed.');
+        return back()->with('success', $rows->count() . ' removed.'
+            . ($notMembers->isNotEmpty() ? ' Not in the group: ' . $notMembers->implode(', ') . '.' : '')
+            . ($invalid->isNotEmpty() ? ' Not valid CIDs, skipped: ' . $invalid->implode(', ') . '.' : ''));
     }
 
     /**
-     * Staff appoint either level; a settings manager appoints member managers only.
+     * Staff appoint either level; a settings manager appoints Members only managers and
+     * cannot change a settings manager.
      */
     public function addManager(Request $request, VatssaGroup $group): RedirectResponse
     {
@@ -159,20 +167,27 @@ class VatssaGroupController extends Controller
         $settings = $data['level'] === 'settings';
         abort_if($settings && ! VatssaGroup::isStaff($request->user()), 403);
 
-        $candidate = User::find($data['user_id']);
-        if (VatssaGroup::isStaff($candidate)) {
-            return back()->withErrors(['user_id' => $candidate->name . ' already manages every group through the Manage groups permission.']);
-        }
+        $this->locked($group, function (VatssaGroup $group) use ($request, $data, $settings) {
+            abort_unless($group->settingsEditableBy($request->user()), 403);
+            // Lock the person too: an erasure running now either finishes first (and we
+            // refuse) or waits for us (and then removes the row we write).
+            $candidate = User::whereKey($data['user_id'])->lockForUpdate()->first();
+            if (! $candidate) {
+                throw ValidationException::withMessages(['user_id' => 'That CID has never signed in to Control Center, so they cannot manage a group yet.']);
+            }
+            if (VatssaGroup::isStaff($candidate)) {
+                throw ValidationException::withMessages(['user_id' => $candidate->name . ' already manages every group through the Manage groups permission.']);
+            }
 
-        $current = $group->currentManagers()->where('user_id', $data['user_id'])->first();
-        // Changing a settings manager's level is a staff action, like removing one.
-        abort_if($current?->can_manage_settings && ! VatssaGroup::isStaff($request->user()), 403);
-        if ($current) {
-            $current->update(['can_manage_settings' => $settings]);
-        } else {
-            VatssaGroupManager::create(['group_id' => $group->id, 'user_id' => $data['user_id'], 'can_manage_settings' => $settings, 'added_by' => $request->user()->id]);
-        }
-        $group->record($current ? 'manager_changed' : 'manager_added', (int) $data['user_id'], $settings ? 'members and settings' : 'members only', $request->user()->id);
+            $current = $group->currentManagers()->where('user_id', $candidate->id)->lockForUpdate()->first();
+            abort_if($current?->can_manage_settings && ! VatssaGroup::isStaff($request->user()), 403);
+            if ($current) {
+                $current->update(['can_manage_settings' => $settings]);
+            } else {
+                VatssaGroupManager::create(['group_id' => $group->id, 'user_id' => $candidate->id, 'can_manage_settings' => $settings, 'added_by' => $request->user()->id]);
+            }
+            $group->record($current ? 'manager_changed' : 'manager_added', $candidate->id, $settings ? 'members and settings' : 'members only', $request->user()->id);
+        });
 
         return back()->with('success', 'Manager saved.');
     }
@@ -180,13 +195,16 @@ class VatssaGroupController extends Controller
     public function removeManager(Request $request, VatssaGroup $group, VatssaGroupManager $manager): RedirectResponse
     {
         abort_unless((int) $manager->group_id === (int) $group->id, 404);
-        abort_unless($group->settingsEditableBy($request->user()), 403);
-        abort_if($manager->can_manage_settings && ! VatssaGroup::isStaff($request->user()), 403);
 
-        if (! $manager->removed_at) {
-            $manager->forceFill(['removed_at' => now(), 'removed_by' => $request->user()->id])->save();
-            $group->record('manager_removed', (int) $manager->user_id, null, $request->user()->id);
-        }
+        $this->locked($group, function (VatssaGroup $group) use ($request, $manager) {
+            abort_unless($group->settingsEditableBy($request->user()), 403);
+            $manager = VatssaGroupManager::whereKey($manager->id)->lockForUpdate()->firstOrFail();
+            abort_if($manager->can_manage_settings && ! VatssaGroup::isStaff($request->user()), 403);
+            if (! $manager->removed_at) {
+                $manager->forceFill(['removed_at' => now(), 'removed_by' => $request->user()->id])->save();
+                $group->record('manager_removed', (int) $manager->user_id, null, $request->user()->id);
+            }
+        });
 
         return back()->with('success', 'Manager removed.');
     }
@@ -200,11 +218,13 @@ class VatssaGroupController extends Controller
         abort_unless(VatssaGroup::isStaff($request->user()), 403);
         $restore = $request->boolean('restore');
 
-        if ($restore === $group->isArchived()) {
-            $group->forceFill(['archived_at' => $restore ? null : now(), 'archived_by' => $restore ? null : $request->user()->id])->save();
-            $group->record($restore ? 'restored' : 'archived', null, null, $request->user()->id);
-            $this->queueMembers($group);
-        }
+        $this->locked($group, function (VatssaGroup $group) use ($request, $restore) {
+            if ($restore === $group->isArchived()) {
+                $group->forceFill(['archived_at' => $restore ? null : now(), 'archived_by' => $restore ? null : $request->user()->id])->save();
+                $group->record($restore ? 'restored' : 'archived', null, null, $request->user()->id);
+                $this->queueMembers($group);
+            }
+        });
 
         return $restore
             ? redirect()->route('vatssa.groups.show', $group)->with('success', 'Group restored.')
@@ -212,19 +232,40 @@ class VatssaGroupController extends Controller
     }
 
     /**
-     * Delete for good: only an archived group, and the name must be typed to confirm.
+     * Delete for good: only an archived group, and the name must be typed exactly.
      */
     public function destroy(Request $request, VatssaGroup $group): RedirectResponse
     {
         abort_unless(VatssaGroup::isStaff($request->user()), 403);
-        abort_unless($group->isArchived(), 409, 'Archive the group first.');
-        $request->validate(['confirm_name' => 'required|in:' . $group->name], ['confirm_name.in' => 'Type the group name exactly to delete it.']);
+        // An exact comparison: the `in:` rule would split a name containing a comma.
+        if ($request->validate(['confirm_name' => 'required|string'])['confirm_name'] !== $group->name) {
+            return back()->withErrors(['confirm_name' => 'Type the group name exactly to delete it.']);
+        }
 
-        $this->queueMembers($group);
-        ActivityLogService::warning(LogName::Other, 'Group deleted: ' . $group->name);
-        $group->delete();
+        $this->locked($group, function (VatssaGroup $group) {
+            abort_unless($group->isArchived(), 409, 'Archive the group first.');
+            $this->queueMembers($group);
+            ActivityLogService::warning(LogName::Other, 'Group deleted: ' . $group->name);
+            $group->delete();
+        });
 
         return redirect()->route('vatssa.groups.index')->with('success', 'Group deleted.');
+    }
+
+    /**
+     * Every change to a group goes through here: one transaction, the group's row locked,
+     * the group read again. Two changes to one group cannot interleave (also across
+     * servers), each re-checks permissions and archived state against what is stored
+     * now, and a change and its history line are written together or not at all.
+     *
+     * @template T
+     *
+     * @param  callable(VatssaGroup): T  $work
+     * @return T
+     */
+    private function locked(VatssaGroup $group, callable $work): mixed
+    {
+        return DB::transaction(fn () => $work(VatssaGroup::whereKey($group->id)->lockForUpdate()->firstOrFail()));
     }
 
     /**

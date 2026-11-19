@@ -139,7 +139,7 @@
                     </li>
                 @endforeach
                 @if($managers->isEmpty())
-                    <li class="list-group-item py-2 small text-muted">No group managers yet.</li>
+                    <li class="list-group-item py-2 small text-muted">No managers appointed to this group yet.</li>
                 @endif
             </ul>
             <div class="card-footer small text-muted">

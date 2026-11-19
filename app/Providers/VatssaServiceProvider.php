@@ -139,6 +139,7 @@ class VatssaServiceProvider extends ServiceProvider
         User::updated(function (User $user) {
             if ($user->wasChanged('email') && $user->email === VatssaDiscordSyncController::PSEUDONYMISED_EMAIL) {
                 VatssaDiscordSyncController::forgetUser($user->id);
+                VatssaGroup::forgetUser($user->id);
             } elseif ($user->wasChanged(['rating', 'division'])) {
                 VatssaDiscordSyncController::queueAuto($user->id);
             }

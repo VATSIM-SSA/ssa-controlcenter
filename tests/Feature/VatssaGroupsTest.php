@@ -2,12 +2,14 @@
 
 namespace Tests\Feature;
 
+use App\Http\Controllers\VatssaDiscordSyncController;
 use App\Models\ApiKey;
 use App\Models\User;
 use App\Models\VatssaGroup;
 use App\Models\VatssaGroupEvent;
 use App\Models\VatssaGroupManager;
 use App\Models\VatssaGroupMember;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\Test;
@@ -268,7 +270,7 @@ class VatssaGroupsTest extends TestCase
         $this->actingAs($this->admin)->post(route('vatssa.groups.members.remove', $this->group), ['members' => [1000002]]);
 
         $page = $this->actingAs($this->admin)->get(route('vatssa.groups.show', $this->group))->assertOk()
-            ->assertSee('Manage groups permission')->assertSee('No group managers yet')
+            ->assertSee('Manage groups permission')->assertSee('No managers appointed to this group yet')
             ->assertSee($this->admin->name)->assertDontSee(route('vatssa.groups.managers.remove', [$this->group, 0]), false);
         $this->assertSame(1, substr_count($page->getContent(), 'value="1000001"'));
         $this->assertSame(0, substr_count($page->getContent(), 'value="1000002"'));
@@ -422,5 +424,100 @@ class VatssaGroupsTest extends TestCase
             $this->group->record('member_added', 1000000 + $i);
         }
         $this->actingAs($this->admin)->get(route('vatssa.groups.show', $this->group))->assertSee('Showing the latest 200 changes.');
+    }
+
+    #[Test]
+    public function pseudonymising_a_user_clears_them_from_groups_too(): void
+    {
+        $user = User::factory()->create(['id' => 1500004]);
+        VatssaGroupMember::create(['group_id' => $this->group->id, 'user_id' => $user->id]);
+        VatssaGroupManager::create(['group_id' => $this->group->id, 'user_id' => $user->id]);
+        $this->group->record('member_added', $user->id, null, $user->id);
+
+        $user->email = VatssaDiscordSyncController::PSEUDONYMISED_EMAIL;
+        $user->save();
+
+        $this->assertSame(0, VatssaGroupMember::where('user_id', $user->id)->count());
+        $this->assertSame(0, VatssaGroupManager::where('user_id', $user->id)->count());
+        $this->assertSame(0, VatssaGroupEvent::where('user_id', $user->id)->orWhere('by', $user->id)->count());
+    }
+
+    #[Test]
+    public function a_name_with_a_comma_must_be_typed_in_full_to_delete(): void
+    {
+        $group = VatssaGroup::create(['name' => 'Events, 2026']);
+        $group->forceFill(['archived_at' => now()])->save();
+
+        $this->actingAs($this->admin)->delete(route('vatssa.groups.destroy', $group), ['confirm_name' => 'Events'])->assertSessionHasErrors('confirm_name');
+        $this->actingAs($this->admin)->delete(route('vatssa.groups.destroy', $group), ['confirm_name' => ' 2026'])->assertSessionHasErrors('confirm_name');
+        $this->assertDatabaseHas('vatssa_groups', ['id' => $group->id]);
+
+        $this->actingAs($this->admin)->delete(route('vatssa.groups.destroy', $group), ['confirm_name' => 'Events, 2026'])->assertRedirect();
+        $this->assertDatabaseMissing('vatssa_groups', ['id' => $group->id]);
+    }
+
+    #[Test]
+    public function a_rename_without_a_description_does_not_record_one(): void
+    {
+        $this->group->update(['description' => 'Event support']);
+        $this->actingAs($this->admin)->patch(route('vatssa.groups.update', $this->group), ['name' => 'Renamed only']);
+
+        $this->assertSame('Event support', $this->group->fresh()->description);
+        $this->assertSame(0, $this->group->events()->where('event', 'described')->count());
+        $this->assertSame(1, $this->group->events()->where('event', 'renamed')->count());
+    }
+
+    #[Test]
+    public function removal_reports_cids_it_skipped(): void
+    {
+        $this->actingAs($this->admin)->post(route('vatssa.groups.members.add', $this->group), ['cids' => '1000001']);
+
+        $this->actingAs($this->admin)->post(route('vatssa.groups.members.remove', $this->group), ['cids' => '1000001, 1000002, 101']);
+        $message = session('success');
+        $this->assertStringContainsString('1 removed.', $message);
+        $this->assertStringContainsString('Not in the group: 1000002.', $message);
+        $this->assertStringContainsString('Not valid CIDs, skipped: 101.', $message);
+    }
+
+    #[Test]
+    public function the_database_refuses_a_second_current_membership_or_management(): void
+    {
+        VatssaGroupMember::create(['group_id' => $this->group->id, 'user_id' => 1000001]);
+        try {
+            VatssaGroupMember::create(['group_id' => $this->group->id, 'user_id' => 1000001]);
+            $this->fail('a second current membership was stored');
+        } catch (UniqueConstraintViolationException) {
+        }
+
+        VatssaGroupMember::where('user_id', 1000001)->update(['removed_at' => now()]);
+        VatssaGroupMember::create(['group_id' => $this->group->id, 'user_id' => 1000001]); // re-adding after removal is fine
+        $this->assertSame(2, VatssaGroupMember::where('user_id', 1000001)->count());
+
+        $manager = User::factory()->create(['id' => 1500005]);
+        VatssaGroupManager::create(['group_id' => $this->group->id, 'user_id' => $manager->id]);
+        $this->expectException(UniqueConstraintViolationException::class);
+        VatssaGroupManager::create(['group_id' => $this->group->id, 'user_id' => $manager->id]);
+    }
+
+    #[Test]
+    public function the_database_refuses_a_duplicate_group_name(): void
+    {
+        $this->expectException(UniqueConstraintViolationException::class);
+        VatssaGroup::create(['name' => 'SSA HitSquad']);
+    }
+
+    #[Test]
+    public function a_change_re_checks_the_stored_group_not_the_page_it_came_from(): void
+    {
+        $manager = $this->manager();
+        $stale = VatssaGroup::find($this->group->id);
+        VatssaGroup::whereKey($this->group->id)->update(['archived_at' => now()]);
+
+        // The route model is loaded fresh per request, so prove the lock helper reads the
+        // stored state: archive directly, then try as staff (allowed only when not archived).
+        $this->assertFalse($stale->isArchived());
+        $this->actingAs($this->admin)->post(route('vatssa.groups.members.add', $this->group), ['cids' => '1000001'])->assertForbidden();
+        $this->actingAs($manager)->post(route('vatssa.groups.members.add', $this->group), ['cids' => '1000001'])->assertForbidden();
+        $this->assertSame([], $this->memberCids());
     }
 }
