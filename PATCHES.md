@@ -38,7 +38,7 @@ they carry risk.
 |---|---|
 | Code and configuration | 8 |
 | Brand assets | 10 |
-| Added files | 49 |
+| Added files | 50 |
 | Force-added past `.gitignore` | 3 |
 
 ### `config/roles.php`
@@ -242,7 +242,7 @@ The theory mark itself. The form posts the state it wants (`completed` 0/1),
 so a double click or a stale page cannot flip it back.
 **Detector:** `VatssaTheoryCompletedTest`.
 
-### Training flags (Requires attention, Stalled): `app/Services/VatssaTrainingFlags.php`, `app/Http/Controllers/VatssaTrainingFlagController.php`, `resources/views/vatssa/training/flag-*`, `database/migrations/2026_11_12_120000_vatssa_add_stalled_at_to_trainings.php`, `database/migrations/2026_11_12_130000_vatssa_add_attention_at_to_trainings.php`
+### Training flags (Requires attention, Stalled): `app/Services/VatssaTrainingFlags.php`, `app/Http/Controllers/VatssaTrainingFlagController.php`, `resources/views/vatssa/training/flag-*`, `database/migrations/2026_11_12_120000_vatssa_add_stalled_at_to_trainings.php`, `database/migrations/2026_11_12_130000_vatssa_add_attention_at_to_trainings.php`, `database/migrations/2026_11_13_100000_vatssa_add_flags_version_to_trainings.php`
 
 Staff set or clear two flags on a training (2026-11-12), beside the theory mark:
 **Requires attention** (amber) and **Stalled** (red). Same people as the theory
@@ -252,21 +252,29 @@ each was set (null = not set); migrations on the default path for the same reaso
 as the theory one. Add a flag by adding a column and an entry to
 `VatssaTrainingFlags::FLAGS`.
 
-All the work is in `VatssaTrainingFlags` (review fixes, #28 and after):
-- a change takes a row lock and re-reads the training, so two clicks give one
-  change, and a training closed meanwhile is refused;
-- each flag form carries the training's newest timeline entry id
-  (`version()`); a change from an older page is refused ("reload and try
-  again") instead of undoing someone else's later change;
-- the change, its activity-log entry and its timeline comment are one
-  transaction, so a flag never changes without its history;
-- when a training's status crosses between open and closed
-  (`Training::saved` hook in `VatssaServiceProvider`), flags made stale are
-  cleared from the database row with a timeline entry each: on close every
-  flag, on reopen only flags set before the reopen (a close whose own clearing
-  failed leaves them). It re-checks the status under the lock and does nothing
-  if the status has moved on since. A failure is reported, never thrown. The
-  theory mark is kept.
+All the work is in `VatssaTrainingFlags` (review rounds on #26, #28, #30):
+- `trainings.flags_version` counts every flag change (manual or automatic),
+  always bumped under the training's row lock. Each flag form carries it
+  (required), read from the same row as the flag state; a change from an older
+  page, a retried request or an old tab is refused ("changed after you opened
+  the page"). A double click is just "already done".
+- a change takes the row lock and re-reads the training, so a training closed
+  meanwhile is refused; the change, its activity-log entry and its timeline
+  comment are one transaction.
+- **close** (`Training::saved` hook): after the close is saved, every flag
+  still set is cleared under the lock, reading the row (a flag may have been
+  set while the close was in flight), with a timeline entry each. Does nothing
+  if the training is open again by then.
+- **reopen** (`Training::saving` hook): before the reopen is saved, any flag a
+  failed close left behind is cleared in the same UPDATE as the reopen. No
+  timestamps involved: nothing can be set while a training is closed. Timeline
+  entries follow once the reopen is saved.
+- failures in either hook are reported, never thrown, so upstream's status
+  change (e-mail, endorsements, mentor detach) always finishes. The theory mark
+  is never touched.
+- deploy note: `deploy-cc.sh` starts the new container before running
+  migrations, so for a few seconds a flag click can fail until
+  `flags_version` exists. Pages render meanwhile (missing value reads as 0).
 
 **Upstream files:** none for the flags themselves. The buttons and badges are
 included from the VATSSA theory partials, which upstream views already include;

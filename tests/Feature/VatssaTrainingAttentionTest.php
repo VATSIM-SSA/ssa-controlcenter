@@ -10,7 +10,6 @@ use App\Models\Training;
 use App\Models\User;
 use App\Services\VatssaTrainingFlags;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Notification;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
@@ -40,6 +39,14 @@ class VatssaTrainingAttentionTest extends TestCase
         ]);
     }
 
+    /**
+     * The training's current flags_version, as a freshly loaded page would send it.
+     */
+    private function version(): int
+    {
+        return (int) $this->training->fresh()->flags_version;
+    }
+
     private function coordinator(): User
     {
         $user = User::factory()->create();
@@ -53,11 +60,11 @@ class VatssaTrainingAttentionTest extends TestCase
     {
         $coordinator = $this->coordinator();
 
-        $this->actingAs($coordinator)->post(route('training.action.attention', $this->training), ['attention' => 1])->assertRedirect($this->training->path());
+        $this->actingAs($coordinator)->post(route('training.action.attention', $this->training), ['attention' => 1, 'version' => $this->version()])->assertRedirect($this->training->path());
         $this->assertNotNull($this->training->fresh()->attention_at);
         $this->assertDatabaseHas('training_activity', ['training_id' => $this->training->id, 'type' => 'COMMENT', 'comment' => 'Training marked as requiring attention.']);
 
-        $this->actingAs($coordinator)->post(route('training.action.attention', $this->training), ['attention' => 0]);
+        $this->actingAs($coordinator)->post(route('training.action.attention', $this->training), ['attention' => 0, 'version' => $this->version()]);
         $this->assertNull($this->training->fresh()->attention_at);
     }
 
@@ -67,9 +74,9 @@ class VatssaTrainingAttentionTest extends TestCase
         $coordinator = $this->coordinator();
 
         $this->actingAs($coordinator)->post(route('training.action.theory', $this->training), ['completed' => 1]);
-        $this->actingAs($coordinator)->post(route('training.action.stalled', $this->training), ['stalled' => 1]);
-        $this->actingAs($coordinator)->post(route('training.action.attention', $this->training), ['attention' => 1]);
-        $this->actingAs($coordinator)->post(route('training.action.stalled', $this->training), ['stalled' => 0]);
+        $this->actingAs($coordinator)->post(route('training.action.stalled', $this->training), ['stalled' => 1, 'version' => $this->version()]);
+        $this->actingAs($coordinator)->post(route('training.action.attention', $this->training), ['attention' => 1, 'version' => $this->version()]);
+        $this->actingAs($coordinator)->post(route('training.action.stalled', $this->training), ['stalled' => 0, 'version' => $this->version()]);
 
         $training = $this->training->fresh();
         $this->assertTrue((bool) $training->theory_completed);
@@ -84,7 +91,7 @@ class VatssaTrainingAttentionTest extends TestCase
         $mentor->roleAssignments()->create(['role' => 'mentor', 'area_id' => $this->area->id]);
 
         foreach ([$this->training->user, $mentor] as $user) {
-            $this->actingAs($user)->post(route('training.action.attention', $this->training), ['attention' => 1])->assertForbidden();
+            $this->actingAs($user)->post(route('training.action.attention', $this->training), ['attention' => 1, 'version' => $this->version()])->assertForbidden();
         }
         $this->assertNull($this->training->fresh()->attention_at);
     }
@@ -95,7 +102,7 @@ class VatssaTrainingAttentionTest extends TestCase
     #[Test]
     public function the_wrong_field_is_refused(): void
     {
-        $this->actingAs($this->coordinator())->post(route('training.action.attention', $this->training), ['stalled' => 1])->assertSessionHasErrors('attention');
+        $this->actingAs($this->coordinator())->post(route('training.action.attention', $this->training), ['stalled' => 1, 'version' => $this->version()])->assertSessionHasErrors('attention');
         $this->assertNull($this->training->fresh()->attention_at);
     }
 
@@ -154,16 +161,22 @@ class VatssaTrainingAttentionTest extends TestCase
     public function a_failing_clear_never_breaks_the_close(): void
     {
         $this->training->update(['stalled_at' => now()]);
-        $this->app->instance(VatssaTrainingFlags::class, new class extends VatssaTrainingFlags
+        $failing = new class extends VatssaTrainingFlags
         {
-            public function clearOnStatusChange(Training $training, Carbon $changedAt): void
+            public static int $calls = 0;
+
+            public function clearAfterClose(Training $training): void
             {
+                self::$calls++;
+
                 throw new \RuntimeException('database unavailable');
             }
-        });
+        };
+        $this->app->instance(VatssaTrainingFlags::class, $failing);
 
         $this->training->update(['status' => TrainingStatus::CLOSED_BY_STAFF->value]);
 
+        $this->assertSame(1, $failing::$calls, 'The close did not try to clear the flags.');
         $this->assertSame(TrainingStatus::CLOSED_BY_STAFF, $this->training->fresh()->status);
     }
 
@@ -176,7 +189,7 @@ class VatssaTrainingAttentionTest extends TestCase
     {
         $stale = Training::find($this->training->id);
 
-        $this->actingAs($this->coordinator())->post(route('training.action.stalled', $this->training), ['stalled' => 1]);
+        $this->actingAs($this->coordinator())->post(route('training.action.stalled', $this->training), ['stalled' => 1, 'version' => $this->version()]);
         $this->assertNotNull($this->training->fresh()->stalled_at);
 
         $stale->update(['status' => TrainingStatus::CLOSED_BY_STAFF->value]);
@@ -197,10 +210,12 @@ class VatssaTrainingAttentionTest extends TestCase
         try {
             $this->withoutExceptionHandling();
             $this->expectException(InvalidTrainingActivityType::class);
-            $this->actingAs($this->coordinator())->post(route('training.action.attention', $this->training), ['attention' => 1]);
+            $this->actingAs($this->coordinator())->post(route('training.action.attention', $this->training), ['attention' => 1, 'version' => $this->version()]);
         } finally {
             TrainingActivityController::$activityTypes = $types;
             $this->assertNull($this->training->fresh()->attention_at);
+            $this->assertDatabaseMissing('activity_logs', ['description' => 'Training marked as requiring attention on training ' . $this->training->id]);
+            $this->assertSame(0, (int) $this->training->fresh()->flags_version);
         }
     }
 
@@ -210,8 +225,8 @@ class VatssaTrainingAttentionTest extends TestCase
         $coordinator = $this->coordinator();
         $this->training->update(['status' => TrainingStatus::CLOSED_BY_STAFF->value]);
 
-        $this->actingAs($coordinator)->post(route('training.action.attention', $this->training), ['attention' => 1])->assertForbidden();
-        $this->assertSame(VatssaTrainingFlags::CLOSED, app(VatssaTrainingFlags::class)->set($this->training, 'attention', true, $coordinator->id));
+        $this->actingAs($coordinator)->post(route('training.action.attention', $this->training), ['attention' => 1, 'version' => $this->version()])->assertForbidden();
+        $this->assertSame(VatssaTrainingFlags::CLOSED, app(VatssaTrainingFlags::class)->set($this->training, 'attention', true, $coordinator->id, $this->version()));
         $this->assertNull($this->training->fresh()->attention_at);
     }
 
@@ -226,7 +241,7 @@ class VatssaTrainingAttentionTest extends TestCase
         $studentWhoIsStaff = $this->training->user;
         $studentWhoIsStaff->roleAssignments()->create(['role' => 'pipeline-coordinator', 'area_id' => Area::factory()->create()->id]);
 
-        app(VatssaTrainingFlags::class)->set($this->training, 'stalled', true, $this->coordinator()->id);
+        app(VatssaTrainingFlags::class)->set($this->training, 'stalled', true, $this->coordinator()->id, $this->version());
 
         $this->actingAs($studentWhoIsStaff->fresh())->get(route('requests'))
             ->assertOk()
@@ -284,13 +299,12 @@ class VatssaTrainingAttentionTest extends TestCase
     #[Test]
     public function a_change_from_an_older_page_is_refused(): void
     {
-        $flags = app(VatssaTrainingFlags::class);
         $first = $this->coordinator();
         $second = $this->coordinator();
 
-        $pageVersion = $flags->version($this->training);
+        $pageVersion = $this->version();
         $this->actingAs($first)->post(route('training.action.attention', $this->training), ['attention' => 1, 'version' => $pageVersion]);
-        $afterSet = $flags->version($this->training);
+        $afterSet = $this->version();
         $this->actingAs($second)->post(route('training.action.attention', $this->training), ['attention' => 0, 'version' => $afterSet]);
         $this->assertNull($this->training->fresh()->attention_at);
 
@@ -307,7 +321,7 @@ class VatssaTrainingAttentionTest extends TestCase
     #[Test]
     public function a_double_click_is_harmless(): void
     {
-        $version = app(VatssaTrainingFlags::class)->version($this->training);
+        $version = $this->version();
         $coordinator = $this->coordinator();
 
         $this->actingAs($coordinator)->post(route('training.action.stalled', $this->training), ['stalled' => 1, 'version' => $version]);
@@ -320,7 +334,8 @@ class VatssaTrainingAttentionTest extends TestCase
     #[Test]
     public function the_training_page_sends_its_version(): void
     {
-        $version = app(VatssaTrainingFlags::class)->version($this->training);
+        $this->training->update(['flags_version' => 7]);
+        $version = $this->version();
 
         $this->actingAs($this->coordinator())->get($this->training->path())
             ->assertOk()
@@ -329,22 +344,23 @@ class VatssaTrainingAttentionTest extends TestCase
 
     /**
      * If the close's own clearing failed, the flags left behind are cleared
-     * when the training reopens, with a timeline entry each.
+     * by the reopen itself, in the same UPDATE, with a timeline entry each.
      */
     #[Test]
     public function reopening_clears_flags_left_from_before(): void
     {
-        $this->training->update(['attention_at' => now()->subDay(), 'stalled_at' => now()->subDay()]);
+        $this->training->update(['attention_at' => now(), 'stalled_at' => now()]);
         $real = app(VatssaTrainingFlags::class);
         $this->app->instance(VatssaTrainingFlags::class, new class extends VatssaTrainingFlags
         {
-            public function clearOnStatusChange(Training $training, Carbon $changedAt): void
+            public function clearAfterClose(Training $training): void
             {
                 throw new \RuntimeException('database unavailable');
             }
         });
         $this->training->update(['status' => TrainingStatus::CLOSED_BY_STAFF->value]);
         $this->assertNotNull($this->training->fresh()->stalled_at);
+        $versionWhileClosed = $this->version();
 
         $this->app->instance(VatssaTrainingFlags::class, $real);
         $this->training->update(['status' => TrainingStatus::ACTIVE_TRAINING->value]);
@@ -352,30 +368,59 @@ class VatssaTrainingAttentionTest extends TestCase
         $training = $this->training->fresh();
         $this->assertNull($training->attention_at);
         $this->assertNull($training->stalled_at);
-        $this->assertContains('Stalled cleared automatically: it was set before the training was reopened.',
+        $this->assertSame($versionWhileClosed + 1, (int) $training->flags_version);
+        $this->assertContains('Stalled cleared automatically: it was left from before the training was reopened.',
             $this->training->activities()->pluck('comment')->all());
     }
 
     /**
-     * Reopening clears only flags older than the reopen: one set afterwards
-     * stays.
+     * A copy loaded before the flags were set still clears them on reopen:
+     * the clear reads the row, not the model.
+     */
+    #[Test]
+    public function reopening_a_stale_copy_still_clears_leftover_flags(): void
+    {
+        $this->training->update(['status' => TrainingStatus::CLOSED_BY_STAFF->value]);
+        $stale = Training::find($this->training->id);
+        Training::whereKey($this->training->id)->toBase()->update(['stalled_at' => now()]);
+
+        $stale->update(['status' => TrainingStatus::PRE_TRAINING->value]);
+
+        $this->assertNull($this->training->fresh()->stalled_at);
+    }
+
+    /**
+     * A flag set after the reopen is a real flag and stays.
      */
     #[Test]
     public function a_flag_set_after_the_reopen_is_kept(): void
     {
-        $reopenedAt = now()->subMinute();
-        $this->training->update(['stalled_at' => now()->subDays(2), 'attention_at' => now()]);
+        $this->training->update(['status' => TrainingStatus::CLOSED_BY_STAFF->value]);
+        $this->training->update(['status' => TrainingStatus::ACTIVE_TRAINING->value]);
 
-        app(VatssaTrainingFlags::class)->clearOnStatusChange($this->training, $reopenedAt);
+        app(VatssaTrainingFlags::class)->set($this->training, 'stalled', true, $this->coordinator()->id, $this->version());
 
-        $training = $this->training->fresh();
-        $this->assertNull($training->stalled_at);
-        $this->assertNotNull($training->attention_at);
+        $this->assertNotNull($this->training->fresh()->stalled_at);
     }
 
     /**
-     * If the status moved again before the clearing ran (closed, then reopened
-     * and flagged by someone else), the clearing for the close does nothing.
+     * Closing bumps flags_version when it clears, so a page opened before the
+     * close cannot set a flag after a reopen without reloading.
+     */
+    #[Test]
+    public function closing_with_flags_bumps_the_version(): void
+    {
+        $this->training->update(['stalled_at' => now()]);
+        $before = $this->version();
+
+        $this->training->update(['status' => TrainingStatus::CLOSED_BY_STAFF->value]);
+
+        $this->assertSame($before + 1, $this->version());
+    }
+
+    /**
+     * If the training is open again by the time the close's clearing runs,
+     * the clearing does nothing: the reopen has handled it.
      */
     #[Test]
     public function a_clear_for_an_outdated_status_does_nothing(): void
@@ -384,10 +429,23 @@ class VatssaTrainingAttentionTest extends TestCase
         $closedCopy = Training::find($this->training->id);
         $closedCopy->status = TrainingStatus::CLOSED_BY_STAFF;
 
-        app(VatssaTrainingFlags::class)->clearOnStatusChange($closedCopy, now()->subMinute());
+        app(VatssaTrainingFlags::class)->clearAfterClose($closedCopy);
 
         $this->assertNotNull($this->training->fresh()->stalled_at);
         $this->assertSame(0, $this->training->activities()->where('type', 'COMMENT')->count());
+    }
+
+    /**
+     * A form without a version (an old tab from before this change, or a
+     * hand-made request) is refused.
+     */
+    #[Test]
+    public function a_form_without_a_version_is_refused(): void
+    {
+        $this->actingAs($this->coordinator())->post(route('training.action.stalled', $this->training), ['stalled' => 1])
+            ->assertSessionHasErrors(['version' => 'This page is out of date. Reload it and try again.']);
+
+        $this->assertNull($this->training->fresh()->stalled_at);
     }
 
     #[Test]

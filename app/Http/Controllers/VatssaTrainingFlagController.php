@@ -11,10 +11,10 @@ use Illuminate\Support\Facades\Auth;
 /**
  * VATSSA: staff set or clear a training flag ("Requires attention", "Stalled").
  *
- * The form sends the state it wants, not "flip it", and the version of the
- * training's timeline it was rendered with, so a double click, a stale page or
- * a retried request cannot undo someone else's later change. The work, locking
- * and history live in VatssaTrainingFlags.
+ * The form sends the state it wants, not "flip it", and the training's
+ * flags_version it was rendered with (required), so a double click, a stale
+ * page, an old tab or a retried request cannot undo someone else's later
+ * change. The work, locking and history live in VatssaTrainingFlags.
  */
 class VatssaTrainingFlagController extends Controller
 {
@@ -25,13 +25,15 @@ class VatssaTrainingFlagController extends Controller
 
         $input = $request->validate([
             $flag => 'required|boolean',
-            'version' => 'nullable|integer|min:0',
+            'version' => 'required|integer|min:0',
+        ], [
+            'version' => 'This page is out of date. Reload it and try again.',
         ]);
         $state = (bool) $input[$flag];
         $config = VatssaTrainingFlags::FLAGS[$flag];
         $message = rtrim($state ? $config['on'] : $config['off'], '.');
 
-        $result = $flags->set($training, $flag, $state, Auth::id(), isset($input['version']) ? (int) $input['version'] : null);
+        $result = $flags->set($training, $flag, $state, Auth::id(), (int) $input['version']);
 
         return match ($result) {
             VatssaTrainingFlags::CHANGED => redirect($training->path())->withSuccess($message),

@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\ValidationException;
 use Throwable;
+use WeakMap;
 
 /**
  * VATSSA: behaviour added on top of upstream without editing upstream files.
@@ -74,12 +75,15 @@ class VatssaServiceProvider extends ServiceProvider
      * Training flags (Requires attention, Stalled).
      *
      * The same people as the theory mark set and clear them: training.update
-     * in the training's area, open trainings only. When a training closes, any
-     * flag still set is cleared; when it reopens, any flag left from before is
-     * cleared. Each clearing is written to the timeline. A failure to clear is
-     * reported, never thrown: the status change itself (e-mail, endorsements,
-     * mentor detach) must always finish, and the next crossing cleans up. See
-     * VatssaTrainingFlags.
+     * in the training's area, open trainings only.
+     *
+     * Close: after the close is saved, every flag still set is cleared under
+     * the row lock (a flag may have been set while the close was in flight).
+     * Reopen: before the reopen is saved, any flag a failed close left behind
+     * is cleared in the same UPDATE (nothing can be set while closed). Each
+     * clearing is written to the timeline. Failures are reported, never
+     * thrown: the status change itself (e-mail, endorsements, mentor detach)
+     * must always finish. See VatssaTrainingFlags.
      */
     private function registerTrainingFlags(): void
     {
@@ -87,18 +91,37 @@ class VatssaServiceProvider extends ServiceProvider
             return $training->status->isOpen() && $user->hasPermission('training.update', $training->area);
         });
 
-        Training::saved(function (Training $training) {
-            if (! $training->wasChanged('status')) {
-                return;
-            }
+        $pendingReopenClears = new WeakMap;
 
-            $before = TrainingStatus::from((int) ($training->getPrevious()['status'] ?? $training->status->value));
-            if ($before->isOpen() === $training->status->isOpen()) {
+        Training::saving(function (Training $training) use ($pendingReopenClears) {
+            $before = $training->exists ? $training->getOriginal('status') : null;
+            if (! $before instanceof TrainingStatus || ! $training->isDirty('status')
+                || $before->isOpen() || ! $training->status->isOpen()) {
                 return;
             }
 
             try {
-                app(VatssaTrainingFlags::class)->clearOnStatusChange($training, $training->updated_at ?? now());
+                $pendingReopenClears[$training] = app(VatssaTrainingFlags::class)->clearBeforeReopen($training);
+            } catch (Throwable $e) {
+                report($e);
+            }
+        });
+
+        Training::saved(function (Training $training) use ($pendingReopenClears) {
+            if (! $training->wasChanged('status')) {
+                return;
+            }
+
+            $flags = app(VatssaTrainingFlags::class);
+            $texts = $pendingReopenClears[$training] ?? [];
+            unset($pendingReopenClears[$training]);
+
+            try {
+                if ($texts !== []) {
+                    $flags->recordReopenClears($training, $texts);
+                } elseif (! $training->status->isOpen()) {
+                    $flags->clearAfterClose($training);
+                }
             } catch (Throwable $e) {
                 report($e);
             }

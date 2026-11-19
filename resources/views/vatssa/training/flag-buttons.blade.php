@@ -1,8 +1,8 @@
 {{-- VATSSA: staff-only training flags (Requires attention, Stalled). Included from vatssa/training/theory-button.blade.php. --}}
 @can('toggleTrainingFlags', $training)
-    {{-- The timeline version this page saw: a change from an older page is refused. --}}
+    {{-- flags_version from the same row as the flag state below: a change from an older page is refused. --}}
     @php
-        $vatssaFlagVersion = app(\App\Services\VatssaTrainingFlags::class)->version($training);
+        $vatssaFlagVersion = (int) $training->flags_version;
     @endphp
     <form method="POST" action="{{ route('training.action.attention', $training->id) }}" class="d-inline">
         @csrf

@@ -35,6 +35,14 @@ class VatssaTrainingStalledTest extends TestCase
         ]);
     }
 
+    /**
+     * The training's current flags_version, as a freshly loaded page would send it.
+     */
+    private function version(): int
+    {
+        return (int) $this->training->fresh()->flags_version;
+    }
+
     private function userWithRole(string $role, ?int $areaId): User
     {
         $user = User::factory()->create();
@@ -49,7 +57,7 @@ class VatssaTrainingStalledTest extends TestCase
         $coordinator = $this->userWithRole('pipeline-coordinator', $this->area->id);
 
         $this->actingAs($coordinator)
-            ->post(route('training.action.stalled', $this->training), ['stalled' => 1])
+            ->post(route('training.action.stalled', $this->training), ['stalled' => 1, 'version' => $this->version()])
             ->assertRedirect($this->training->path());
 
         $this->assertNotNull($this->training->fresh()->stalled_at);
@@ -60,7 +68,7 @@ class VatssaTrainingStalledTest extends TestCase
             'triggered_by_id' => $coordinator->id,
         ]);
 
-        $this->actingAs($coordinator)->post(route('training.action.stalled', $this->training), ['stalled' => 0]);
+        $this->actingAs($coordinator)->post(route('training.action.stalled', $this->training), ['stalled' => 0, 'version' => $this->version()]);
 
         $this->assertNull($this->training->fresh()->stalled_at);
         $this->assertDatabaseHas('training_activity', [
@@ -77,10 +85,10 @@ class VatssaTrainingStalledTest extends TestCase
     {
         $coordinator = $this->userWithRole('pipeline-coordinator', $this->area->id);
 
-        $this->actingAs($coordinator)->post(route('training.action.stalled', $this->training), ['stalled' => 1]);
+        $this->actingAs($coordinator)->post(route('training.action.stalled', $this->training), ['stalled' => 1, 'version' => $this->version()]);
         $since = $this->training->fresh()->stalled_at;
         $this->travel(1)->days();
-        $this->actingAs($coordinator)->post(route('training.action.stalled', $this->training), ['stalled' => 1]);
+        $this->actingAs($coordinator)->post(route('training.action.stalled', $this->training), ['stalled' => 1, 'version' => $this->version()]);
 
         $this->assertEquals($since, $this->training->fresh()->stalled_at);
         $this->assertSame(1, $this->training->activities()->where('type', 'COMMENT')->count());
@@ -100,7 +108,7 @@ class VatssaTrainingStalledTest extends TestCase
     {
         $atm = $this->userWithRole('atc-training-manager', null);
 
-        $this->actingAs($atm)->post(route('training.action.stalled', $this->training), ['stalled' => 1])->assertRedirect();
+        $this->actingAs($atm)->post(route('training.action.stalled', $this->training), ['stalled' => 1, 'version' => $this->version()])->assertRedirect();
 
         $this->assertNotNull($this->training->fresh()->stalled_at);
     }
@@ -112,7 +120,7 @@ class VatssaTrainingStalledTest extends TestCase
         $other = $this->userWithRole('pipeline-coordinator', Area::factory()->create()->id);
 
         foreach ([$this->training->user, $mentor, $other] as $user) {
-            $this->actingAs($user)->post(route('training.action.stalled', $this->training), ['stalled' => 1])->assertForbidden();
+            $this->actingAs($user)->post(route('training.action.stalled', $this->training), ['stalled' => 1, 'version' => $this->version()])->assertForbidden();
         }
 
         $this->assertNull($this->training->fresh()->stalled_at);
@@ -124,7 +132,7 @@ class VatssaTrainingStalledTest extends TestCase
         $this->training->update(['status' => TrainingStatus::COMPLETED->value]);
         $coordinator = $this->userWithRole('pipeline-coordinator', $this->area->id);
 
-        $this->actingAs($coordinator)->post(route('training.action.stalled', $this->training), ['stalled' => 1])->assertForbidden();
+        $this->actingAs($coordinator)->post(route('training.action.stalled', $this->training), ['stalled' => 1, 'version' => $this->version()])->assertForbidden();
     }
 
     #[Test]
@@ -188,7 +196,7 @@ class VatssaTrainingStalledTest extends TestCase
         $coordinator = $this->userWithRole('pipeline-coordinator', $this->area->id);
 
         $this->actingAs($coordinator)->post(route('training.action.theory', $this->training), ['completed' => 1]);
-        $this->actingAs($coordinator)->post(route('training.action.stalled', $this->training), ['stalled' => 1]);
+        $this->actingAs($coordinator)->post(route('training.action.stalled', $this->training), ['stalled' => 1, 'version' => $this->version()]);
 
         $training = $this->training->fresh();
         $this->assertTrue((bool) $training->theory_completed);
