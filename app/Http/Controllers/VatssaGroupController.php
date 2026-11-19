@@ -143,6 +143,11 @@ class VatssaGroupController extends Controller
         $settings = $data['level'] === 'settings';
         abort_if($settings && ! VatssaGroup::isStaff($request->user()), 403);
 
+        $candidate = User::find($data['user_id']);
+        if (VatssaGroup::isStaff($candidate)) {
+            return back()->withErrors(['user_id' => $candidate->name . ' already manages every group through the Manage groups permission.']);
+        }
+
         $current = $group->currentManagers()->where('user_id', $data['user_id'])->first();
         if ($current) {
             $current->update(['can_manage_settings' => $settings]);

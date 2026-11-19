@@ -13,7 +13,7 @@
         <h6 class="m-0 fw-bold text-white"><i class="fas fa-people-group"></i>&nbsp;{{ $group->name }} @if($archived)<span class="badge bg-light text-dark ms-1">Archived</span>@endif</h6>
         <div class="d-flex flex-wrap gap-2">
             @if($canMembers || ($isStaff && $archived))
-                <button type="button" class="btn btn-icon btn-light" data-bs-toggle="modal" data-bs-target="#addMembers" @disabled(! $canMembers) title="{{ $canMembers ? '' : $locked }}"><i class="fas fa-user-plus"></i> Add members</button>
+                <button type="button" class="btn btn-icon btn-light" data-bs-toggle="modal" data-bs-target="#addMembers" @disabled(! $canMembers) title="{{ $canMembers ? '' : $locked }}"><i class="fas fa-user-plus"></i> Add/remove members</button>
             @endif
             @if($canSettings || ($isStaff && $archived))
                 <button type="button" class="btn btn-icon btn-light" data-bs-toggle="modal" data-bs-target="#addManager" @disabled(! $canSettings) title="{{ $canSettings ? '' : $locked }}"><i class="fas fa-user-shield"></i> Add manager</button>
@@ -50,7 +50,7 @@
         <div class="card shadow mb-3">
             <div class="card-header bg-primary py-3"><h6 class="m-0 fw-bold text-white"><i class="fas fa-users"></i>&nbsp;Members</h6></div>
             @if($members->isEmpty())
-                <div class="card-body"><p class="mb-0 text-muted">No members yet.@if($canMembers) Press <strong>Add members</strong>.@endif</p></div>
+                <div class="card-body"><p class="mb-0 text-muted">No members yet.@if($canMembers) Press <strong>Add/remove members</strong>.@endif</p></div>
             @else
                 <form method="post" action="{{ route('vatssa.groups.members.remove', $group) }}">@csrf
                     <table class="table table-sm table-hover table-leftpadded mb-0" width="100%" cellspacing="0">
@@ -151,7 +151,7 @@
 <div class="modal fade" id="addMembers" tabindex="-1" aria-labelledby="addMembersLabel" aria-hidden="true" data-open="{{ $errors->has('cids') ? '1' : '' }}">
     <div class="modal-dialog">
         <form method="post" action="{{ route('vatssa.groups.members.add', $group) }}" class="modal-content">@csrf
-            <div class="modal-header"><h5 class="modal-title" id="addMembersLabel">Add members to {{ $group->name }}</h5>
+            <div class="modal-header"><h5 class="modal-title" id="addMembersLabel">Add or remove members of {{ $group->name }}</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
             <div class="modal-body">
                 <label for="cids" class="form-label fw-bold">VATSIM CIDs</label>

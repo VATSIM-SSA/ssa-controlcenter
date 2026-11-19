@@ -313,4 +313,12 @@ class VatssaGroupsTest extends TestCase
         preg_match_all('/name="members\[\]" value="(\d+)"/', $page, $order);
         $this->assertSame(['1000009', '1000003', '900000', '2000000'], $order[1]);
     }
+
+    #[Test]
+    public function staff_who_already_manage_every_group_cannot_be_added_as_managers(): void
+    {
+        $this->actingAs($this->admin)->post(route('vatssa.groups.managers.add', $this->group), ['user_id' => $this->admin->id, 'level' => 'members'])
+            ->assertSessionHasErrors(['user_id' => $this->admin->name . ' already manages every group through the Manage groups permission.']);
+        $this->assertSame(0, $this->group->managers()->count());
+    }
 }
