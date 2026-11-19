@@ -85,9 +85,15 @@ never ship phpunit, faker, debugbar or boost.
 A **build arg, never an env var**, so it cannot be flipped by editing a `.env` on
 the box.
 
+**Also (2026-11-19):** `chown -R www-data:www-data /app/storage` after upstream
+creates `storage/app/public/files`. Upstream creates it as root after the
+`--chown=www-data` copy; the named storage volume takes its ownership from the image
+and Apache runs as www-data, so attachment uploads failed without an error while
+the `files` row was still written (twelve rows on production with no file).
+
 **Detector:** a git merge conflict at absorption, plus the guard step in
 `.github/workflows/deploy.yml` that fails a production build carrying dev
-dependencies.
+dependencies, plus `tests/Feature/VatssaAttachmentStorageTest.php` for the chown.
 
 **What to check when it conflicts.** Upstream restructuring its build stages is
 the likely cause. Reapply the arg to whichever stage ends up producing the
@@ -194,6 +200,15 @@ attributes stripped.
 
 These never conflict. That is the point, and it is also the risk, so each one
 names what it leans on and what would tell you it broke.
+
+### `database/migrations-vatssa/2026_09_16_100000_vatssa_repair_attachment_uuid_pk.php`
+
+Repairs `training_object_attachments.id` on any database descended from the
+DigitalOcean install, where it stayed `bigint AUTO_INCREMENT` under a model that
+writes UUIDs (every upload failed). Production was repaired by hand on 16 Sep 2026;
+this makes a restore from an old dump safe. It reads the live column type first and
+does nothing on a correct table except drop the leftover `uuid` column; MySQL only.
+**Detector:** `tests/Feature/VatssaAttachmentStorageTest.php`.
 
 ### `database/migrations-vatssa/2026_08_26_100000_vatssa_reference_data.php`
 
