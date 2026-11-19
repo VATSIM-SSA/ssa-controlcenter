@@ -10,20 +10,20 @@ A group is a name and a list of people: the hit squad, an event team, streamers.
 
 | You are | You can |
 |---|---|
-| Staff with group rights (`vatssa.groups.manage`, admin by default) | everything on every group: create, rename, archive, delete, appoint any manager |
-| A group's **settings manager** | rename it, change its description, appoint and remove member managers, add and remove members |
-| A group's **member manager** | add and remove members, nothing else |
+| Staff with the **Manage groups** permission (`vatssa.groups.manage`, Administrator by default) | everything on every group: create, rename, archive, delete, appoint either kind of manager |
+| A manager with **Members and settings** | rename the group, change its description, appoint and remove "Members only" managers, add and remove members |
+| A manager with **Members only** | add and remove members, nothing else |
 | Anyone else | nothing |
 
-Managers do not need a staff role. They lose access while their group is archived.
+Managers do not need a staff role. The managers list on each group shows everyone who can manage it: the group's own managers, and the staff who manage every group through the Manage groups permission (those cannot be removed there; their access comes from their role).
 
-**Adding members.** Paste VATSIM IDs into the box on the group page in any format: one per line, or separated by commas or spaces. Press **Add**. The summary says how many were added, how many were already in the group, and which IDs have never signed in to Control Center. Those people are in the group straight away; they do not need an account first.
+**Adding members.** Type or paste VATSIM CIDs into **Add members**, separated by commas, and press **Add to group**. The summary says how many were added, how many were already in the group, and which IDs have never signed in to Control Center. Those people are in the group straight away; they do not need an account first.
 
-**Removing members.** Tick members in the list and press **Remove ticked**, or paste VATSIM IDs into the box and press **Remove these**. Removed members stay in the list, greyed out, with the date.
+**Removing members.** Tick members in the list (or the box at the top to tick all); a **Remove N selected** button appears. Or paste CIDs into **Add members** and press **Remove these CIDs**. The list shows current members only; who was removed, and when, is in **History**.
 
-**Managers.** Enter the person's VATSIM ID and press **Add manager**. They must have signed in to Control Center at least once. Staff can tick **Also manages settings** to make a settings manager.
+**Managers.** Under **Add a manager**, enter their VATSIM CID and choose **Members only** or **Members and settings** (a "Members and settings" manager can only appoint "Members only" managers). They must have signed in to Control Center at least once. Staff can change a manager's level with the drop-down next to their name.
 
-**Archive and delete.** Staff can archive a group: it leaves the list and its managers' view, and gives no Discord roles. Everything is kept, and **Restore group** brings it back. Only an archived group can be deleted, and you must type its exact name to confirm. Deleting cannot be undone.
+**Archive and delete.** Staff press **Archive group** at the top of the page. An archived group gives no Discord roles, disappears from its managers' view, and is **read-only for everyone**, staff included: the forms are greyed out until someone presses **Restore group**. Only an archived group can be deleted: **Delete group…** opens a pop-up where you type the group's name to confirm. Deleting cannot be undone.
 
 **History.** Every change (created, renamed, member added or removed, manager added or removed, archived, restored) is listed under **History** on the group page, with who did it and when.
 

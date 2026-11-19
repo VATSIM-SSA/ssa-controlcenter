@@ -50,16 +50,18 @@ class VatssaGroupController extends Controller
 
     public function show(Request $request, VatssaGroup $group): View
     {
-        abort_unless($group->membersEditableBy($request->user()), 403);
+        abort_unless($group->viewableBy($request->user()), 403);
 
         return view('vatssa.groups.show', [
             'group' => $group,
-            'members' => $group->members()->with('user')->orderByRaw('removed_at is not null')->latest()->get(),
-            'managers' => $group->currentManagers()->with('user')->get(),
+            'members' => $group->currentMembers()->with('user')->orderBy('user_id')->get(),
+            'managers' => $group->currentManagers()->with('user')->orderBy('user_id')->get(),
             'events' => $group->events()->latest('id')->limit(200)->get(),
             'names' => $this->names($group),
+            'canMembers' => $group->membersEditableBy($request->user()),
             'canSettings' => $group->settingsEditableBy($request->user()),
             'isStaff' => VatssaGroup::isStaff($request->user()),
+            'staffManagers' => VatssaGroup::staffManagers(),
         ]);
     }
 
@@ -130,8 +132,11 @@ class VatssaGroupController extends Controller
     public function addManager(Request $request, VatssaGroup $group): RedirectResponse
     {
         abort_unless($group->settingsEditableBy($request->user()), 403);
-        $data = $request->validate(['user_id' => 'required|integer|exists:users,id', 'can_manage_settings' => 'sometimes|boolean']);
-        $settings = (bool) ($data['can_manage_settings'] ?? false);
+        $data = $request->validate(
+            ['user_id' => 'required|integer|exists:users,id', 'level' => 'required|in:members,settings'],
+            ['user_id.exists' => 'That CID has never signed in to Control Center, so they cannot manage a group yet.'],
+        );
+        $settings = $data['level'] === 'settings';
         abort_if($settings && ! VatssaGroup::isStaff($request->user()), 403);
 
         $current = $group->currentManagers()->where('user_id', $data['user_id'])->first();
@@ -140,7 +145,7 @@ class VatssaGroupController extends Controller
         } else {
             VatssaGroupManager::create(['group_id' => $group->id, 'user_id' => $data['user_id'], 'can_manage_settings' => $settings, 'added_by' => $request->user()->id]);
         }
-        $group->record('manager_added', (int) $data['user_id'], $settings ? 'members and settings' : 'members', $request->user()->id);
+        $group->record($current ? 'manager_changed' : 'manager_added', (int) $data['user_id'], $settings ? 'members and settings' : 'members only', $request->user()->id);
 
         return back()->with('success', 'Manager saved.');
     }

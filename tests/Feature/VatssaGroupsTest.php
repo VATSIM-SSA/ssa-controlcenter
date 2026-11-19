@@ -109,7 +109,7 @@ class VatssaGroupsTest extends TestCase
         $this->assertSame([1000001], $this->memberCids());
 
         $this->actingAs($manager)->patch(route('vatssa.groups.update', $this->group), ['name' => 'Renamed'])->assertForbidden();
-        $this->actingAs($manager)->post(route('vatssa.groups.managers.add', $this->group), ['user_id' => User::factory()->create()->id])->assertForbidden();
+        $this->actingAs($manager)->post(route('vatssa.groups.managers.add', $this->group), ['user_id' => User::factory()->create()->id, 'level' => 'members'])->assertForbidden();
         $this->actingAs($manager)->post(route('vatssa.groups.archive', $this->group))->assertForbidden();
     }
 
@@ -124,9 +124,9 @@ class VatssaGroupsTest extends TestCase
         $this->assertSame('HitSquad 2026', $this->group->fresh()->name);
         $this->assertSame(1, $this->group->events()->where('event', 'renamed')->count());
 
-        $this->actingAs($manager)->post(route('vatssa.groups.managers.add', $this->group), ['user_id' => $helper->id])->assertRedirect();
+        $this->actingAs($manager)->post(route('vatssa.groups.managers.add', $this->group), ['user_id' => $helper->id, 'level' => 'members'])->assertRedirect();
         $this->assertTrue($this->group->fresh()->membersEditableBy($helper));
-        $this->actingAs($manager)->post(route('vatssa.groups.managers.add', $this->group), ['user_id' => $helper->id, 'can_manage_settings' => 1])->assertForbidden();
+        $this->actingAs($manager)->post(route('vatssa.groups.managers.add', $this->group), ['user_id' => $helper->id, 'level' => 'settings'])->assertForbidden();
 
         $other = VatssaGroupManager::create(['group_id' => $this->group->id, 'user_id' => User::factory()->create()->id, 'can_manage_settings' => true]);
         $this->actingAs($manager)->post(route('vatssa.groups.managers.remove', [$this->group, $other]))->assertForbidden();
@@ -224,6 +224,69 @@ class VatssaGroupsTest extends TestCase
     {
         $this->actingAs($this->admin)->patch(route('vatssa.groups.update', $this->group), ['name' => '<b>Bold</b>']);
         $this->actingAs($this->admin)->get(route('vatssa.groups.show', $this->group))->assertOk()
-            ->assertSee('&lt;b&gt;Bold&lt;/b&gt;', false)->assertDontSee('<b>Bold</b>', false)->assertSee('renamed');
+            ->assertSee('&lt;b&gt;Bold&lt;/b&gt;', false)->assertDontSee('<b>Bold</b>', false)->assertSee('Renamed');
+    }
+
+    #[Test]
+    public function an_archived_group_is_read_only_even_for_staff(): void
+    {
+        $this->actingAs($this->admin)->post(route('vatssa.groups.members.add', $this->group), ['cids' => '1000001']);
+        $this->actingAs($this->admin)->post(route('vatssa.groups.archive', $this->group));
+
+        $this->actingAs($this->admin)->get(route('vatssa.groups.show', $this->group))->assertOk()
+            ->assertSee('Read-only')->assertSee('<fieldset disabled', false)->assertDontSee('name="members[]"', false);
+        $this->actingAs($this->admin)->post(route('vatssa.groups.members.add', $this->group), ['cids' => '1000002'])->assertForbidden();
+        $this->actingAs($this->admin)->post(route('vatssa.groups.members.remove', $this->group), ['members' => [1000001]])->assertForbidden();
+        $this->actingAs($this->admin)->patch(route('vatssa.groups.update', $this->group), ['name' => 'X'])->assertForbidden();
+        $this->actingAs($this->admin)->post(route('vatssa.groups.managers.add', $this->group), ['user_id' => $this->admin->id, 'level' => 'members'])->assertForbidden();
+        $this->assertSame([1000001], $this->memberCids());
+
+        $this->actingAs($this->admin)->post(route('vatssa.groups.archive', $this->group), ['restore' => 1]);
+        $this->actingAs($this->admin)->post(route('vatssa.groups.members.add', $this->group), ['cids' => '1000002'])->assertRedirect();
+        $this->assertSame([1000001, 1000002], $this->memberCids());
+    }
+
+    #[Test]
+    public function staff_change_a_managers_level_and_it_is_recorded(): void
+    {
+        $manager = $this->manager();
+        $this->actingAs($this->admin)->post(route('vatssa.groups.managers.add', $this->group), ['user_id' => $manager->id, 'level' => 'settings']);
+
+        $this->assertTrue($this->group->fresh()->settingsEditableBy($manager));
+        $this->assertSame(1, $this->group->currentManagers()->where('user_id', $manager->id)->count());
+        $this->assertSame(1, $this->group->events()->where('event', 'manager_changed')->count());
+        $this->actingAs($this->admin)->post(route('vatssa.groups.managers.add', $this->group), ['user_id' => $manager->id, 'level' => 'owner'])->assertSessionHasErrors('level');
+    }
+
+    #[Test]
+    public function the_page_names_who_else_can_manage_and_lists_only_current_members(): void
+    {
+        $this->actingAs($this->admin)->post(route('vatssa.groups.members.add', $this->group), ['cids' => '1000001, 1000002']);
+        $this->actingAs($this->admin)->post(route('vatssa.groups.members.remove', $this->group), ['members' => [1000002]]);
+        $this->actingAs($this->admin)->post(route('vatssa.groups.members.add', $this->group), ['cids' => '1000002']);
+        $this->actingAs($this->admin)->post(route('vatssa.groups.members.remove', $this->group), ['members' => [1000002]]);
+
+        $page = $this->actingAs($this->admin)->get(route('vatssa.groups.show', $this->group))->assertOk()
+            ->assertSee('Manage groups permission')->assertSee('No group managers yet')
+            ->assertSee($this->admin->name)->assertDontSee(route('vatssa.groups.managers.remove', [$this->group, 0]), false);
+        $this->assertSame(1, substr_count($page->getContent(), 'value="1000001"'));
+        $this->assertSame(0, substr_count($page->getContent(), 'value="1000002"'));
+    }
+
+    #[Test]
+    public function a_manager_who_never_signed_in_gets_a_clear_error(): void
+    {
+        $this->actingAs($this->admin)->post(route('vatssa.groups.managers.add', $this->group), ['user_id' => 9999999, 'level' => 'members'])
+            ->assertSessionHasErrors(['user_id' => 'That CID has never signed in to Control Center, so they cannot manage a group yet.']);
+    }
+
+    #[Test]
+    public function staff_who_are_also_group_managers_are_listed_once(): void
+    {
+        VatssaGroupManager::create(['group_id' => $this->group->id, 'user_id' => $this->admin->id]);
+        $page = $this->actingAs($this->admin)->get(route('vatssa.groups.show', $this->group))->getContent();
+
+        $this->assertSame(0, substr_count($page, 'Manage groups permission (Administrator)'));
+        $this->assertSame(1, substr_count($page, '<span class="text-muted">' . $this->admin->id . '</span>'));
     }
 }

@@ -2,9 +2,11 @@
 
 namespace App\Models;
 
+use App\Services\PermissionMatrix;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Collection;
 
 /**
  * VATSSA: a named list of people, kept by VATSIM ID (members need no CC account yet).
@@ -13,7 +15,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  *  - vatssa.groups.manage: everything, on every group (create, archive, delete, all managers)
  *  - a settings manager: rename and describe the group, appoint and remove member managers, and the members
  *  - a member manager: add and remove the group's members only
- * Managers lose access while the group is archived.
+ * An archived group is read-only for everyone, staff included, until it is restored;
+ * staff can still see it, its managers cannot.
  */
 class VatssaGroup extends Model
 {
@@ -63,14 +66,38 @@ class VatssaGroup extends Model
         return $this->currentManagers()->where('user_id', $user->id)->first();
     }
 
-    public function membersEditableBy(User $user): bool
+    public function viewableBy(User $user): bool
     {
         return self::isStaff($user) || (! $this->isArchived() && $this->managerFor($user) !== null);
     }
 
+    public function membersEditableBy(User $user): bool
+    {
+        return ! $this->isArchived() && (self::isStaff($user) || $this->managerFor($user) !== null);
+    }
+
     public function settingsEditableBy(User $user): bool
     {
-        return self::isStaff($user) || (! $this->isArchived() && (bool) $this->managerFor($user)?->can_manage_settings);
+        return ! $this->isArchived() && (self::isStaff($user) || (bool) $this->managerFor($user)?->can_manage_settings);
+    }
+
+    /**
+     * Everyone whose roles grant vatssa.groups.manage through the matrix, with those
+     * roles' names. They manage every group, so the page lists them as managers.
+     *
+     * @return Collection<int, array{user: User, roles: string}>
+     */
+    public static function staffManagers(): Collection
+    {
+        $roles = app(PermissionMatrix::class)->rolesFor('vatssa.groups.manage');
+
+        return User::whereHas('roleAssignments', fn ($query) => $query->whereIn('role', $roles))
+            ->with('roleAssignments')->orderBy('first_name')->get()
+            ->map(fn (User $user) => [
+                'user' => $user,
+                'roles' => $user->roleAssignments->whereIn('role', $roles)->pluck('role')->unique()
+                    ->map(fn (string $role) => config("roles.roles.{$role}.name", $role))->implode(', '),
+            ]);
     }
 
     /**
