@@ -139,6 +139,24 @@ class VatssaGroup extends Model
         return self::visibleTo($user)->whereNull('archived_at')->exists();
     }
 
+    /**
+     * Erasure: a permanently deleted user leaves every group, stops managing any, and
+     * their VATSIM CID is removed from every group's history and "by" fields.
+     */
+    public static function forgetUser(int $cid): void
+    {
+        VatssaGroupMember::where('user_id', $cid)->delete();
+        VatssaGroupManager::where('user_id', $cid)->delete();
+        VatssaGroupEvent::where('user_id', $cid)->update(['user_id' => null]);
+        VatssaGroupEvent::where('by', $cid)->update(['by' => null]);
+        foreach ([VatssaGroupMember::class, VatssaGroupManager::class] as $model) {
+            $model::where('added_by', $cid)->update(['added_by' => null]);
+            $model::where('removed_by', $cid)->update(['removed_by' => null]);
+        }
+        static::where('created_by', $cid)->update(['created_by' => null]);
+        static::where('archived_by', $cid)->update(['archived_by' => null]);
+    }
+
     public function record(string $event, ?int $userId = null, ?string $detail = null, ?int $by = null): void
     {
         $this->events()->create(['event' => $event, 'user_id' => $userId, 'detail' => $detail, 'by' => $by]);

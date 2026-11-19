@@ -306,7 +306,9 @@ a group's settings managers rename it and appoint member managers; member manage
 add and remove members. Bulk add and remove (paste VATSIM IDs, or tick), archive,
 then delete with the name typed. Members and managers are only marked removed; every
 change is a `vatssa_group_events` line. Each membership change queues that member for
-the Discord role sync. A deleted user leaves every group. API for any CC key:
+the Discord role sync (model listeners). A deleted user leaves every group and is
+removed from every history and "by" field. Names are unique; member changes run under
+a per-group cache lock; CIDs must be 800000 to 3000000 or a VATSIM sandbox account. API for any CC key:
 `GET /api/vatssa/groups`, `GET /api/vatssa/members/{cid}`.
 **Leans on:** the permission catalogue becoming gates, `x-sidebar.item`,
 `ActivityLogService`, `User::name`.

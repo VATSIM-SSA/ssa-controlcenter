@@ -35,8 +35,10 @@ Managers do not need a staff role. The managers list on each group shows everyon
 - **Tables:** `vatssa_groups`, `vatssa_group_members`, `vatssa_group_managers`, `vatssa_group_events`. Members and managers are kept by VATSIM ID (`user_id`) with no foreign key to `users`, so people without an account can be members. Rows are never deleted, only given `removed_at`. Deleting a group removes its rows with it.
 - **Code:** `App\Models\VatssaGroup` holds the rights (`membersEditableBy`, `settingsEditableBy`, `visibleTo`); `App\Http\Controllers\VatssaGroupController`; views in `resources/views/vatssa/groups/`; routes in `routes/vatssa.php` under `/groups`.
 - **Permission:** `vatssa.groups.manage`, in the catalogue in `config/roles.php`. Admin has it through `**`. Grant it to another role in the matrix to share it.
-- **Discord:** each member added or removed, and each archive, restore or delete, queues those members for the Discord role sync (`VatssaDiscordSyncController::queueAuto`).
-- **Privacy:** a permanently deleted user (`UserDelete`) leaves every group and stops managing any.
+- **Discord:** any change to a membership row (added, removed, deleted) queues that member for the Discord role sync, through model listeners in `VatssaServiceProvider`, so every code path does it, not only the page. Archive, restore and delete queue all current members.
+- **Names** are unique, archived groups included.
+- **Concurrency:** adding and removing members runs under one cache lock per group, so two managers adding the same CID at once cannot create two rows.
+- **Privacy:** a permanently deleted user (`UserDelete`) leaves every group and stops managing any, and their CID is removed from every group's history and from the added by, removed by, created by and archived by fields (`VatssaGroup::forgetUser`).
 - **API**, for any Control Center API key (read-only is enough). Archived groups never appear.
   - `GET /api/vatssa/groups`: active groups, each with `id`, `name`, `description` and `members` (VATSIM IDs).
   - `GET /api/vatssa/members/{cid}`: one VATSIM ID's active groups. Works for an ID with no account.

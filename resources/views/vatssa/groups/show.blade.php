@@ -20,7 +20,7 @@
                 <button type="button" class="btn btn-icon btn-light" data-bs-toggle="modal" data-bs-target="#settings" @disabled(! $canSettings) title="{{ $canSettings ? '' : $locked }}"><i class="fas fa-gear"></i> Settings</button>
             @endif
             @if($isStaff && ! $archived)
-                <form method="post" action="{{ route('vatssa.groups.archive', $group) }}" onsubmit="return confirm('Archive {{ $group->name }}? It stops giving Discord roles and becomes read-only. You can restore it.')">@csrf
+                <form method="post" action="{{ route('vatssa.groups.archive', $group) }}" onsubmit="return confirm(@js('Archive ' . $group->name . '? It stops giving Discord roles and becomes read-only. You can restore it.'))">@csrf
                     <button class="btn btn-icon btn-light"><i class="fas fa-box-archive"></i> Archive group</button></form>
             @endif
             @if($isStaff && $archived)
@@ -59,7 +59,7 @@
                             <th>Member</th><th>CID</th><th>Added</th>
                             <th class="text-end">
                                 @if($canMembers)
-                                    <button class="btn btn-danger btn-sm py-0 d-none" id="removeSelectedButton" onclick="return confirm('Remove the selected members from {{ $group->name }}?')">Remove selected</button>
+                                    <button class="btn btn-danger btn-sm py-0 d-none" id="removeSelectedButton" onclick="return confirm(@js('Remove the selected members from ' . $group->name . '?'))">Remove selected</button>
                                 @endif
                             </th>
                         </tr></thead>
@@ -98,6 +98,9 @@
                 @empty
                     <li class="list-group-item text-muted small">Nothing yet</li>
                 @endforelse
+                @if($events->count() >= 200)
+                    <li class="list-group-item text-muted small">Showing the latest 200 changes.</li>
+                @endif
             </ul>
         </details>
     </div>
@@ -123,7 +126,7 @@
                                 <span class="badge bg-light text-dark border">{{ $manager->can_manage_settings ? 'Members and settings' : 'Members only' }}</span>
                             @endif
                             @if($canSettings && ($isStaff || ! $manager->can_manage_settings))
-                                <form method="post" action="{{ route('vatssa.groups.managers.remove', [$group, $manager]) }}" onsubmit="return confirm('Remove {{ $manager->user?->name }} as a manager?')">@csrf
+                                <form method="post" action="{{ route('vatssa.groups.managers.remove', [$group, $manager]) }}" onsubmit="return confirm(@js('Remove ' . ($manager->user?->name ?? $manager->user_id) . ' as a manager?'))">@csrf
                                     <button class="btn btn-link btn-sm text-muted hover-red p-0" title="Remove manager" aria-label="Remove manager"><i class="fas fa-xmark"></i></button></form>
                             @endif
                         </span>
@@ -159,7 +162,7 @@
                 <div class="form-text">Separate CIDs with commas. A CID is a number from 800000 to 3000000. People who have never signed in to CC can be added too.</div>
             </div>
             <div class="modal-footer justify-content-between">
-                <button class="btn btn-outline-danger" formaction="{{ route('vatssa.groups.members.remove', $group) }}" onclick="return confirm('Remove these CIDs from {{ $group->name }}?')">Remove these CIDs instead</button>
+                <button class="btn btn-outline-danger" formaction="{{ route('vatssa.groups.members.remove', $group) }}" onclick="return confirm(@js('Remove these CIDs from ' . $group->name . '?'))">Remove these CIDs instead</button>
                 <button class="btn btn-success">Add to group</button>
             </div>
         </form>

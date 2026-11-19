@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\ApiKey;
 use App\Models\User;
 use App\Models\VatssaGroup;
+use App\Models\VatssaGroupEvent;
 use App\Models\VatssaGroupManager;
 use App\Models\VatssaGroupMember;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -320,5 +321,106 @@ class VatssaGroupsTest extends TestCase
         $this->actingAs($this->admin)->post(route('vatssa.groups.managers.add', $this->group), ['user_id' => $this->admin->id, 'level' => 'members'])
             ->assertSessionHasErrors(['user_id' => $this->admin->name . ' already manages every group through the Manage groups permission.']);
         $this->assertSame(0, $this->group->managers()->count());
+    }
+
+    /**
+     * The confirm() texts as a browser runs them: attribute values with entities decoded.
+     *
+     * @return array<int, string>
+     */
+    private function confirmScripts(string $html): array
+    {
+        $dom = new \DOMDocument;
+        @$dom->loadHTML($html);
+        $scripts = [];
+        foreach ((new \DOMXPath($dom))->query('//@onsubmit | //@onclick') as $attribute) {
+            if (str_contains($attribute->value, 'confirm(')) {
+                $scripts[] = $attribute->value;
+            }
+        }
+
+        return $scripts;
+    }
+
+    #[Test]
+    public function names_with_quotes_cannot_break_out_of_the_confirm_pop_ups(): void
+    {
+        $evil = "x');alert(document.cookie);//";
+        $this->group->update(['name' => $evil]);
+        $manager = User::factory()->create(['id' => 1500002, 'first_name' => "O'Neil", 'last_name' => "x');alert(1);//"]);
+        VatssaGroupManager::create(['group_id' => $this->group->id, 'user_id' => $manager->id]);
+        VatssaGroupMember::create(['group_id' => $this->group->id, 'user_id' => 1000001]);
+
+        $scripts = $this->confirmScripts($this->actingAs($this->admin)->get(route('vatssa.groups.show', $this->group))->getContent());
+
+        $this->assertNotEmpty($scripts);
+        foreach ($scripts as $script) {
+            $this->assertStringNotContainsString("');alert", $script, $script);
+            $this->assertMatchesRegularExpression('/^return confirm\\(.*\\)$/s', $script);
+        }
+    }
+
+    #[Test]
+    public function a_settings_manager_cannot_demote_another_settings_manager(): void
+    {
+        $actor = $this->manager(true);
+        $other = $this->manager(true);
+
+        $this->actingAs($actor)->post(route('vatssa.groups.managers.add', $this->group), ['user_id' => $other->id, 'level' => 'members'])->assertForbidden();
+        $this->assertTrue($this->group->fresh()->settingsEditableBy($other));
+    }
+
+    #[Test]
+    public function group_names_are_unique_even_against_archived_groups(): void
+    {
+        VatssaGroup::create(['name' => 'Streamers', 'archived_at' => now()]);
+
+        $this->actingAs($this->admin)->post(route('vatssa.groups.store'), ['name' => 'Streamers'])
+            ->assertSessionHasErrors(['name' => 'A group with that name already exists (it may be archived).']);
+        $this->actingAs($this->admin)->patch(route('vatssa.groups.update', $this->group), ['name' => 'Streamers'])->assertSessionHasErrors('name');
+        $this->actingAs($this->admin)->patch(route('vatssa.groups.update', $this->group), ['name' => 'SSA HitSquad', 'description' => 'same name is fine'])
+            ->assertSessionHasNoErrors();
+    }
+
+    #[Test]
+    public function erasure_removes_the_cid_from_history_and_every_by_field(): void
+    {
+        $staff = User::factory()->create(['id' => 1500003]);
+        $group = VatssaGroup::create(['name' => 'Erase me', 'created_by' => $staff->id]);
+        $group->forceFill(['archived_by' => $staff->id])->save();
+        VatssaGroupMember::create(['group_id' => $group->id, 'user_id' => 1000001, 'added_by' => $staff->id, 'removed_by' => $staff->id]);
+        VatssaGroupManager::create(['group_id' => $group->id, 'user_id' => 1000002, 'added_by' => $staff->id]);
+        $group->record('member_added', $staff->id, null, $staff->id);
+
+        $staff->delete();
+
+        $this->assertSame(0, VatssaGroupEvent::where('user_id', $staff->id)->orWhere('by', $staff->id)->count());
+        $this->assertSame(0, VatssaGroupMember::where('added_by', $staff->id)->orWhere('removed_by', $staff->id)->count());
+        $this->assertSame(0, VatssaGroupManager::where('added_by', $staff->id)->count());
+        $this->assertNull($group->fresh()->created_by);
+        $this->assertNull($group->fresh()->archived_by);
+        $this->assertSame(2, VatssaGroupMember::count() + VatssaGroupManager::count(), 'other people stay in the group');
+    }
+
+    #[Test]
+    public function membership_changes_queue_a_sync_from_any_code_path(): void
+    {
+        $member = VatssaGroupMember::create(['group_id' => $this->group->id, 'user_id' => 1000001]);
+        $this->assertSame(1, $this->queued(1000001));
+
+        $member->forceFill(['removed_at' => now()])->save();
+        $this->assertSame(2, $this->queued(1000001));
+
+        $member->touch();
+        $this->assertSame(2, $this->queued(1000001), 'a save that changes nothing about membership queues nothing');
+    }
+
+    #[Test]
+    public function the_history_says_when_it_is_cut_off(): void
+    {
+        foreach (range(1, 200) as $i) {
+            $this->group->record('member_added', 1000000 + $i);
+        }
+        $this->actingAs($this->admin)->get(route('vatssa.groups.show', $this->group))->assertSee('Showing the latest 200 changes.');
     }
 }

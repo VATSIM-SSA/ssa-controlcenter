@@ -12,6 +12,8 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 /**
@@ -40,7 +42,10 @@ class VatssaGroupController extends Controller
     public function store(Request $request): RedirectResponse
     {
         abort_unless(VatssaGroup::isStaff($request->user()), 403);
-        $data = $request->validate(['name' => 'required|string|max:80', 'description' => 'nullable|string|max:255']);
+        $data = $request->validate(
+            ['name' => 'required|string|max:80|unique:vatssa_groups,name', 'description' => 'nullable|string|max:255'],
+            ['name.unique' => 'A group with that name already exists (it may be archived).'],
+        );
 
         $group = VatssaGroup::create($data + ['created_by' => $request->user()->id]);
         $group->record('created', null, $group->name, $request->user()->id);
@@ -69,7 +74,10 @@ class VatssaGroupController extends Controller
     public function update(Request $request, VatssaGroup $group): RedirectResponse
     {
         abort_unless($group->settingsEditableBy($request->user()), 403);
-        $data = $request->validate(['name' => 'required|string|max:80', 'description' => 'nullable|string|max:255']);
+        $data = $request->validate(
+            ['name' => ['required', 'string', 'max:80', Rule::unique('vatssa_groups', 'name')->ignore($group->id)], 'description' => 'nullable|string|max:255'],
+            ['name.unique' => 'A group with that name already exists (it may be archived).'],
+        );
 
         if ($data['name'] !== $group->name) {
             $group->record('renamed', null, $group->name . ' → ' . $data['name'], $request->user()->id);
@@ -96,13 +104,18 @@ class VatssaGroupController extends Controller
                 : 'No VATSIM CIDs found.']);
         }
 
-        $already = $group->currentMembers()->whereIn('user_id', $cids)->pluck('user_id')->map(fn ($cid) => (int) $cid);
-        $new = $cids->diff($already)->values();
-        foreach ($new as $cid) {
-            VatssaGroupMember::create(['group_id' => $group->id, 'user_id' => $cid, 'added_by' => $request->user()->id]);
-            $group->record('member_added', $cid, null, $request->user()->id);
-            VatssaDiscordSyncController::queueAuto($cid);
-        }
+        // One change to a group's members at a time, so two managers adding the same CID
+        // at once cannot both pass the "already a member" check.
+        [$already, $new] = Cache::lock('vatssa-group-members:' . $group->id, 30)->block(10, function () use ($group, $cids, $request) {
+            $already = $group->currentMembers()->whereIn('user_id', $cids)->pluck('user_id')->map(fn ($cid) => (int) $cid);
+            $new = $cids->diff($already)->values();
+            foreach ($new as $cid) {
+                VatssaGroupMember::create(['group_id' => $group->id, 'user_id' => $cid, 'added_by' => $request->user()->id]);
+                $group->record('member_added', $cid, null, $request->user()->id);
+            }
+
+            return [$already, $new];
+        });
         $noAccount = $new->diff(User::whereIn('id', $new)->pluck('id'));
 
         return back()->with('success', $new->count() . ' added' . ($already->isNotEmpty() ? ', ' . $already->count() . ' already in the group' : '') . '.'
@@ -120,12 +133,15 @@ class VatssaGroupController extends Controller
 
         $cids = collect($data['members'] ?? [])->map(fn ($cid) => (int) $cid)
             ->merge($this->parseCids($data['cids'] ?? '')[0])->unique()->values();
-        $rows = $group->currentMembers()->whereIn('user_id', $cids)->get();
-        foreach ($rows as $row) {
-            $row->forceFill(['removed_at' => now(), 'removed_by' => $request->user()->id])->save();
-            $group->record('member_removed', (int) $row->user_id, null, $request->user()->id);
-            VatssaDiscordSyncController::queueAuto((int) $row->user_id);
-        }
+        $rows = Cache::lock('vatssa-group-members:' . $group->id, 30)->block(10, function () use ($group, $cids, $request) {
+            $rows = $group->currentMembers()->whereIn('user_id', $cids)->get();
+            foreach ($rows as $row) {
+                $row->forceFill(['removed_at' => now(), 'removed_by' => $request->user()->id])->save();
+                $group->record('member_removed', (int) $row->user_id, null, $request->user()->id);
+            }
+
+            return $rows;
+        });
 
         return back()->with('success', $rows->count() . ' removed.');
     }
@@ -149,6 +165,8 @@ class VatssaGroupController extends Controller
         }
 
         $current = $group->currentManagers()->where('user_id', $data['user_id'])->first();
+        // Changing a settings manager's level is a staff action, like removing one.
+        abort_if($current?->can_manage_settings && ! VatssaGroup::isStaff($request->user()), 403);
         if ($current) {
             $current->update(['can_manage_settings' => $settings]);
         } else {
