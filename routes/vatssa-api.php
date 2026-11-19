@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\VatssaDiscordSyncController;
+use App\Http\Controllers\VatssaGroupController;
 use App\Http\Middleware\VatssaDiscordBotToken;
 use Illuminate\Support\Facades\Route;
 
@@ -18,4 +19,10 @@ Route::middleware(VatssaDiscordBotToken::class)->group(function () {
         ->whereNumber('id')->name('api.vatssa.discord-sync.result');
     Route::post('/vatssa/discord-presence', [VatssaDiscordSyncController::class, 'presence'])
         ->name('api.vatssa.discord-presence');
+});
+
+// Groups for any CC API key (read-only is enough), like upstream's /api/users.
+Route::middleware('api-token')->group(function () {
+    Route::get('/vatssa/groups', [VatssaGroupController::class, 'apiIndex'])->name('api.vatssa.groups.index');
+    Route::get('/vatssa/members/{cid}', [VatssaGroupController::class, 'apiMember'])->whereNumber('cid')->name('api.vatssa.members.show');
 });

@@ -38,10 +38,13 @@ they carry risk.
 |---|---|
 | Code and configuration | 9 |
 | Brand assets | 10 |
-| Added files | 57 |
+| Added files | 67 |
 | Force-added past `.gitignore` | 3 |
 
 ### `config/roles.php`
+
+**Also (2026-11-19):** one VATSSA permission in the catalogue, `vatssa.groups.manage`
+(groups; admin holds it through `**`). Listed, so `AuthServiceProvider` makes it a gate.
 
 **Why it diverges.** VATSSA runs its own roles (`admin`, `atc-training-manager`,
 `pipeline-coordinator`, `mentor`, `nav-editor`, `feedback-team`) in place of
@@ -293,6 +296,24 @@ hover-note guard in `training/index.blade.php` is listed under *Theory mark*.
 `tests/Feature/VatssaTrainingAttentionTest.php` (including a guard that the
 `.vatssa-flag` CSS rule exists).
 
+### Groups: `app/Models/VatssaGroup*.php` (4), `app/Http/Controllers/VatssaGroupController.php`, `resources/views/vatssa/groups/*` (2), `resources/views/vatssa/sidebar/groups.blade.php`, `database/migrations/2026_11_19_100000_vatssa_create_groups.php`, `tests/Feature/VatssaGroupsTest.php`
+
+Groups at `/groups` (2026-11-19): named lists of people kept by VATSIM ID, so
+members need no CC account yet. Ported from the EuroScope plugin package
+(`vatssa-plugin`, not in git), group part only; the plugin's own group migrations
+must not be installed beside these. Rights: `vatssa.groups.manage` for everything;
+a group's settings managers rename it and appoint member managers; member managers
+add and remove members. Bulk add and remove (paste VATSIM IDs, or tick), archive,
+then delete with the name typed. Members and managers are only marked removed; every
+change is a `vatssa_group_events` line. Each membership change queues that member for
+the Discord role sync (model listeners). A deleted user leaves every group and is
+removed from every history and "by" field. Names are unique; member changes run under
+a per-group cache lock; CIDs must be 800000 to 3000000 or a VATSIM sandbox account. API for any CC key:
+`GET /api/vatssa/groups`, `GET /api/vatssa/members/{cid}`.
+**Leans on:** the permission catalogue becoming gates, `x-sidebar.item`,
+`ActivityLogService`, `User::name`.
+**Detector:** `tests/Feature/VatssaGroupsTest.php`.
+
 ### Discord sync button: `app/Http/Controllers/VatssaDiscordSyncController.php`, `app/Http/Middleware/VatssaDiscordBotToken.php`, `config/vatssa.php`, `routes/vatssa-api.php`, `resources/views/vatssa/user/discord-sync.blade.php`, `database/migrations/2026_11_18_120000_vatssa_create_discord_sync_requests.php`, `database/migrations/2026_11_18_130000_vatssa_create_discord_presence.php`
 
 "Sync Discord roles" on a user's profile (2026-11-18) asks the role sync bot
@@ -427,6 +448,10 @@ workflow went green.
 ---
 
 ### `resources/views/layouts/sidebar.blade.php`
+
+**Also (2026-11-19):** one line after the Users section,
+`@include('vatssa.sidebar.groups')`, the Groups link for group staff and managers.
+**Detector:** `tests/Feature/VatssaGroupsTest.php` (sidebar test).
 
 Two items in the Reports section render with no `@can` guard while every other
 item in that section has one: **Mentors** and **Feedback**. Their controllers

@@ -10,6 +10,8 @@ use App\Models\RoleAssignment;
 use App\Models\Task;
 use App\Models\Training;
 use App\Models\User;
+use App\Models\VatssaGroup;
+use App\Models\VatssaGroupMember;
 use App\Services\VatssaTrainingFlags;
 use App\Tasks\Types\TheoreticalExam;
 use Illuminate\Support\Facades\Gate;
@@ -107,6 +109,14 @@ class VatssaServiceProvider extends ServiceProvider
             }
         };
 
+        // Group membership: on the model, so every code path queues, not only the page.
+        VatssaGroupMember::created($queue);
+        VatssaGroupMember::updated(function (VatssaGroupMember $member) use ($queue) {
+            if ($member->wasChanged(['removed_at', 'user_id'])) {
+                $queue($member);
+            }
+        });
+        VatssaGroupMember::deleted($queue);
         Endorsement::saved($queue);
         Endorsement::deleted($queue);
         RoleAssignment::saved($queue);
@@ -129,11 +139,15 @@ class VatssaServiceProvider extends ServiceProvider
         User::updated(function (User $user) {
             if ($user->wasChanged('email') && $user->email === VatssaDiscordSyncController::PSEUDONYMISED_EMAIL) {
                 VatssaDiscordSyncController::forgetUser($user->id);
+                VatssaGroup::forgetUser($user->id);
             } elseif ($user->wasChanged(['rating', 'division'])) {
                 VatssaDiscordSyncController::queueAuto($user->id);
             }
         });
-        User::deleted(fn (User $user) => VatssaDiscordSyncController::forgetUser($user->id));
+        User::deleted(function (User $user) {
+            VatssaDiscordSyncController::forgetUser($user->id);
+            VatssaGroup::forgetUser($user->id);
+        });
     }
 
     /**
