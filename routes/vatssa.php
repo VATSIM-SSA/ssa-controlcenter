@@ -20,6 +20,7 @@ foreach (array_keys(VatssaTrainingFlags::FLAGS) as $flag) {
 }
 Route::post('/user/{user}/discord-sync', [VatssaDiscordSyncController::class, 'store'])
     ->middleware('throttle:30,1,vatssa-discord-button')->name('vatssa.user.discord-sync');
+Route::get('/discord/members', [VatssaDiscordSyncController::class, 'index'])->name('vatssa.discord.members');
 
 // Groups: named lists of people by VATSIM ID. Rights in VatssaGroup.
 Route::prefix('groups')->whereNumber('group')->name('vatssa.groups.')->controller(VatssaGroupController::class)->group(function () {

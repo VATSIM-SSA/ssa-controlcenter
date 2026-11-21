@@ -14,6 +14,10 @@ use App\Models\VatssaGroup;
 use App\Models\VatssaGroupMember;
 use App\Services\VatssaTrainingFlags;
 use App\Tasks\Types\TheoreticalExam;
+use Illuminate\Auth\Events\Login;
+use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\View;
@@ -91,7 +95,7 @@ class VatssaServiceProvider extends ServiceProvider
 
     /**
      * Instant Discord role sync: when CC data that decides a role changes, queue
-     * that member for the role sync bot (it polls every 10 seconds).
+     * that member for the role sync bot (it polls every 5 seconds).
      *
      * A row moved to another member queues both. Training uses created + updated,
      * not saved: wasRecentlyCreated stays true for the whole request, so a later
@@ -102,6 +106,15 @@ class VatssaServiceProvider extends ServiceProvider
      */
     private function registerDiscordSyncListeners(): void
     {
+        Event::listen(Login::class, fn (Login $login) => VatssaDiscordSyncController::queueAuto((int) $login->user->getAuthIdentifier(), 'login', true));
+        View::composer('vatssa.user.discord-sync', function ($view) {
+            $target = $view->getData()['user'] ?? null;
+            if ($target instanceof User && Auth::user()?->can('vatssaDiscordSync', $target)) {
+                VatssaDiscordSyncController::queueOnView($target->id);
+            }
+        });
+        $this->callAfterResolving(Schedule::class, fn (Schedule $schedule) => $schedule->command('vatssa:discord-daily')->dailyAt('06:00')); // after upstream's member refresh (04:00) and clean-up (05:00)
+
         $queue = function ($model): void {
             VatssaDiscordSyncController::queueAuto((int) $model->user_id);
             if ($model->wasChanged('user_id')) {

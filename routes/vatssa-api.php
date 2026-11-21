@@ -13,12 +13,12 @@ use Illuminate\Support\Facades\Route;
 */
 
 Route::middleware(VatssaDiscordBotToken::class)->group(function () {
-    Route::get('/vatssa/discord-sync-requests', [VatssaDiscordSyncController::class, 'index'])
-        ->name('api.vatssa.discord-sync.index');
-    Route::post('/vatssa/discord-sync-requests/{id}/result', [VatssaDiscordSyncController::class, 'result'])
-        ->whereNumber('id')->name('api.vatssa.discord-sync.result');
-    Route::post('/vatssa/discord-presence', [VatssaDiscordSyncController::class, 'presence'])
-        ->name('api.vatssa.discord-presence');
+    Route::post('/vatssa/discord-queue/claim', [VatssaDiscordSyncController::class, 'claim'])
+        ->name('api.vatssa.discord-queue.claim');
+    Route::post('/vatssa/discord-queue/{cid}/result', [VatssaDiscordSyncController::class, 'result'])
+        ->whereNumber('cid')->name('api.vatssa.discord-queue.result');
+    Route::post('/vatssa/discord-members', [VatssaDiscordSyncController::class, 'members'])
+        ->name('api.vatssa.discord-members');
 });
 
 // Groups for any CC API key (read-only is enough), like upstream's /api/users.
