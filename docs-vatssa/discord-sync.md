@@ -37,7 +37,7 @@ On a member's profile, under their VATSIM ID and name:
 | `POST discord-members` | who is in the server; a complete list marks anyone missing as left, an older complete list is refused |
 | `POST vatsim-facts` | rating and division for a list of CIDs; unknown ones go in line for a check |
 
-**Privacy.** A deleted or pseudonymised member's queue row, Discord link, history and VATSIM details are removed, and the bot cannot link them again. CIDs are stored against Discord accounts only for CC users. If a pseudonymised member signs in again, their link comes back at the next sweep. The privacy policy amendment is flagged for review in January 2027.
+**Privacy.** A deleted or pseudonymised member's queue row, Discord link, history and VATSIM details are removed, and the bot cannot link them again. CIDs are stored against Discord accounts only for CC users. If a pseudonymised member signs in again, their link comes back at the next sweep. A permanently deleted user leaves no record to check against, so if they are still on VATSIM's SSA list, their CID, rating and division return at the next nightly pull, with no name or Discord link. The privacy policy amendment is flagged for review in January 2027.
 
 **Code:** `VatssaDiscordSyncController`, `VatssaVatsimFacts`, the commands `vatssa:vatsim-pull` and `vatssa:discord-daily`, the `VatssaDiscordBotToken` middleware, the listeners in `VatssaServiceProvider::registerDiscordSyncListeners`, and the views in `resources/views/vatssa/user/discord-sync.blade.php` and `resources/views/vatssa/discord/`. **Tests:** `VatssaDiscordSyncTest`, `VatssaVatsimFactsTest`.
 
