@@ -183,10 +183,10 @@ class VatssaVatsimFactsTest extends TestCase
     {
         DB::table('vatssa_vatsim_members')->insert(['cid' => 1000001, 'rating' => 3, 'division' => 'SSA', 'source' => 'org', 'needs_lookup' => false]);
 
-        $this->postJson(route('api.vatssa.vatsim-facts'), ['cids' => [1000001, 2000000]])->assertUnauthorized();
-        $this->postJson(route('api.vatssa.vatsim-facts'), ['cids' => [1000001, 2000000]], ['Authorization' => 'Bearer ' . self::TOKEN])
-            ->assertOk()->assertJsonPath('data.1000001.rating', 3)->assertJsonMissingPath('data.2000000');
+        $answer = app(VatssaVatsimFacts::class)->forBot([1000001, 2000000]);
 
+        $this->assertSame(3, $answer['data'][1000001]['rating']);
+        $this->assertArrayNotHasKey(2000000, $answer['data']);
         $this->assertSame(1, (int) $this->fact(2000000)->needs_lookup);
     }
 
@@ -297,25 +297,25 @@ class VatssaVatsimFactsTest extends TestCase
     }
 
     #[Test]
-    public function only_ten_leavers_a_day_are_applied_and_the_bot_is_told(): void
+    public function the_daily_limit_on_leavers_holds_and_the_bot_is_told(): void
     {
-        $cids = range(1000001, 1000012);
+        $cids = range(1000001, 1000000 + VatssaVatsimFacts::MAX_LEAVES_PER_DAY + 2);
         foreach ($cids as $cid) {
             $this->user($cid);
             DB::table('vatssa_vatsim_members')->insert(['cid' => $cid, 'rating' => 3, 'division' => 'SSA', 'needs_lookup' => true]);
         }
         Http::fake(fn ($request) => Http::response(['id' => (int) basename($request->url()), 'rating' => 3, 'division_id' => 'EUD']));
 
-        app(VatssaVatsimFacts::class)->runLookups();
+        app(VatssaVatsimFacts::class)->runLookups(100);
         $this->assertSame(VatssaVatsimFacts::MAX_LEAVES_PER_DAY, DB::table('users')->whereIn('id', $cids)->where('division', 'EUD')->count());
         $this->assertSame(2, app(VatssaVatsimFacts::class)->forBot([1000001])['leaves_waiting']);
 
         $sent = count(Http::recorded());
-        app(VatssaVatsimFacts::class)->runLookups();
+        app(VatssaVatsimFacts::class)->runLookups(100);
         $this->assertCount($sent, Http::recorded()); // no calls wasted while the limit holds
 
         $this->travel(1)->days();
-        app(VatssaVatsimFacts::class)->runLookups();
-        $this->assertSame(12, DB::table('users')->whereIn('id', $cids)->where('division', 'EUD')->count());
+        app(VatssaVatsimFacts::class)->runLookups(100);
+        $this->assertSame(count($cids), DB::table('users')->whereIn('id', $cids)->where('division', 'EUD')->count());
     }
 }

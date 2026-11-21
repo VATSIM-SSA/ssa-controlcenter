@@ -34,7 +34,7 @@ class VatssaVatsimFacts
 
     private const MAX_DROP = 0.2;
 
-    public const MAX_LEAVES_PER_DAY = 10;
+    public const MAX_LEAVES_PER_DAY = 45;
 
     private const RATING_NAMES = [
         'INA' => 'Inactive', 'SUS' => 'Suspended', 'OBS' => 'Pilot/Observer', 'S1' => 'Tower Trainee', 'S2' => 'Tower Controller',

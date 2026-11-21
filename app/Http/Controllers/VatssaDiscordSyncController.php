@@ -6,6 +6,7 @@ use anlutro\LaravelSettings\Facade as Setting;
 use App\Helpers\LogName;
 use App\Models\User;
 use App\Services\ActivityLogService;
+use App\Services\VatssaDiscordRules;
 use App\Services\VatssaVatsimFacts;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
@@ -176,7 +177,7 @@ class VatssaDiscordSyncController extends Controller
             $rows = DB::table(self::QUEUE)
                 ->where(fn ($q) => $q->where(fn ($p) => $p->where('state', 'pending')->where('available_at', '<=', $now))
                     ->orWhere(fn ($l) => $l->where('state', 'leased')->where('lease_until', '<', $now)))
-                ->orderByRaw("reason = 'daily'")->orderBy('available_at')->limit($limit)->lockForUpdate()->get();
+                ->orderByRaw("reason IN ('daily', 'rule')")->orderBy('available_at')->limit($limit)->lockForUpdate()->get();
 
             $out = [];
             foreach ($rows as $row) {
@@ -194,7 +195,16 @@ class VatssaDiscordSyncController extends Controller
             return $out;
         });
 
-        return response()->json(['data' => $claimed]);
+        // Accounts with no CID have no queue row. Sent once; the sweep is the safety net.
+        $accounts = DB::transaction(function () use ($limit) {
+            $ids = DB::table(self::MEMBERS)->where('needs_sync', true)->where('in_server', true)
+                ->limit($limit)->lockForUpdate()->pluck('discord_id')->map(fn ($id) => (string) $id)->all();
+            DB::table(self::MEMBERS)->whereIn('discord_id', $ids)->update(['needs_sync' => false]);
+
+            return $ids;
+        });
+
+        return response()->json(['data' => $claimed, 'accounts' => $accounts]);
     }
 
     /**
@@ -262,6 +272,8 @@ class VatssaDiscordSyncController extends Controller
             'members.*.name' => 'nullable|string|max:100',
             'members.*.bot' => 'sometimes|boolean',
             'members.*.joined_at' => 'nullable|numeric|min:0',
+            'members.*.roles' => 'sometimes|array|max:300',
+            'members.*.roles.*' => ['string', 'regex:/^\d{15,21}$/'],
             'left' => 'sometimes|array|max:50000',
             'left.*' => ['string', 'regex:/^\d{15,21}$/'],
         ]);
@@ -279,7 +291,8 @@ class VatssaDiscordSyncController extends Controller
         $counts = $sent->pluck('cid')->filter()->countBy();
         $known = User::whereIn('id', $counts->keys())->where('email', '!=', self::PSEUDONYMISED_EMAIL)->pluck('id')->flip();
 
-        DB::transaction(function () use ($data, $sent, $counts, $known) {
+        $toQueue = [];
+        DB::transaction(function () use ($data, $sent, $counts, $known, &$toQueue) {
             $now = now();
             $existing = DB::table(self::MEMBERS)
                 ->when(! $data['complete'], fn ($q) => $q->whereIn('discord_id', $sent->keys()->merge($data['left'] ?? [])->map(fn ($id) => (string) $id)))
@@ -324,6 +337,19 @@ class VatssaDiscordSyncController extends Controller
                     $log($id, $user, 'joined');
                 }
                 $was = $old?->user_id ? (int) $old->user_id : null;
+
+                // The join flow: the bot sends the CID, CC queues the member, the bot applies.
+                // A sweep has just applied everyone, so only a partial list queues.
+                $arrived = ! $old || ! $old->in_server || $user !== $was;
+                $unlinkedArrival = false;
+                if (! $data['complete'] && $arrived && empty($m['bot'])) {
+                    if (($m['cid'] ?? null) > 0) {
+                        $toQueue[] = (int) $m['cid'];
+                    } elseif (($m['cid'] ?? null) === 0) {
+                        $unlinkedArrival = true;
+                    }
+                }
+
                 if ($user !== $was) {
                     if ($was && $user) {
                         $log($id, $user, 'relinked', "CID {$was} to {$user}");
@@ -338,10 +364,12 @@ class VatssaDiscordSyncController extends Controller
                     'discord_id' => $id, 'user_id' => $user, 'vatsim_linked' => $linked, 'name' => $m['name'] ?? $old?->name,
                     'is_bot' => (bool) ($m['bot'] ?? $old?->is_bot ?? false), 'in_server' => true, 'joined_at' => $joined,
                     'left_at' => null, 'last_synced_at' => $old?->last_synced_at, 'last_seen_at' => $now,
+                    'role_ids' => array_key_exists('roles', $m) ? json_encode(array_values($m['roles'])) : ($old?->role_ids),
+                    'needs_sync' => $unlinkedArrival || (bool) ($old?->needs_sync),
                 ];
             }
             foreach (array_chunk($rows, 500) as $chunk) {
-                DB::table(self::MEMBERS)->upsert($chunk, ['discord_id'], ['user_id', 'vatsim_linked', 'name', 'is_bot', 'in_server', 'joined_at', 'left_at', 'last_seen_at']);
+                DB::table(self::MEMBERS)->upsert($chunk, ['discord_id'], ['user_id', 'vatsim_linked', 'name', 'is_bot', 'in_server', 'joined_at', 'left_at', 'last_seen_at', 'role_ids', 'needs_sync']);
             }
 
             $gone = $data['complete']
@@ -359,6 +387,10 @@ class VatssaDiscordSyncController extends Controller
             }
         }, 3);
 
+        if ($toQueue) {
+            self::queue(array_values(array_unique($toQueue)), 'join');
+        }
+
         if ($data['complete']) {
             Setting::set('vatssaDiscordPresenceAt', now()->toIso8601String());
             Setting::set('vatssaDiscordPresenceGeneration', $generatedAt);
@@ -369,13 +401,53 @@ class VatssaDiscordSyncController extends Controller
     }
 
     /**
-     * Bot API: rating and division for these CIDs. CC owns them; see VatssaVatsimFacts.
+     * Bot API: the Discord roles each account should have. CC decides; the bot applies.
+     * `unknown` accounts have no VATSIM answer yet and must be left as they are.
      */
-    public function facts(Request $request, VatssaVatsimFacts $facts): JsonResponse
+    public function roles(Request $request, VatssaDiscordRules $rules): JsonResponse
     {
-        $data = $request->validate(['cids' => 'present|array|max:5000', 'cids.*' => 'integer|min:1']);
+        $data = $request->validate([
+            'accounts' => 'present|array|max:5000',
+            'accounts.*.discord_id' => ['required', 'string', 'regex:/^\d{15,21}$/'],
+            'accounts.*.cid' => 'required|integer|min:0',
+        ]);
 
-        return response()->json($facts->forBot($data['cids']));
+        $answer = $rules->evaluate($data['accounts']);
+
+        return response()->json([
+            'managed' => $rules->managed(),
+            'roles' => (object) $answer['roles'],
+            'unknown' => $answer['unknown'],
+            'users_count' => User::count(),
+            ...$answer['facts'],
+        ]);
+    }
+
+    /**
+     * Bot API: the server's roles, so the rule page shows names. An empty list is a fault.
+     */
+    public function guildRoles(Request $request): Response
+    {
+        $data = $request->validate([
+            'roles' => 'required|array|min:1|max:300',
+            'roles.*.id' => ['required', 'string', 'regex:/^\d{15,21}$/'],
+            'roles.*.name' => 'required|string|max:100',
+            'roles.*.colour' => 'required|integer|min:0',
+            'roles.*.position' => 'required|integer',
+            'roles.*.assignable' => 'required|boolean',
+        ]);
+
+        $now = now();
+        $rows = array_map(fn ($r) => ['discord_role_id' => (string) $r['id'], 'name' => $r['name'], 'colour' => $r['colour'],
+            'position' => $r['position'], 'assignable' => $r['assignable'], 'retired' => false, 'seen_at' => $now], $data['roles']);
+
+        DB::transaction(function () use ($rows) {
+            DB::table('vatssa_discord_guild_roles')->upsert($rows, ['discord_role_id'], ['name', 'colour', 'position', 'assignable', 'seen_at']);
+            // Gone from Discord. A retired role goes too: there is nothing left to remove.
+            DB::table('vatssa_discord_guild_roles')->whereNotIn('discord_role_id', array_column($rows, 'discord_role_id'))->delete();
+        });
+
+        return response()->noContent();
     }
 
     /**

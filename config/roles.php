@@ -133,6 +133,8 @@ return [
         // VATSSA: admin holds these through '**'.
         'vatssa.groups.manage',
         'vatssa.discord.members.view',
+        'vatssa.discord.rules.view',
+        'vatssa.discord.rules.manage',
     ],
 
     'matrix' => [

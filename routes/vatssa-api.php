@@ -19,8 +19,10 @@ Route::middleware(VatssaDiscordBotToken::class)->group(function () {
         ->whereNumber('cid')->name('api.vatssa.discord-queue.result');
     Route::post('/vatssa/discord-members', [VatssaDiscordSyncController::class, 'members'])
         ->name('api.vatssa.discord-members');
-    Route::post('/vatssa/vatsim-facts', [VatssaDiscordSyncController::class, 'facts'])
-        ->name('api.vatssa.vatsim-facts');
+    Route::post('/vatssa/discord-roles', [VatssaDiscordSyncController::class, 'roles'])
+        ->name('api.vatssa.discord-roles');
+    Route::post('/vatssa/discord-guild-roles', [VatssaDiscordSyncController::class, 'guildRoles'])
+        ->name('api.vatssa.discord-guild-roles');
 });
 
 // Groups for any CC API key (read-only is enough), like upstream's /api/users.

@@ -314,17 +314,19 @@ a per-group cache lock; CIDs must be 800000 to 3000000 or a VATSIM sandbox accou
 `ActivityLogService`, `User::name`.
 **Detector:** `tests/Feature/VatssaGroupsTest.php`.
 
-### Discord sync: `app/Http/Controllers/VatssaDiscordSyncController.php`, `app/Services/VatssaVatsimFacts.php`, `app/Console/Commands/VatssaDiscordDaily.php`, `app/Console/Commands/VatssaVatsimPull.php`, `app/Http/Middleware/VatssaDiscordBotToken.php`, `config/vatssa.php`, `routes/vatssa-api.php`, `resources/views/vatssa/user/discord-sync.blade.php`, `resources/views/vatssa/discord/members.blade.php`, the `2026_11_18` and `2026_11_21` Discord migrations
+### Discord sync: `app/Http/Controllers/VatssaDiscordSyncController.php`, `app/Http/Controllers/VatssaDiscordRuleController.php`, `app/Services/VatssaDiscordRules.php`, `app/Services/VatssaVatsimFacts.php`, `app/Console/Commands/VatssaDiscordSeedRules.php`, `resources/views/vatssa/discord/rules/`, `app/Console/Commands/VatssaDiscordDaily.php`, `app/Console/Commands/VatssaVatsimPull.php`, `app/Http/Middleware/VatssaDiscordBotToken.php`, `config/vatssa.php`, `routes/vatssa-api.php`, `resources/views/vatssa/user/discord-sync.blade.php`, `resources/views/vatssa/discord/members.blade.php`, the `2026_11_18` and `2026_11_21` Discord migrations
 
 All additions. Described in `docs-vatssa/discord-sync.md`. **CC never calls the bot.**
 Gate `vatssaDiscordSync` in `VatssaServiceProvider`: `users.manage` for anyone, a
-mentor only for members they teach. Matrix: `vatssa.discord.members.view`.
+mentor only for members they teach. Matrix: `vatssa.discord.members.view`,
+`vatssa.discord.rules.view`, `vatssa.discord.rules.manage`. **CC decides every role** through
+the rules; the bot applies the answer from `POST /api/vatssa/discord-roles`.
 
 **Writes `users`.** The nightly pull (04:30, after upstream's `update:member:data` at
 04:00) and individual checks update rating, region, division and subdivision through the
 model. Upstream's `update:member:details` (05:00) then closes trainings and removes
 mentors for anyone who left, so only an individual VATSIM answer naming another division
-counts as leaving, at most 10 a day. Schedules are added from `VatssaServiceProvider`, so
+counts as leaving, at most 45 a day. Schedules are added from `VatssaServiceProvider`, so
 `Console/Kernel.php` is unchanged.
 
 **Limits.** The API routes file runs under `throttle:600,1,vatssa-discord-bot` and
@@ -341,7 +343,8 @@ MySQL after changing `members()`.
 `AtcActivity`; `User::isTeaching`; `UserDelete` setting `void@void.void`; the `user.show`
 route; `UserPolicy::view`; the `bindings` alias; `ThrottleRequests`' prefix argument;
 VATSIM's `/v2/orgs/{mode}/{code}` and `/v2/members/{cid}`.
-**Detector:** `tests/Feature/VatssaDiscordSyncTest.php`, `tests/Feature/VatssaVatsimFactsTest.php`.
+**Detector:** `tests/Feature/VatssaDiscordSyncTest.php`, `tests/Feature/VatssaVatsimFactsTest.php`,
+`tests/Feature/VatssaDiscordRulesTest.php`.
 
 ### `database/migrations/2026_11_11_120000_vatssa_add_theory_completed_to_trainings.php`
 
