@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use anlutro\LaravelSettings\Facade as Setting;
+use App\Helpers\VatsimRating;
 use App\Http\Controllers\VatssaDiscordSyncController as Sync;
 use App\Models\User;
 use Illuminate\Support\Carbon;
@@ -13,12 +14,15 @@ use Illuminate\Support\Sleep;
 use RuntimeException;
 
 /**
- * VATSSA: every member's VATSIM rating and division, for the Discord role sync.
+ * VATSSA: keeps every member's VATSIM rating and division current, in `users` and, for
+ * people with no CC account, in this table.
  *
  * Nightly, the whole division list comes in with the Core API token. Anyone who claims
  * the division but is missing from it, and anyone else the bot asks about, is checked
- * one at a time. No answer never changes a stored fact. Only this table is written,
- * never `users`: upstream closes trainings when users.division changes.
+ * one at a time. No answer never changes anything. Being off the list is not proof of
+ * leaving: only an individual answer naming another division is. That change makes
+ * upstream's update:member:details (05:00) close their trainings and remove mentor
+ * roles, so at most MAX_LEAVES_PER_DAY are applied a day and the rest wait.
  */
 class VatssaVatsimFacts
 {
@@ -29,6 +33,14 @@ class VatssaVatsimFacts
     private const USER_AGENT = 'VATSSA-ControlCenter/1.0 (+https://vatssa.com)';
 
     private const MAX_DROP = 0.2;
+
+    public const MAX_LEAVES_PER_DAY = 10;
+
+    private const RATING_NAMES = [
+        'INA' => 'Inactive', 'SUS' => 'Suspended', 'OBS' => 'Pilot/Observer', 'S1' => 'Tower Trainee', 'S2' => 'Tower Controller',
+        'S3' => 'TMA Controller', 'C1' => 'Enroute Controller', 'C3' => 'Senior Controller', 'I1' => 'Instructor',
+        'I3' => 'Senior Instructor', 'SUP' => 'Supervisor', 'ADM' => 'Administrator',
+    ];
 
     /**
      * The nightly pull. Throws, changing nothing, on any doubt about the list.
@@ -51,6 +63,16 @@ class VatssaVatsimFacts
             'in_org' => true, 'source' => 'org', 'needs_lookup' => false, 'fetched_at' => $now, 'checked_at' => $now,
         ])->values();
         $onList = $rows->pluck('cid')->flip();
+
+        // Before the facts below: saving a user also writes its fact, with source `cc`.
+        $ccUsers = collect();
+        foreach ($items->reject(fn ($item) => $erased->has((int) $item['id']))->chunk(500) as $chunk) {
+            $byId = $chunk->keyBy(fn ($item) => (int) $item['id']);
+            foreach (User::whereIn('id', $byId->keys())->get() as $user) {
+                $ccUsers->put($user->id, true);
+                $this->applyToUser($user, $byId[$user->id]);
+            }
+        }
 
         DB::transaction(function () use ($rows, $onList, $owner, $now) {
             foreach ($rows->chunk(500) as $chunk) {
@@ -79,8 +101,9 @@ class VatssaVatsimFacts
         Setting::set('vatssaVatsimPullAt', $now->toIso8601String());
         Setting::save();
 
-        $changed = $rows->filter(fn ($row) => ($old = $before->get($row['cid'])) && ((int) $old->rating !== $row['rating'] || $old->division !== $row['division']))
-            ->pluck('cid')->all();
+        // A saved user queues itself; this is for people with no CC account.
+        $changed = $rows->filter(fn ($row) => ! $ccUsers->has($row['cid']) && ($old = $before->get($row['cid']))
+            && ((int) $old->rating !== $row['rating'] || $old->division !== $row['division']))->pluck('cid')->all();
         Sync::queue($changed, 'daily');
 
         return $rows->count();
@@ -92,7 +115,9 @@ class VatssaVatsimFacts
     public function runLookups(int $limit = 40): int
     {
         $done = 0;
+        $owner = config('app.owner_code');
         $rows = DB::table(self::TABLE)->where('needs_lookup', true)
+            ->when($this->leavesLeft() <= 0, fn ($q) => $q->whereNotIn('cid', DB::table('users')->where('division', $owner)->select('id')))
             ->orderByRaw('checked_at IS NOT NULL')->orderBy('checked_at')->limit($limit)->get();
 
         foreach ($rows as $row) {
@@ -124,6 +149,19 @@ class VatssaVatsimFacts
                 continue;
             }
 
+            $user = User::where('id', $row->cid)->where('email', '!=', Sync::PSEUDONYMISED_EMAIL)->first();
+            if ($user && $user->division === $owner && $body['division_id'] !== $owner) {
+                if ($this->leavesLeft() <= 0) {
+                    DB::table(self::TABLE)->where('cid', $row->cid)->update(['checked_at' => $now]);
+
+                    continue;
+                }
+                $this->countLeave();
+            }
+            if ($user) {
+                $this->applyToUser($user, $body);
+            }
+
             DB::table(self::TABLE)->where('cid', $row->cid)->update(['rating' => (int) $body['rating'], 'division' => (string) $body['division_id'],
                 'source' => 'lookup', 'needs_lookup' => false, 'fetched_at' => $now, 'checked_at' => $now]);
             if ($row->rating === null || (int) $row->rating !== (int) $body['rating'] || $row->division !== (string) $body['division_id']) {
@@ -136,11 +174,53 @@ class VatssaVatsimFacts
     }
 
     /**
+     * Write VATSIM's answer to the user, through the model so every listener runs. A rating
+     * CC has no case for (C2, I2) is left as it was: the model could not read it back.
+     *
+     * @param  array<string, mixed>  $vatsim
+     */
+    private function applyToUser(User $user, array $vatsim): void
+    {
+        if ($rating = VatsimRating::tryFrom((int) $vatsim['rating'])) {
+            $user->rating = $rating;
+            $user->rating_short = $rating->name;
+            $user->rating_long = self::RATING_NAMES[$rating->name];
+        }
+        if (! empty($vatsim['division_id'])) {
+            $user->division = $vatsim['division_id'];
+        }
+        if (! empty($vatsim['region_id'])) {
+            $user->region = $vatsim['region_id'];
+        }
+        if (array_key_exists('subdivision_id', $vatsim)) {
+            $user->subdivision = $vatsim['subdivision_id'];
+        }
+        try {
+            $user->save();
+        } catch (\Throwable $e) {
+            report($e);
+        }
+    }
+
+    private function leavesLeft(): int
+    {
+        [$day, $count] = array_pad(explode(':', (string) Setting::get('vatssaVatsimLeaves', '')), 2, 0);
+
+        return $day === now()->toDateString() ? self::MAX_LEAVES_PER_DAY - (int) $count : self::MAX_LEAVES_PER_DAY;
+    }
+
+    private function countLeave(): void
+    {
+        Setting::set('vatssaVatsimLeaves', now()->toDateString() . ':' . (self::MAX_LEAVES_PER_DAY - $this->leavesLeft() + 1));
+        Setting::save();
+    }
+
+    /**
      * The bot's question: rating and division for these CIDs. Unknown or day-old
      * individual answers are put in line for a check. Erased members get nothing.
      *
      * @param  array<int, int>  $cids
-     * @return array{data: array<int, array{rating: int, division: string}>, pulled_at: string|null}
+     * @return array{data: array<int, array{rating: int, division: string}>, pulled_at: string|null, leaves_waiting: int}
      */
     public function forBot(array $cids): array
     {
@@ -165,6 +245,9 @@ class VatssaVatsimFacts
             'data' => $rows->filter(fn ($row) => $row->rating !== null && $row->division !== null)
                 ->map(fn ($row) => ['rating' => (int) $row->rating, 'division' => $row->division])->all(),
             'pulled_at' => Setting::get('vatssaVatsimPullAt'),
+            // Members whose check is on hold because today's limit on leavers is used up.
+            'leaves_waiting' => $this->leavesLeft() > 0 ? 0 : DB::table(self::TABLE)->where('needs_lookup', true)
+                ->whereIn('cid', DB::table('users')->where('division', config('app.owner_code'))->select('id'))->count(),
         ];
     }
 

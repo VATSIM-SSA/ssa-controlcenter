@@ -18,13 +18,13 @@ On a member's profile, under their VATSIM ID and name:
 
 **The queue.** One row per VATSIM ID. A member is queued on login, when staff open their profile (at most once a minute), on the button, when anything that decides a role changes, and in a daily round at 06:00. The bot claims rows for two minutes. If it crashes, the row comes back. If the member changes during a sync, the row goes round again.
 
-**VATSIM data.** Control Center owns rating and division, in `vatssa_vatsim_members`. The bot asks VATSIM only which CID a Discord account belongs to.
+**VATSIM data.** Control Center owns rating and division: in `users` for anyone with a CC account, and in `vatssa_vatsim_members` for everyone the sync needs. The bot asks VATSIM only which CID a Discord account belongs to.
 
 - **04:30:** the whole SSA list arrives with `VATSIM_CORE_API_TOKEN`. A failed, malformed or much shorter list (over 20% down) changes nothing.
-- **Anyone who says SSA but is not on the list** (usually an expired login) is checked individually. Their old details stay until VATSIM answers.
+- **Anyone who says SSA but is not on the list** (usually an expired login) is checked individually. Their old details stay until VATSIM answers. Only an answer naming another division counts as leaving.
+- **A confirmed leaver** has `users` updated, and upstream's 05:00 job closes their training, removes mentor roles and takes them off the roster. At most 10 leavers are applied a day; the rest wait for the next day and `#tech-status` is told.
 - **Other divisions:** a live CC login supplies the details. Anyone else, including people with no CC account, is checked individually and again after a day.
 - **Checks** run every minute, about one a second, and stop on a rate limit. No answer never changes anything.
-- `users` is never written: upstream closes trainings and removes mentors when `users.division` changes.
 
 **One Discord account per CID.** The database enforces it. If two accounts claim a CID, the bot asks VATSIM about both, and the stale one loses it.
 

@@ -2,7 +2,10 @@
 
 namespace Tests\Feature;
 
+use App\Helpers\TrainingStatus;
 use App\Http\Controllers\VatssaDiscordSyncController as Sync;
+use App\Models\Area;
+use App\Models\Training;
 use App\Models\User;
 use App\Services\VatssaVatsimFacts;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -10,6 +13,7 @@ use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Factory;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Sleep;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
@@ -126,7 +130,7 @@ class VatssaVatsimFactsTest extends TestCase
 
         $this->assertSame(['EUD', 4, 0], [$this->fact(1000002)->division, (int) $this->fact(1000002)->rating, (int) $this->fact(1000002)->needs_lookup]);
         $this->assertSame('pending', DB::table('vatssa_discord_queue')->where('user_id', 1000002)->value('state'));
-        $this->assertSame('SSA', DB::table('users')->where('id', 1000002)->value('division')); // never touches users
+        $this->assertSame(['EUD', 'S3'], [DB::table('users')->where('id', 1000002)->value('division'), DB::table('users')->where('id', 1000002)->value('rating_short')]);
     }
 
     #[Test]
@@ -233,5 +237,85 @@ class VatssaVatsimFactsTest extends TestCase
 
         $this->actingAs($admin->fresh())->post(route('vatssa.user.discord-sync', $member->id))->assertRedirect();
         $this->assertSame(1, (int) $this->fact(1000001)->needs_lookup);
+    }
+
+    #[Test]
+    public function being_off_the_list_alone_never_changes_the_user(): void
+    {
+        $this->user(1000002);
+        $this->org([$this->item(1000001)]);
+        app(VatssaVatsimFacts::class)->pull();
+        $this->assertSame('SSA', DB::table('users')->where('id', 1000002)->value('division'));
+
+        foreach ([Http::response(['detail' => 'Not Found.'], 404), Http::response([], 500)] as $answer) {
+            DB::table('vatssa_vatsim_members')->where('cid', 1000002)->update(['needs_lookup' => true]);
+            Http::swap(new Factory);
+            Http::fake(['api.vatsim.net/*' => $answer]);
+            app(VatssaVatsimFacts::class)->runLookups();
+            $this->assertSame('SSA', DB::table('users')->where('id', 1000002)->value('division'));
+        }
+    }
+
+    #[Test]
+    public function the_nightly_list_updates_ratings_and_brings_people_back(): void
+    {
+        $this->user(1000001, 'SSA', 3);
+        $this->user(1000002, 'EUD', 4);
+        $this->org([['id' => 1000001, 'rating' => 5, 'division_id' => 'SSA', 'region_id' => 'AFR', 'subdivision_id' => null], $this->item(1000002, 4)]);
+        app(VatssaVatsimFacts::class)->pull();
+
+        $user = DB::table('users')->where('id', 1000001)->first();
+        $this->assertSame([5, 'C1', 'Enroute Controller', 'AFR'], [(int) $user->rating, $user->rating_short, $user->rating_long, $user->region]);
+        $this->assertSame('SSA', DB::table('users')->where('id', 1000002)->value('division'));
+        $this->assertSame('org', $this->fact(1000001)->source);
+    }
+
+    #[Test]
+    public function a_rating_cc_cannot_represent_is_left_as_it_was(): void
+    {
+        $this->user(1000001, 'SSA', 5);
+        $this->org([$this->item(1000001, 6)]);
+        app(VatssaVatsimFacts::class)->pull();
+
+        $this->assertSame(5, (int) DB::table('users')->where('id', 1000001)->value('rating'));
+        $this->assertNotNull(User::find(1000001)->rating);
+    }
+
+    #[Test]
+    public function a_confirmed_leaver_loses_their_training_at_the_nightly_clean_up(): void
+    {
+        Notification::fake();
+        $user = $this->user(1000001);
+        $training = Training::factory()->create(['user_id' => $user->id, 'area_id' => Area::factory()->create()->id, 'status' => TrainingStatus::IN_QUEUE->value, 'type' => 1]); // upstream's clean-up skips type 5
+        DB::table('vatssa_vatsim_members')->insert(['cid' => 1000001, 'rating' => 3, 'division' => 'SSA', 'needs_lookup' => true]);
+        Http::fake(['api.vatsim.net/v2/members/1000001' => Http::response(['id' => 1000001, 'rating' => 3, 'division_id' => 'EUD', 'region_id' => 'EMEA', 'subdivision_id' => null])]);
+
+        app(VatssaVatsimFacts::class)->runLookups();
+        $this->artisan('update:member:details')->assertSuccessful();
+
+        $this->assertSame(TrainingStatus::CLOSED_BY_SYSTEM->value, (int) DB::table('trainings')->where('id', $training->id)->value('status'));
+    }
+
+    #[Test]
+    public function only_ten_leavers_a_day_are_applied_and_the_bot_is_told(): void
+    {
+        $cids = range(1000001, 1000012);
+        foreach ($cids as $cid) {
+            $this->user($cid);
+            DB::table('vatssa_vatsim_members')->insert(['cid' => $cid, 'rating' => 3, 'division' => 'SSA', 'needs_lookup' => true]);
+        }
+        Http::fake(fn ($request) => Http::response(['id' => (int) basename($request->url()), 'rating' => 3, 'division_id' => 'EUD']));
+
+        app(VatssaVatsimFacts::class)->runLookups();
+        $this->assertSame(VatssaVatsimFacts::MAX_LEAVES_PER_DAY, DB::table('users')->whereIn('id', $cids)->where('division', 'EUD')->count());
+        $this->assertSame(2, app(VatssaVatsimFacts::class)->forBot([1000001])['leaves_waiting']);
+
+        $sent = count(Http::recorded());
+        app(VatssaVatsimFacts::class)->runLookups();
+        $this->assertCount($sent, Http::recorded()); // no calls wasted while the limit holds
+
+        $this->travel(1)->days();
+        app(VatssaVatsimFacts::class)->runLookups();
+        $this->assertSame(12, DB::table('users')->whereIn('id', $cids)->where('division', 'EUD')->count());
     }
 }

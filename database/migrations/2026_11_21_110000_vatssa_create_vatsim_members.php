@@ -4,9 +4,9 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-// VATSSA: each member's VATSIM rating and division, for the Discord role sync. Kept apart
-// from `users` on purpose: upstream closes trainings and removes mentors when
-// users.division changes, and a role sync must never set that off.
+// VATSSA: each member's VATSIM rating and division, including people with no CC account
+// and whether they are on last night's division list. `users` stays the source of truth
+// for CC accounts; see VatssaVatsimFacts.
 return new class extends Migration
 {
     public function up(): void

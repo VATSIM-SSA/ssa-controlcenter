@@ -320,10 +320,11 @@ All additions. Described in `docs-vatssa/discord-sync.md`. **CC never calls the 
 Gate `vatssaDiscordSync` in `VatssaServiceProvider`: `users.manage` for anyone, a
 mentor only for members they teach. Matrix: `vatssa.discord.members.view`.
 
-**Upstream's data is read, never written.** `vatssa_vatsim_members` holds rating and
-division because upstream's `update:member:details` closes trainings and removes mentors
-when `users.division` changes. The nightly pull runs at 04:30, after upstream's
-`update:member:data` at 04:00. Schedules are added from `VatssaServiceProvider`, so
+**Writes `users`.** The nightly pull (04:30, after upstream's `update:member:data` at
+04:00) and individual checks update rating, region, division and subdivision through the
+model. Upstream's `update:member:details` (05:00) then closes trainings and removes
+mentors for anyone who left, so only an individual VATSIM answer naming another division
+counts as leaving, at most 10 a day. Schedules are added from `VatssaServiceProvider`, so
 `Console/Kernel.php` is unchanged.
 
 **Limits.** The API routes file runs under `throttle:600,1,vatssa-discord-bot` and
