@@ -203,8 +203,7 @@ names what it leans on and what would tell you it broke.
 
 ### Attachment upload and serving hardening
 
-Upstream's uploads never worked here, so these holes were unreachable until the
-storage ownership fix.
+These holes are in upstream's code too. Worth offering upstream, privately first.
 
 - `TrainingObjectAttachmentController`: `store` also authorizes `update` on the
   report or examination. `saveAttachments` saves one named field, not every file

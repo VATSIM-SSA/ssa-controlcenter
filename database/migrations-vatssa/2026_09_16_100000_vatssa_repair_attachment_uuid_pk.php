@@ -39,7 +39,7 @@ use Illuminate\Support\Str;
  *
  * Idempotent, and safe on a database that is already correct: it checks the live
  * column type first. Production was repaired by hand on 2026-09-16, so there
- * this migration is a no-op; staging and dev need it.
+ * this migration is a no-op. It matters only when restoring an older dump.
  */
 return new class extends Migration
 {
