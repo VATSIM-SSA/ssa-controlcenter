@@ -314,56 +314,33 @@ a per-group cache lock; CIDs must be 800000 to 3000000 or a VATSIM sandbox accou
 `ActivityLogService`, `User::name`.
 **Detector:** `tests/Feature/VatssaGroupsTest.php`.
 
-### Discord sync button: `app/Http/Controllers/VatssaDiscordSyncController.php`, `app/Http/Middleware/VatssaDiscordBotToken.php`, `config/vatssa.php`, `routes/vatssa-api.php`, `resources/views/vatssa/user/discord-sync.blade.php`, `database/migrations/2026_11_18_120000_vatssa_create_discord_sync_requests.php`, `database/migrations/2026_11_18_130000_vatssa_create_discord_presence.php`
+### Discord sync: `app/Http/Controllers/VatssaDiscordSyncController.php`, `app/Services/VatssaVatsimFacts.php`, `app/Console/Commands/VatssaDiscordDaily.php`, `app/Console/Commands/VatssaVatsimPull.php`, `app/Http/Middleware/VatssaDiscordBotToken.php`, `config/vatssa.php`, `routes/vatssa-api.php`, `resources/views/vatssa/user/discord-sync.blade.php`, `resources/views/vatssa/discord/members.blade.php`, the `2026_11_18` and `2026_11_21` Discord migrations
 
-"Sync Discord roles" on a user's profile (2026-11-18) asks the role sync bot
-(`ssa-discord-bot`) to re-sync that member now instead of at its next 15-minute
-sweep. Gate `vatssaDiscordSync` in `VatssaServiceProvider`: `users.manage`
-(admin, ATM, Pipeline Coordinator) for anyone; a mentor only for members they teach.
+All additions. Described in `docs-vatssa/discord-sync.md`. **CC never calls the bot.**
+Gate `vatssaDiscordSync` in `VatssaServiceProvider`: `users.manage` for anyone, a
+mentor only for members they teach. Matrix: `vatssa.discord.members.view`.
 
-**CC never calls the bot.** The button writes a row to
-`vatssa_discord_sync_requests` (CID, who, when). A press is skipped only while an unfinished button
-request for that member from the last minute exists, under a per-member lock. The bot polls `GET /api/vatssa/discord-sync-requests?after=<last id>`
-with its own bot token (a CC API key is refused); the answer carries `max_id` so the bot notices a
-restore. Rows older than a day are not served. The bot reports each outcome to
-`POST /api/vatssa/discord-sync-requests/{id}/result` with `VATSSA_DISCORD_BOT_TOKEN`
-(`config/vatssa.php`), checked by `VatssaDiscordBotToken`. That token is not a CC
-API key and opens nothing else; unset, the route refuses everyone. The profile
-shows the last request's status under the button. Each press deletes requests
-older than 30 days.
-
-**Instant sync.** `VatssaServiceProvider` also listens to `Endorsement`, `RoleAssignment`,
-`Training` (create, delete, `status` change), `AtcActivity` (create, delete, `atc_active`
-change) and `User` (`rating` or `division` change) and calls
-`VatssaDiscordSyncController::queueAuto()`, which writes a `source = auto` row and
-never throws. Bulk query updates fire no events and are left to the bot's sweep.
-**Leans on:** those models' Eloquent events and `user_id` columns, `User::isTeaching`,
-`UserDelete` setting `void@void.void` when pseudonymising. Automatic rows wait
-5 s before the feed serves them (ratings and areas are attached after the save).
+**Upstream's data is read, never written.** `vatssa_vatsim_members` holds rating and
+division because upstream's `update:member:details` closes trainings and removes mentors
+when `users.division` changes. The nightly pull runs at 04:30, after upstream's
+`update:member:data` at 04:00. Schedules are added from `VatssaServiceProvider`, so
+`Console/Kernel.php` is unchanged.
 
 **Limits.** The API routes file runs under `throttle:600,1,vatssa-discord-bot` and
 `bindings`, not the `api` group, whose 60/min counter is shared with `/api/users`.
 The button: `throttle:30,1,vatssa-discord-button`. The bot token must be 32+
-characters or the routes refuse everyone. Pruning never deletes the newest row.
-**Leans on:** the `bindings` middleware alias and `ThrottleRequests`' prefix argument.
+characters or the routes refuse everyone.
 
-**Discord presence.** After each sweep the bot posts every server member it can
-link to a CID to `POST /api/vatssa/discord-presence` (bot token). A complete list
-replaces `vatssa_discord_presence` and sets the setting `vatssaDiscordPresenceAt`;
-an incomplete one (failed lookups, a join, a button press) only adds. Lists carry
-`at`; an older complete list gets 409. Deleted or pseudonymised members are never
-stored and are removed on delete or pseudonymise. The profile shows "On
-the VATSSA Discord as @name", "Not on the VATSSA Discord", or "Unknown" when no
-complete list arrived in the last two hours. Staff only (same gate). This stores
-Discord ID against CID in CC: privacy amendment flagged for review in January 2027.
+**Trap.** PHP turns numeric array keys into integers, and MySQL compares an integer with
+a string column as a float, so a Discord ID used as a key can match its neighbours.
+Cast to string before any query. SQLite does not show this, so run the sync tests on
+MySQL after changing `members()`.
 
-The routes file is loaded by `VatssaServiceProvider` under
-`/api` with `throttle:600,1,vatssa-discord-bot` and `bindings`, not the `api`
-group; every route needs the bot token.
-
-**Leans on:** the `user.show` route name, `User::hasPermission`, `UserPolicy::view`
-letting a mentor open only members they teach.
-**Detector:** `tests/Feature/VatssaDiscordSyncTest.php`.
+**Leans on:** Eloquent events and `user_id` on `Endorsement`, `RoleAssignment`, `Training`,
+`AtcActivity`; `User::isTeaching`; `UserDelete` setting `void@void.void`; the `user.show`
+route; `UserPolicy::view`; the `bindings` alias; `ThrottleRequests`' prefix argument;
+VATSIM's `/v2/orgs/{mode}/{code}` and `/v2/members/{cid}`.
+**Detector:** `tests/Feature/VatssaDiscordSyncTest.php`, `tests/Feature/VatssaVatsimFactsTest.php`.
 
 ### `database/migrations/2026_11_11_120000_vatssa_add_theory_completed_to_trainings.php`
 

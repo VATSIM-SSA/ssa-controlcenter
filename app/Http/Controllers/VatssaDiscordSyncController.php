@@ -6,6 +6,7 @@ use anlutro\LaravelSettings\Facade as Setting;
 use App\Helpers\LogName;
 use App\Models\User;
 use App\Services\ActivityLogService;
+use App\Services\VatssaVatsimFacts;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -76,6 +77,7 @@ class VatssaDiscordSyncController extends Controller
         $this->authorize('vatssaDiscordSync', $user);
 
         self::queue([$user->id], 'button', Auth::id(), 0, true);
+        VatssaVatsimFacts::refresh($user->id);
         ActivityLogService::info(LogName::Role, 'Discord role sync requested for ' . $user->id);
 
         return redirect()->route('user.show', $user->id)
@@ -156,6 +158,7 @@ class VatssaDiscordSyncController extends Controller
             DB::table(self::QUEUE)->where('user_id', $userId)->delete();
             DB::table(self::HISTORY)->where('user_id', $userId)->orWhereIn('discord_id', $accounts)->delete();
             DB::table(self::MEMBERS)->whereIn('discord_id', $accounts)->delete();
+            VatssaVatsimFacts::forget($userId);
         } catch (\Throwable $e) {
             report($e);
         }
@@ -363,6 +366,16 @@ class VatssaDiscordSyncController extends Controller
         }
 
         return response()->noContent();
+    }
+
+    /**
+     * Bot API: rating and division for these CIDs. CC owns them; see VatssaVatsimFacts.
+     */
+    public function facts(Request $request, VatssaVatsimFacts $facts): JsonResponse
+    {
+        $data = $request->validate(['cids' => 'present|array|max:5000', 'cids.*' => 'integer|min:1']);
+
+        return response()->json($facts->forBot($data['cids']));
     }
 
     /**

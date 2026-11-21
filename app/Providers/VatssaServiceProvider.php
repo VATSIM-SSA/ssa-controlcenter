@@ -13,6 +13,7 @@ use App\Models\User;
 use App\Models\VatssaGroup;
 use App\Models\VatssaGroupMember;
 use App\Services\VatssaTrainingFlags;
+use App\Services\VatssaVatsimFacts;
 use App\Tasks\Types\TheoreticalExam;
 use Illuminate\Auth\Events\Login;
 use Illuminate\Console\Scheduling\Schedule;
@@ -106,14 +107,24 @@ class VatssaServiceProvider extends ServiceProvider
      */
     private function registerDiscordSyncListeners(): void
     {
-        Event::listen(Login::class, fn (Login $login) => VatssaDiscordSyncController::queueAuto((int) $login->user->getAuthIdentifier(), 'login', true));
+        Event::listen(Login::class, function (Login $login) {
+            if ($login->user instanceof User) {
+                VatssaVatsimFacts::fromUser($login->user);
+            }
+            VatssaDiscordSyncController::queueAuto((int) $login->user->getAuthIdentifier(), 'login', true);
+        });
         View::composer('vatssa.user.discord-sync', function ($view) {
             $target = $view->getData()['user'] ?? null;
             if ($target instanceof User && Auth::user()?->can('vatssaDiscordSync', $target)) {
                 VatssaDiscordSyncController::queueOnView($target->id);
             }
         });
-        $this->callAfterResolving(Schedule::class, fn (Schedule $schedule) => $schedule->command('vatssa:discord-daily')->dailyAt('06:00')); // after upstream's member refresh (04:00) and clean-up (05:00)
+        // After upstream's member refresh (04:00), so a live login's data is this morning's.
+        $this->callAfterResolving(Schedule::class, function (Schedule $schedule) {
+            $schedule->command('vatssa:vatsim-pull')->dailyAt('04:30');
+            $schedule->command('vatssa:vatsim-pull --lookups')->everyMinute()->withoutOverlapping();
+            $schedule->command('vatssa:discord-daily')->dailyAt('06:00');
+        });
 
         $queue = function ($model): void {
             VatssaDiscordSyncController::queueAuto((int) $model->user_id);
@@ -154,6 +165,7 @@ class VatssaServiceProvider extends ServiceProvider
                 VatssaDiscordSyncController::forgetUser($user->id);
                 VatssaGroup::forgetUser($user->id);
             } elseif ($user->wasChanged(['rating', 'division'])) {
+                VatssaVatsimFacts::fromUser($user);
                 VatssaDiscordSyncController::queueAuto($user->id);
             }
         });
