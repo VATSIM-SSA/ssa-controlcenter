@@ -20,4 +20,11 @@ if [ -z "$APP_KEY" ] && [ ! -f "$CONTROL_CENTER_ROOT/.env" ]; then
     php artisan key:generate
 fi
 
+# VATSSA: a storage volume keeps the ownership of the image that first created it, so
+# the Dockerfile's chown never reaches an existing one. Apache runs as www-data.
+FILES_DIR="$CONTROL_CENTER_ROOT/storage/app/public/files"
+if [ -d "$FILES_DIR" ] && [ "$(stat -c %U "$FILES_DIR")" != "www-data" ]; then
+    chown -R www-data:www-data "$CONTROL_CENTER_ROOT/storage" || echo "WARNING: could not hand storage to www-data; attachment uploads will fail"
+fi
+
 exec docker-php-entrypoint "$@"

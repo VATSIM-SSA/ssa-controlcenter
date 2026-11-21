@@ -8,6 +8,7 @@ use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Redirector;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Storage;
 
 /**
@@ -25,13 +26,15 @@ class TrainingObjectAttachmentController extends Controller
     public function store(Request $request, TrainingObject $trainingObject)
     {
         $this->authorize('create', TrainingObjectAttachment::class);
+        // VATSSA: the upload permission alone must not reach every training.
+        $this->authorize('update', $trainingObject);
 
         $data = $request->validate([
             'file' => 'required|file|mimes:pdf,xls,xlsx,doc,docx,txt,png,jpg,jpeg',
             'hidden' => 'nullable',
         ]);
 
-        $attachment_ids = self::saveAttachments($request, $trainingObject);
+        $attachment_ids = self::saveAttachments($request, $trainingObject, 'file');
 
         if ($request->expectsJson()) {
             return json_encode([
@@ -81,26 +84,14 @@ class TrainingObjectAttachmentController extends Controller
     /**
      * @return array
      */
-    public static function saveAttachments(Request $request, TrainingObject $object)
+    public static function saveAttachments(Request $request, TrainingObject $object, string $field = 'files')
     {
-        foreach ($request->files as $file) {
-            if (! is_iterable($file)) {
-                $file_id = FileController::saveFile($file);
-
-                $object->attachments()->create([
-                    'file_id' => $file_id,
-                    'hidden' => false, // We hardcode this to false for now
-                ]);
-            } else {
-                foreach ($file as $file2) {
-                    $file_id = FileController::saveFile($file2);
-
-                    $object->attachments()->create([
-                        'file_id' => $file_id,
-                        'hidden' => false, // We hardcode this to false for now
-                    ]);
-                }
-            }
+        // VATSSA: only the field the caller validated, never every file in the request.
+        foreach (Arr::wrap($request->file($field)) as $file) {
+            $object->attachments()->create([
+                'file_id' => FileController::saveFile($file),
+                'hidden' => false, // We hardcode this to false for now
+            ]);
         }
 
         return $object->fresh()->attachments()->pluck('id')->toArray();

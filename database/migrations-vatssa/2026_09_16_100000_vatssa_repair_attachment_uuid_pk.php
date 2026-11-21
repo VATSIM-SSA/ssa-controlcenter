@@ -53,20 +53,19 @@ return new class extends Migration
             return;
         }
 
-        if ($this->idIsUuid()) {
-            $this->dropLeftoverUuidColumn();
-
-            return;
+        // Widening the column keeps the primary key and drops AUTO_INCREMENT.
+        // Existing numeric ids survive the change as strings.
+        if (! $this->idIsChar()) {
+            DB::statement('ALTER TABLE `' . self::TABLE . '` MODIFY `id` CHAR(36) NOT NULL');
         }
 
-        // Widening the column keeps the primary key and drops AUTO_INCREMENT.
-        // Existing numeric ids survive the change as strings, and are replaced
-        // row by row immediately after.
-        DB::statement('ALTER TABLE `' . self::TABLE . '` MODIFY `id` CHAR(36) NOT NULL');
-
-        DB::table(self::TABLE)->select('id')->orderBy('id')->each(function ($row) {
-            DB::table(self::TABLE)->where('id', $row->id)->update(['id' => (string) Str::uuid()]);
-        });
+        // Ids are read up front because each update changes the sort key, and only
+        // non-UUIDs are touched, so a run that died halfway finishes on the next one.
+        foreach (DB::table(self::TABLE)->pluck('id') as $id) {
+            if (! Str::isUuid($id)) {
+                DB::table(self::TABLE)->where('id', $id)->update(['id' => (string) Str::uuid()]);
+            }
+        }
 
         $this->dropLeftoverUuidColumn();
     }
@@ -77,7 +76,7 @@ return new class extends Migration
         // UUIDs that the model writes, which breaks every attachment again.
     }
 
-    private function idIsUuid(): bool
+    private function idIsChar(): bool
     {
         $column = DB::selectOne(
             'SELECT DATA_TYPE AS data_type FROM information_schema.COLUMNS

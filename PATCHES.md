@@ -201,6 +201,23 @@ attributes stripped.
 These never conflict. That is the point, and it is also the risk, so each one
 names what it leans on and what would tell you it broke.
 
+### Attachment upload and serving hardening
+
+Upstream's uploads never worked here, so these holes were unreachable until the
+storage ownership fix.
+
+- `TrainingObjectAttachmentController`: `store` also authorizes `update` on the
+  report or examination. `saveAttachments` saves one named field, not every file
+  in the request.
+- `TrainingReportController`, `TrainingExaminationController`: `files` must be an
+  array, because a lone file skips the `files.*` rule.
+- `FileController::get`: `nosniff` always; only PDF, PNG and JPEG render inline,
+  anything else downloads.
+- `container/entrypoint.sh`: at start, hands an existing storage volume to
+  www-data if the files folder is owned by anyone else.
+
+**Detector:** `tests/Feature/VatssaAttachmentStorageTest.php`.
+
 ### `database/migrations-vatssa/2026_09_16_100000_vatssa_repair_attachment_uuid_pk.php`
 
 Repairs `training_object_attachments.id` on any database descended from the
