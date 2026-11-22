@@ -84,6 +84,11 @@
                         @enderror
                     </div>
 
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" class="form-check-input" id="requirementsAcknowledged" name="requirementsAcknowledged" value="1" required>
+                        <label class="form-check-label" for="requirementsAcknowledged">I confirm I have checked that this member is in the VATSSA Discord and on Moodle</label>
+                    </div>
+
                     <button type="submit" class="btn btn-success">Create training</button>
                 </form>
             </div>

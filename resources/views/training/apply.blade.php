@@ -144,6 +144,12 @@
 
                         </div>
 
+                        <div class="mb-3 form-check">
+                            <input type="checkbox" class="form-check-input" :class="{ 'is-invalid': errAcknowledged }" id="requirementsAcknowledged" name="requirementsAcknowledged" value="1" v-model="requirementsAcknowledged" @change="errAcknowledged = false">
+                            <label class="form-check-label" for="requirementsAcknowledged">I am in the <a href="{{ Setting::get('linkDiscord') }}" target="_blank">VATSSA Discord</a> and have logged into the <a href="{{ Setting::get('linkMoodle') }}" target="_blank">Training Platform</a> at least once. I understand that my training will be closed if I have not.</label>
+                            <div v-show="errAcknowledged" class="text-danger" style="display: none">Please confirm this before submitting</div>
+                        </div>
+
                         <button type="submit" id="training-submit-btn" class="btn btn-success" v-on:click="submit">Submit training request<div class="submit-spinner spinner-border spinner-border-sm" role="status">&nbsp;</div></button>
                     </div>
                 </div>
@@ -174,6 +180,8 @@
                     errAreaActive: 0,
                     errExperience: 0,
                     errLOM: 0,
+                    errAcknowledged: false,
+                    requirementsAcknowledged: false,
                     motivationRequired: {{ $motivation_required }},
                     atcActiveRequired: {{ $atcActiveRequired }},
                     atcActiveInArea: false,
@@ -254,8 +262,10 @@
                         this.errLOM = true;
                     }
 
+                    this.errAcknowledged = !this.requirementsAcknowledged;
+
                     // Submit form if validation is successful
-                    if(!this.errExperience && !this.errLOM){
+                    if(!this.errExperience && !this.errLOM && !this.errAcknowledged){
                         document.getElementById('training-submit-btn').disabled = true;
                         document.querySelector('.submit-spinner').style.display = 'inherit';
                         document.getElementById('training-form').submit();

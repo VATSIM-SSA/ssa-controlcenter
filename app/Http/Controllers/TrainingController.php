@@ -235,6 +235,11 @@ class TrainingController extends Controller
 
         // Training_level comes from the application, ratings comes from the manual creation, we need to seperate those.
         if (isset($data['training_level'])) {
+            // Member applications must tick the acknowledgement. It is checked here and never stored.
+            if (! $request->boolean('requirementsAcknowledged')) {
+                return redirect()->back()->withErrors('Please confirm you are in the Discord and have logged into the Training Platform.');
+            }
+
             $ratings = Rating::find(explode('+', $data['training_level']));
 
             // Check if user is active in the area if required by setting
@@ -260,6 +265,11 @@ class TrainingController extends Controller
                 }
             }
         } elseif (isset($data['ratings'])) {
+            // Staff must confirm the member's Discord and Moodle access. It is checked here and never stored.
+            if (! $request->boolean('requirementsAcknowledged')) {
+                return redirect()->back()->withErrors('Please confirm you have checked that this member is in the VATSSA Discord and on Moodle.');
+            }
+
             $ratings = Rating::find($data['ratings']);
 
             // Missing fields? Return error
