@@ -10,12 +10,16 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
+use Symfony\Component\HttpFoundation\HeaderUtils;
 
 /**
  * This controls the uploaded file management
  */
 class FileController extends Controller
 {
+    // VATSSA: the only types a browser may render on our origin.
+    private const INLINE_TYPES = ['application/pdf', 'image/png', 'image/jpeg'];
+
     /**
      * Get the file
      *
@@ -28,7 +32,15 @@ class FileController extends Controller
         $this->authorize('view', $file);
 
         if (Storage::exists($file->full_path)) {
-            return response(Storage::get($file->full_path), 200)->header('Content-Type', Storage::mimeType($file->full_path))->header('Content-Disposition', 'inline');
+            $mime = Storage::mimeType($file->full_path);
+            $disposition = in_array($mime, self::INLINE_TYPES, true)
+                ? 'inline'
+                : HeaderUtils::makeDisposition('attachment', basename(str_replace('\\', '/', $file->name)), 'download');
+
+            return response(Storage::get($file->full_path), 200)
+                ->header('Content-Type', $mime)
+                ->header('Content-Disposition', $disposition)
+                ->header('X-Content-Type-Options', 'nosniff');
         } else {
             return abort(404);
         }
