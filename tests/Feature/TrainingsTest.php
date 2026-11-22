@@ -302,6 +302,7 @@ class TrainingsTest extends TestCase
             'training_area' => $this->training->area_id,
             'ratings' => [$rating->id],
             'type' => 1,
+            'requirementsAcknowledged' => 1,
         ];
 
         $this->actingAs($moderator)
@@ -318,6 +319,34 @@ class TrainingsTest extends TestCase
             ->postJson(route('training.store'), array_merge($attributes, ['user_id' => User::max('id') + 1]))
             ->assertStatus(400)
             ->assertJson(['message' => 'The given CID cannot be found in the application database. Please check the user has logged in before.']);
+    }
+
+    #[Test]
+    public function staff_must_confirm_the_members_access_when_creating_a_training(): void
+    {
+        Notification::fake();
+
+        $staff = User::factory()->create();
+        $staff->roleAssignments()->create(['role' => 'admin', 'area_id' => null]);
+        $student = User::factory()->create();
+        $rating = Rating::factory()->create(['vatsim_rating' => VatsimRating::S2->value]);
+
+        $attributes = [
+            'user_id' => $student->id,
+            'training_area' => $this->training->area_id,
+            'ratings' => [$rating->id],
+            'type' => 1,
+        ];
+
+        $this->actingAs($staff)
+            ->post(route('training.store'), $attributes)
+            ->assertSessionHasErrors();
+        $this->assertFalse(Training::where('user_id', $student->id)->exists());
+
+        $this->actingAs($staff)
+            ->post(route('training.store'), array_merge($attributes, ['requirementsAcknowledged' => 1]))
+            ->assertSessionHasNoErrors();
+        $this->assertTrue(Training::where('user_id', $student->id)->exists());
     }
 
     #[Test]
