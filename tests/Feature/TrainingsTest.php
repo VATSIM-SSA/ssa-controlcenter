@@ -221,6 +221,7 @@ class TrainingsTest extends TestCase
             'experience' => 3,
             'englishOnly' => 1,
             'comment' => 'Available on weekends',
+            'requirementsAcknowledged' => 1,
         ]);
 
         $training = Training::where('user_id', $applicant->id)->sole();
@@ -239,6 +240,34 @@ class TrainingsTest extends TestCase
         ]);
 
         Notification::assertSentTo($applicant, TrainingCreatedNotification::class);
+    }
+
+    #[Test]
+    public function application_without_the_acknowledgement_is_rejected()
+    {
+        Notification::fake();
+        Http::fake(['api.vatsim.net/*' => Http::response([], 404)]);
+
+        $area = Area::factory()->create();
+        $rating = Rating::factory()->create(['vatsim_rating' => VatsimRating::S2->value]);
+        $area->ratings()->attach($rating->id, [
+            'required_vatsim_rating' => VatsimRating::OBS->value,
+            'allow_bundling' => true,
+            'hour_requirement' => 0,
+            'queue_length_low' => 0,
+            'queue_length_high' => 0,
+        ]);
+
+        $applicant = User::factory()->create(['rating' => VatsimRating::OBS->value]);
+
+        $this->actingAs($applicant)->post(route('training.store'), [
+            'training_level' => (string) $rating->id,
+            'training_area' => $area->id,
+            'motivation' => 'I would like to learn tower control.',
+            'experience' => 3,
+        ])->assertSessionHasErrors();
+
+        $this->assertFalse(Training::where('user_id', $applicant->id)->exists());
     }
 
     #[Test]
