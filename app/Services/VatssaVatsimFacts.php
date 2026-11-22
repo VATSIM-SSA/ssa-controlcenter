@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Helpers\VatsimRating;
 use App\Http\Controllers\VatssaDiscordSyncController as Sync;
 use App\Models\User;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -34,6 +35,9 @@ class VatssaVatsimFacts
     private const MAX_DROP = 0.2;
 
     public const MAX_LEAVES_PER_DAY = 45;
+
+    /** VATSIM allows about 10 calls a minute per server. This leaves room for members' page loads and the bot. */
+    public const LOOKUPS_PER_RUN = 5;
 
     private const RATING_NAMES = [
         'INA' => 'Inactive', 'SUS' => 'Suspended', 'OBS' => 'Pilot/Observer', 'S1' => 'Tower Trainee', 'S2' => 'Tower Controller',
@@ -111,10 +115,14 @@ class VatssaVatsimFacts
     }
 
     /**
-     * Check waiting members one at a time, about one a second. Stops on a rate limit.
+     * Check waiting members, five a minute from the scheduler. After a rate limit, none until
+     * VATSIM's wait is over, so these checks never hold up a member's training request.
      */
-    public function runLookups(int $limit = 40): int
+    public function runLookups(int $limit = self::LOOKUPS_PER_RUN): int
     {
+        if ($this->lookupsHeld()) {
+            return 0;
+        }
         $done = 0;
         $owner = config('app.owner_code');
         $rows = DB::table(self::TABLE)->where('needs_lookup', true)
@@ -123,6 +131,9 @@ class VatssaVatsimFacts
 
         foreach ($rows as $row) {
             Sleep::for(1)->second();
+            if ($this->lookupsHeld()) {
+                break;
+            }
             try {
                 $outcome = $this->checkOne($row, $owner);
             } catch (\Throwable $e) {
@@ -142,6 +153,32 @@ class VatssaVatsimFacts
     }
 
     /**
+     * True during VATSIM's Retry-After, and while the ATC hours job is using nearly all of its limit.
+     */
+    private function lookupsHeld(): bool
+    {
+        return now()->timestamp < max((int) VatssaDiscordState::get('vatsim_blocked_until', 0), (int) VatssaDiscordState::get('vatsim_atc_job_until', 0));
+    }
+
+    /**
+     * Record VATSIM's Retry-After, in seconds or as a date. At most a day, so a bad value cannot stop checks for good.
+     */
+    private function holdLookups(Response $response): void
+    {
+        $wait = trim($response->header('Retry-After'));
+        if (ctype_digit($wait)) {
+            $seconds = (int) $wait;
+        } else {
+            try {
+                $seconds = $wait === '' ? 300 : (int) ceil(now()->diffInSeconds(Carbon::parse($wait), false));
+            } catch (\Throwable) {
+                $seconds = 300;
+            }
+        }
+        VatssaDiscordState::put('vatsim_blocked_until', now()->timestamp + min(max($seconds, 0) + 1, 86400));
+    }
+
+    /**
      * Ask VATSIM about one member. Returns done, retry (no usable answer) or stop (rate limited).
      */
     private function checkOne(object $row, string $owner): string
@@ -155,9 +192,16 @@ class VatssaVatsimFacts
 
         $response = Http::withUserAgent(self::USER_AGENT)->acceptJson()->timeout(10)->get(self::API . "/members/{$row->cid}");
         if ($response->status() === 429) {
+            $this->holdLookups($response);
+
             return 'stop';
         }
         if ($response->status() === 404) {
+            // Only VATSIM's own answer means no such member: a proxy's 404 must change nothing.
+            $detail = $response->json('detail');
+            if (! is_string($detail) || rtrim($detail, '.') !== 'Not Found') {
+                return $retry();
+            }
             DB::table(self::TABLE)->where('cid', $row->cid)->update(['rating' => null, 'division' => null, 'in_org' => false,
                 'source' => 'lookup', 'needs_lookup' => false, 'fetched_at' => $now, 'checked_at' => $now]);
 
@@ -344,6 +388,9 @@ class VatssaVatsimFacts
         do {
             $response = Http::withUserAgent(self::USER_AGENT)->withHeaders(['X-API-Key' => $token])->acceptJson()->timeout(60)
                 ->get($url, ['include_inactive' => 1, 'limit' => 1000, 'offset' => $items->count()]);
+            if ($response->status() === 429) {
+                $this->holdLookups($response);
+            }
             $body = $response->successful() ? $response->json() : null;
             if (! is_array($body) || ! isset($body['count']) || ! is_array($body['items'] ?? null)) {
                 throw new RuntimeException('VATSIM gave no usable division list (HTTP ' . $response->status() . ').');

@@ -27,7 +27,7 @@ On a member's profile, under their VATSIM ID and name:
 - **`VATSSA_VATSIM_WRITE_USERS`** is off by default: VATSIM's answers are stored but `users` does not change. `php artisan vatssa:vatsim-leavers` lists who would leave and what they would lose.
 - **With it on, a confirmed leaver** has `users` updated, and upstream's 05:00 job closes their training, removes mentor roles and takes them off the roster. At most 45 leavers are applied a day; the rest wait for the next day and `#tech-status` is told.
 - **Other divisions:** a live CC login supplies the details. Anyone else, including people with no CC account, is checked individually and again after a day.
-- **Checks** run every minute, about one a second, and stop on a rate limit. No answer never changes anything.
+- **Checks** run five a minute, and not while the ATC hours job runs, because VATSIM allows about 10 calls a minute per server and CC's other jobs share that. After a rate limit, none run until VATSIM's `Retry-After` has passed. No answer never changes anything.
 
 **One Discord account per CID.** The database enforces it. If two accounts claim a CID, the bot asks VATSIM about both, and the stale one loses it.
 
