@@ -243,7 +243,7 @@ class TrainingsTest extends TestCase
     }
 
     #[Test]
-    public function application_without_the_acknowledgement_is_rejected()
+    public function application_without_the_acknowledgement_is_rejected(): void
     {
         Notification::fake();
         Http::fake(['api.vatsim.net/*' => Http::response([], 404)]);

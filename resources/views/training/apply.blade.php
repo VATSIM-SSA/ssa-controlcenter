@@ -146,7 +146,7 @@
 
                         <div class="mb-3 form-check">
                             <input type="checkbox" class="form-check-input" :class="{ 'is-invalid': errAcknowledged }" id="requirementsAcknowledged" name="requirementsAcknowledged" value="1" v-model="requirementsAcknowledged" @change="errAcknowledged = false">
-                            <label class="form-check-label" for="requirementsAcknowledged">I am in the <a href="{{ Setting::get('linkDiscord') }}" target="_blank">VATSSA Discord</a> and have logged into the <a href="{{ Setting::get('linkMoodle') }}" target="_blank">Training Platform</a> at least once. I understand that my training will be closed if I have not.</label>
+                            <label class="form-check-label" for="requirementsAcknowledged">I am in the <a href="{{ Setting::get('linkDiscord') }}" target="_blank">VATSSA Discord</a> and have logged into the @if(Setting::get('linkMoodle'))<a href="{{ Setting::get('linkMoodle') }}" target="_blank">Training Platform</a>@else<span>Training Platform</span>@endif at least once. I understand that my training will be closed if I have not.</label>
                             <div v-show="errAcknowledged" class="text-danger" style="display: none">Please confirm this before submitting</div>
                         </div>
 
