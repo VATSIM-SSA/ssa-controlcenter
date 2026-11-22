@@ -329,8 +329,13 @@ mentors for anyone who left, so only an individual VATSIM answer naming another 
 counts as leaving, at most 45 a day. Schedules are added from `VatssaServiceProvider`, so
 `Console/Kernel.php` is unchanged.
 
-**Limits.** The API routes file runs under `throttle:600,1,vatssa-discord-bot` and
-`bindings`, not the `api` group, whose 60/min counter is shared with `/api/users`.
+**Shared state.** `vatssa_discord_state`, never the settings package: `Setting::save()`
+deletes any key created after that process loaded its settings, and the scheduler saves
+every minute.
+
+**Limits.** The API routes file runs under `bindings`, not the `api` group, whose 60/min
+counter is shared with `/api/users`. Bot routes: `throttle:3000,1,vatssa-discord-bot`. API
+key routes: `throttle:600,1,vatssa-api`.
 The button: `throttle:30,1,vatssa-discord-button`. The bot token must be 32+
 characters or the routes refuse everyone.
 

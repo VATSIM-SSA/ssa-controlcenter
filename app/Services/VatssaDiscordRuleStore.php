@@ -194,6 +194,7 @@ class VatssaDiscordRuleStore
             $all = $this->engine->all();
             $managedBefore = $this->engine->managed($all);
             $old = $id ? $all->firstWhere('id', $id) : null;
+            abort_if($id && ! $old, 404, 'That rule no longer exists.');
             $now = now();
 
             if ($data === null) {

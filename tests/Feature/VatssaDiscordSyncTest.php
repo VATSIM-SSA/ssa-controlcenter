@@ -13,6 +13,7 @@ use App\Models\User;
 use Illuminate\Auth\Events\Login;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Testing\TestResponse;
 use Livewire\Livewire;
@@ -578,5 +579,113 @@ class VatssaDiscordSyncTest extends TestCase
         $page = Livewire::actingAs($admin)->test(VatssaDiscordMembers::class);
         $page->call('setTab', 'not_vatsim')->assertSee('plainbob')->assertDontSee('alice');
         $page->call('setTab', 'server')->set('search', (string) $this->member->id)->assertSee('alice')->assertDontSee('plainbob');
+    }
+
+    #[Test]
+    public function a_confirmed_claim_takes_the_cid_from_an_account_with_no_answer(): void
+    {
+        $this->send([$this->account(self::A, $this->member->id), $this->account(self::B, 0, 'bob')]);
+
+        $this->send([$this->account(self::A, null), $this->account(self::B, $this->member->id, 'bob')])->assertNoContent();
+
+        $this->assertNull(DB::table('vatssa_discord_members')->where('discord_id', self::A)->value('user_id'));
+        $this->assertSame($this->member->id, (int) DB::table('vatssa_discord_members')->where('discord_id', self::B)->value('user_id'));
+    }
+
+    #[Test]
+    public function a_list_begun_before_a_leave_does_not_undo_it(): void
+    {
+        $list = [$this->account(self::A, $this->member->id), $this->account(self::B, 0, 'bob')];
+        $this->send($list, true, microtime(true) - 60);
+        $this->send([], false, null, [self::A]);
+
+        $this->send($list, true, microtime(true) - 30)->assertNoContent();
+
+        $this->assertSame(0, (int) DB::table('vatssa_discord_members')->where('discord_id', self::A)->value('in_server'));
+    }
+
+    #[Test]
+    public function a_list_begun_before_a_join_does_not_mark_them_left(): void
+    {
+        $this->send([$this->account(self::A, $this->member->id)], true, microtime(true) - 60);
+        $this->send([$this->account(self::B, 0, 'new')], false);
+
+        $this->send([$this->account(self::A, $this->member->id)], true, microtime(true) - 30)->assertNoContent();
+
+        $this->assertSame(1, (int) DB::table('vatssa_discord_members')->where('discord_id', self::B)->value('in_server'));
+    }
+
+    #[Test]
+    public function a_button_keeps_its_reason_until_it_is_handled(): void
+    {
+        Sync::queue([$this->member->id], 'button', null, 0, true);
+        Sync::queueAuto($this->member->id);
+        Sync::queue([$this->member->id], 'rule');
+        $this->assertSame('button', $this->row()->reason);
+
+        $this->travel(Sync::AUTO_SETTLE_SECONDS + 1)->seconds();
+        $this->report($this->member->id, $this->claim()->json('data.0.generation'));
+        Sync::queue([$this->member->id], 'rule');
+        $this->assertSame('rule', $this->row()->reason);
+    }
+
+    #[Test]
+    public function a_bulk_round_never_demotes_a_waiting_change(): void
+    {
+        Sync::queueAuto($this->member->id);
+        Sync::queue([$this->member->id], 'daily');
+        $this->assertSame('change', $this->row()->reason);
+    }
+
+    #[Test]
+    public function a_rolled_back_change_queues_nothing(): void
+    {
+        try {
+            DB::transaction(function () {
+                Sync::queueAuto($this->member->id);
+                throw new \RuntimeException('rolled back');
+            });
+        } catch (\RuntimeException) {
+        }
+        $this->assertNull($this->row());
+
+        DB::transaction(fn () => Sync::queueAuto($this->member->id));
+        $this->assertNotNull($this->row());
+    }
+
+    #[Test]
+    public function an_erased_member_cannot_reenter_the_queue(): void
+    {
+        $this->member->email = Sync::PSEUDONYMISED_EMAIL;
+        $this->member->save();
+
+        Sync::queue([$this->member->id], 'button');
+        $this->send([$this->account(self::A, $this->member->id)], false)->assertNoContent();
+
+        $this->assertNull($this->row());
+    }
+
+    #[Test]
+    public function erasure_removes_the_cid_from_another_accounts_history(): void
+    {
+        $other = User::factory()->create();
+        $this->send([$this->account(self::A, $this->member->id)]);
+        $this->send([$this->account(self::A, $other->id)]);
+        $this->assertSame(1, DB::table('vatssa_discord_member_history')->where('detail', 'like', "CID {$this->member->id} to %")->count());
+
+        $this->member->email = Sync::PSEUDONYMISED_EMAIL;
+        $this->member->save();
+
+        $this->assertSame(0, DB::table('vatssa_discord_member_history')->where('detail', 'like', "%{$this->member->id}%")->count());
+    }
+
+    #[Test]
+    public function bot_routes_have_their_own_higher_limit(): void
+    {
+        $middleware = Route::getRoutes()->getByName('api.vatssa.discord-queue.claim')->gatherMiddleware();
+        $this->assertContains('throttle:3000,1,vatssa-discord-bot', $middleware);
+
+        $groups = Route::getRoutes()->getByName('api.vatssa.groups.index')->gatherMiddleware();
+        $this->assertContains('throttle:600,1,vatssa-api', $groups);
     }
 }

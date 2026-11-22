@@ -82,6 +82,11 @@ class VatssaDiscordRules
                 ->whereIn('id', $chunk->values())->where('email', '!=', Sync::PSEUDONYMISED_EMAIL)->get());
         }
         $users = $users->keyBy('id');
+        $erased = collect();
+        foreach ($cids->chunk(500) as $chunk) {
+            $erased = $erased->merge(DB::table('users')->whereIn('id', $chunk->values())->where('email', Sync::PSEUDONYMISED_EMAIL)->pluck('id'));
+        }
+        $erased = $erased->map(fn ($id) => (int) $id)->flip();
 
         // No CC account: VATSIM's answer from our own table, or in line for a check.
         $facts = app(VatssaVatsimFacts::class)->forBot($cids->reject(fn ($cid) => $users->has($cid))->values()->all());
@@ -92,6 +97,8 @@ class VatssaDiscordRules
                 ->whereNull('m.removed_at')->whereNull('g.archived_at')->whereIn('m.user_id', $chunk->values())->get(['m.user_id', 'm.group_id']));
         }
         $groups = $groups->groupBy('user_id')->map(fn ($rows) => $rows->pluck('group_id')->map(fn ($id) => (int) $id)->all());
+        $activeGroups = DB::table('vatssa_groups')->whereNull('archived_at')->pluck('id')->map(fn ($id) => (int) $id)->flip();
+        $activeAreas = DB::table('areas')->pluck('id')->map(fn ($id) => (int) $id)->flip();
 
         $owner = config('app.owner_code');
         $out = ['roles' => [], 'unknown' => [], 'facts' => ['pulled_at' => $facts['pulled_at'], 'leaves_waiting' => $facts['leaves_waiting']]];
@@ -99,7 +106,11 @@ class VatssaDiscordRules
             $id = (string) $account['discord_id'];
             $cid = (int) $account['cid'];
             if ($cid === 0) {
-                $subject = ['linked' => false];
+                $subject = ['linked' => false, 'activeGroups' => $activeGroups, 'activeAreas' => $activeAreas];
+            } elseif ($erased->has($cid)) {
+                $out['roles'][$id] = []; // erased from CC: nothing here supports any managed role
+
+                continue;
             } else {
                 $user = $users->get($cid);
                 $rating = $user ? $user->getRawOriginal('rating') : ($facts['data'][$cid]['rating'] ?? null);
@@ -109,7 +120,8 @@ class VatssaDiscordRules
 
                     continue;
                 }
-                $subject = ['linked' => true, 'rating' => (int) $rating, 'home' => $division === $owner, 'user' => $user, 'groups' => $groups->get($cid, [])];
+                $subject = ['linked' => true, 'rating' => (int) $rating, 'home' => $division === $owner, 'user' => $user, 'groups' => $groups->get($cid, []),
+                    'activeGroups' => $activeGroups, 'activeAreas' => $activeAreas];
             }
 
             $want = [];
@@ -133,12 +145,25 @@ class VatssaDiscordRules
             if (! $subject['linked'] && ($condition['type'] !== 'not_vatsim' || $condition['negated'])) {
                 return false;
             }
-            if ($this->holds($condition, $subject) === $condition['negated']) {
+            if (! $this->canEvaluate($condition, $subject) || $this->holds($condition, $subject) === $condition['negated']) {
                 return false;
             }
         }
 
         return true;
+    }
+
+    /**
+     * A condition on something gone must fail, or NOT in that group would match everyone.
+     */
+    private function canEvaluate(array $condition, array $subject): bool
+    {
+        $p = $condition['params'];
+        $area = $p['area'] ?? 'any';
+
+        return array_key_exists($condition['type'], self::TYPES)
+            && ($condition['type'] !== 'group' || $subject['activeGroups']->has((int) ($p['group'] ?? 0)))
+            && (in_array($area, ['any', 'global'], true) || $subject['activeAreas']->has((int) $area));
     }
 
     private function holds(array $condition, array $subject): bool

@@ -2,11 +2,11 @@
 
 namespace App\Http\Controllers;
 
-use anlutro\LaravelSettings\Facade as Setting;
 use App\Helpers\LogName;
 use App\Models\User;
 use App\Services\ActivityLogService;
 use App\Services\VatssaDiscordRules;
+use App\Services\VatssaDiscordState;
 use App\Services\VatssaVatsimFacts;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
@@ -16,7 +16,6 @@ use Illuminate\Http\Response;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -35,9 +34,14 @@ class VatssaDiscordSyncController extends Controller
 
     private const HISTORY = 'vatssa_discord_member_history';
 
-    private const BOT_STATUS = 'vatssa:discord-bot-status';
+    private const BOT_STATUS = 'bot_status';
 
-    public const BOT_APPROVE = 'vatssa:discord-bot-approve';
+    public const BOT_APPROVE = 'bot_approve';
+
+    /**
+     * Why a member can be queued. Interpolated into SQL by queue(), so only these are allowed.
+     */
+    private const REASONS = ['button', 'login', 'profile', 'change', 'join', 'daily', 'rule'];
 
     /**
      * An automatic request is queued from inside a save, before that request has
@@ -99,21 +103,31 @@ class VatssaDiscordSyncController extends Controller
      */
     public static function queue(array $userIds, string $reason, ?int $by = null, int $settle = 0, bool $fresh = false): void
     {
+        abort_unless(in_array($reason, self::REASONS, true), 500, 'Unknown queue reason.');
         $now = now();
         $table = self::QUEUE;
         $wantsFresh = (int) $fresh;
-        $rows = array_map(fn (int $id) => [
-            'user_id' => $id, 'reason' => $reason, 'requested_by' => $by, 'fresh' => $wantsFresh, 'state' => 'pending',
-            'generation' => 1, 'attempts' => 0, 'available_at' => $now->copy()->addSeconds($settle), 'queued_at' => $now,
-        ], $userIds);
+        $low = in_array($reason, ['daily', 'rule'], true) ? 1 : 0;
 
-        foreach (array_chunk($rows, 500) as $chunk) {
-            DB::table($table)->upsert($chunk, ['user_id'], [
+        foreach (array_chunk($userIds, 500) as $ids) {
+            // An erased person never goes back in, whichever path asked.
+            $erased = DB::table('users')->whereIn('id', $ids)->where('email', self::PSEUDONYMISED_EMAIL)->pluck('id')->map(fn ($id) => (int) $id)->all();
+            $rows = array_map(fn (int $id) => [
+                'user_id' => $id, 'reason' => $reason, 'requested_by' => $by, 'fresh' => $wantsFresh, 'state' => 'pending',
+                'generation' => 1, 'attempts' => 0, 'available_at' => $now->copy()->addSeconds($settle), 'queued_at' => $now,
+            ], array_values(array_diff($ids, $erased)));
+            if (! $rows) {
+                continue;
+            }
+
+            // While a row is waiting, a button stays a button and a bulk round never demotes it.
+            DB::table($table)->upsert($rows, ['user_id'], [
                 'fresh' => DB::raw("CASE WHEN {$table}.state IN ('pending', 'leased') AND {$table}.fresh = 1 THEN 1 ELSE {$wantsFresh} END"),
+                'reason' => DB::raw("CASE WHEN {$table}.state IN ('pending', 'leased') AND ({$table}.reason = 'button' OR ({$low} = 1 AND {$table}.reason NOT IN ('daily', 'rule'))) THEN {$table}.reason ELSE '{$reason}' END"),
                 'state' => DB::raw("CASE WHEN {$table}.state = 'leased' THEN 'leased' ELSE 'pending' END"),
                 'generation' => DB::raw("{$table}.generation + 1"),
                 'attempts' => DB::raw('0'),
-                'reason', 'requested_by', 'available_at', 'queued_at',
+                'requested_by', 'available_at', 'queued_at',
             ]);
         }
     }
@@ -128,7 +142,15 @@ class VatssaDiscordSyncController extends Controller
             return;
         }
         try {
-            self::queue([$userId], $reason, null, $reason === 'change' ? self::AUTO_SETTLE_SECONDS : 0, $fresh);
+            // After commit: inside a caller's transaction a swallowed deadlock would leave that
+            // transaction rolled back while the caller carried on as if it had saved.
+            DB::afterCommit(function () use ($userId, $reason, $fresh) {
+                try {
+                    self::queue([$userId], $reason, null, $reason === 'change' ? self::AUTO_SETTLE_SECONDS : 0, $fresh);
+                } catch (\Throwable $e) {
+                    report($e);
+                }
+            });
         } catch (\Throwable $e) {
             report($e);
         }
@@ -162,7 +184,8 @@ class VatssaDiscordSyncController extends Controller
         try {
             $accounts = DB::table(self::MEMBERS)->where('user_id', $userId)->pluck('discord_id');
             DB::table(self::QUEUE)->where('user_id', $userId)->delete();
-            DB::table(self::HISTORY)->where('user_id', $userId)->orWhereIn('discord_id', $accounts)->delete();
+            DB::table(self::HISTORY)->where('user_id', $userId)->orWhereIn('discord_id', $accounts)
+                ->orWhere('detail', 'like', "CID {$userId} to %")->delete();
             DB::table(self::MEMBERS)->whereIn('discord_id', $accounts)->delete();
             VatssaVatsimFacts::forget($userId);
         } catch (\Throwable $e) {
@@ -186,7 +209,7 @@ class VatssaDiscordSyncController extends Controller
         $limit = (int) ($input['limit'] ?? 20);
         $now = now();
         if (isset($input['status'])) {
-            Cache::put(self::BOT_STATUS, [...$input['status'], 'seen_at' => $now->toIso8601String()], now()->addDays(7));
+            VatssaDiscordState::put(self::BOT_STATUS, [...$input['status'], 'seen_at' => $now->toIso8601String()]);
         }
 
         $claimed = DB::transaction(function () use ($limit, $now) {
@@ -220,7 +243,10 @@ class VatssaDiscordSyncController extends Controller
             return $ids;
         });
 
-        return response()->json(['data' => $claimed, 'accounts' => $accounts, 'approve' => (bool) Cache::pull(self::BOT_APPROVE)]);
+        // An approval expires, so a bot that was offline cannot act on an old one.
+        $approval = VatssaDiscordState::pull(self::BOT_APPROVE);
+
+        return response()->json(['data' => $claimed, 'accounts' => $accounts, 'approve' => (bool) $approval && $approval['until'] > now()->timestamp]);
     }
 
     /**
@@ -297,18 +323,17 @@ class VatssaDiscordSyncController extends Controller
         abort_if($data['complete'] && empty($data['members']), 422, 'A complete list cannot be empty.');
 
         $generatedAt = (float) $data['at'];
-        if ($data['complete'] && $generatedAt < (float) Setting::get('vatssaDiscordPresenceGeneration', 0)) {
+        if ($data['complete'] && $generatedAt < (float) VatssaDiscordState::get('presence_generation', 0)) {
             abort(409, 'An older list than the one already applied.');
         }
 
         // PHP turns these array keys into integers. Always cast back before a query: MySQL
         // compares an integer with a string column as a float, which matches neighbouring IDs.
         $sent = collect($data['members'])->keyBy('discord_id');
-        $counts = $sent->pluck('cid')->filter()->countBy();
-        $known = User::whereIn('id', $counts->keys())->where('email', '!=', self::PSEUDONYMISED_EMAIL)->pluck('id')->flip();
 
         $toQueue = [];
-        DB::transaction(function () use ($data, $sent, $counts, $known, &$toQueue) {
+        DB::transaction(function () use ($data, $sent, $generatedAt, &$toQueue) {
+            $toQueue = [];
             $now = now();
             $existing = DB::table(self::MEMBERS)
                 ->when(! $data['complete'], fn ($q) => $q->whereIn('discord_id', $sent->keys()->merge($data['left'] ?? [])->map(fn ($id) => (string) $id)))
@@ -318,11 +343,29 @@ class VatssaDiscordSyncController extends Controller
                 $history[] = ['discord_id' => $id, 'user_id' => $cid, 'event' => $event, 'detail' => $detail, 'created_at' => $at ?? $now];
             };
 
+            // A sweep takes minutes. Someone who left after this list began stays left.
+            if ($data['complete']) {
+                $sent = $sent->reject(function (array $m, $id) use ($existing, $generatedAt) {
+                    $old = $existing->get($id);
+
+                    return $old && ! $old->in_server && $old->left_at && Carbon::parse($old->left_at)->timestamp >= $generatedAt;
+                });
+            }
+
+            $counts = $sent->pluck('cid')->filter()->countBy();
+            $known = User::whereIn('id', $counts->keys())->where('email', '!=', self::PSEUDONYMISED_EMAIL)->pluck('id')->flip();
+            // CIDs VATSIM just confirmed for exactly one account outrank a link only being kept.
+            $confirmed = $sent->filter(fn (array $m) => ($m['cid'] ?? 0) > 0 && $counts[$m['cid']] === 1 && $known->has($m['cid']))
+                ->map(fn (array $m) => (int) $m['cid'])->values()->flip();
+
             // What each account should hold: [user_id, vatsim_linked]. Null cid or a clash keeps what we had.
-            $targets = $sent->map(function (array $m, string $id) use ($counts, $known, $existing) {
+            $targets = $sent->map(function (array $m, $id) use ($counts, $known, $existing, $confirmed) {
                 $cid = $m['cid'];
                 if ($cid === null || ($cid > 0 && $counts[$cid] > 1)) {
-                    return [$existing[$id]->user_id ?? null, $existing[$id]->vatsim_linked ?? null];
+                    $old = $existing->get($id);
+                    $kept = $old?->user_id ? (int) $old->user_id : null;
+
+                    return [$kept !== null && $confirmed->has($kept) ? null : $kept, $old?->vatsim_linked];
                 }
 
                 return $cid === 0 ? [null, false] : [$known->has($cid) ? (int) $cid : null, true];
@@ -393,13 +436,18 @@ class VatssaDiscordSyncController extends Controller
                 : collect($data['left'] ?? [])->diff($sent->keys());
             foreach ($gone as $id) {
                 $id = (string) $id;
-                if (($row = $existing->get($id)) && $row->in_server) {
+                $row = $existing->get($id);
+                // Someone seen after this list began joined while it was being built: not gone.
+                if ($row && $row->in_server && (! $data['complete'] || Carbon::parse($row->last_seen_at)->timestamp < $generatedAt)) {
                     DB::table(self::MEMBERS)->where('discord_id', $id)->update(['in_server' => false, 'left_at' => $now]);
                     $log($id, $row->user_id ? (int) $row->user_id : null, 'left');
                 }
             }
             foreach (array_chunk($history, 500) as $chunk) {
                 DB::table(self::HISTORY)->insert($chunk);
+            }
+            if ($data['complete']) {
+                self::releaseRetiredRoles($sent);
             }
         }, 3);
 
@@ -408,12 +456,26 @@ class VatssaDiscordSyncController extends Controller
         }
 
         if ($data['complete']) {
-            Setting::set('vatssaDiscordPresenceAt', now()->toIso8601String());
-            Setting::set('vatssaDiscordPresenceGeneration', $generatedAt);
-            Setting::save();
+            VatssaDiscordState::put('presence_at', now()->toIso8601String());
+            VatssaDiscordState::put('presence_generation', $generatedAt);
         }
 
         return response()->noContent();
+    }
+
+    /**
+     * A retired role is managed only until nobody has it. After that staff may hand it out again.
+     *
+     * @param  Collection<int, array<string, mixed>>  $members
+     */
+    private static function releaseRetiredRoles(Collection $members): void
+    {
+        $held = $members->flatMap(fn (array $m) => $m['roles'] ?? [])->map(fn ($id) => (string) $id)->unique();
+        $free = DB::table('vatssa_discord_guild_roles')->where('retired', true)->pluck('discord_role_id')
+            ->map(fn ($id) => (string) $id)->diff($held)->values();
+        if ($free->isNotEmpty()) {
+            DB::table('vatssa_discord_guild_roles')->whereIn('discord_role_id', $free)->update(['retired' => false]);
+        }
     }
 
     /**
@@ -522,7 +584,7 @@ class VatssaDiscordSyncController extends Controller
      */
     public static function botStatus(): ?array
     {
-        $status = Cache::get(self::BOT_STATUS);
+        $status = VatssaDiscordState::get(self::BOT_STATUS);
 
         return $status ? [...$status, 'online' => Carbon::parse($status['seen_at'])->gt(now()->subMinutes(2))] : null;
     }
@@ -536,7 +598,7 @@ class VatssaDiscordSyncController extends Controller
      */
     public static function presenceFor(int $userId): array
     {
-        $at = Setting::get('vatssaDiscordPresenceAt');
+        $at = VatssaDiscordState::get('presence_at');
         $at = $at ? Carbon::parse($at) : null;
 
         return [

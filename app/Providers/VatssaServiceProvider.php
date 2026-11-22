@@ -87,9 +87,9 @@ class VatssaServiceProvider extends ServiceProvider
         if (! $this->app->routesAreCached()) {
             Route::middleware(['web', 'auth', 'activity', 'suspended'])
                 ->group(base_path('routes/vatssa.php'));
-            // Not the 'api' group: its throttle:60,1 counter is shared with /api/users,
-            // and one batch of instant-sync results is up to 100 calls. Own counter.
-            Route::prefix('api')->middleware(['throttle:600,1,vatssa-discord-bot', 'bindings'])
+            // Not the 'api' group: its throttle:60,1 counter is shared with /api/users.
+            // The routes file sets its own limits.
+            Route::prefix('api')->middleware(['bindings'])
                 ->group(base_path('routes/vatssa-api.php'));
         }
     }
@@ -123,7 +123,7 @@ class VatssaServiceProvider extends ServiceProvider
         $this->callAfterResolving(Schedule::class, function (Schedule $schedule) {
             $schedule->command('vatssa:vatsim-pull')->dailyAt('04:30');
             // In the background: up to 40 one-second checks must not hold up upstream's jobs.
-            $schedule->command('vatssa:vatsim-pull --lookups')->everyMinute()->withoutOverlapping()->runInBackground();
+            $schedule->command('vatssa:vatsim-pull --lookups')->everyMinute()->withoutOverlapping(15)->runInBackground();
             $schedule->command('vatssa:discord-daily')->dailyAt('06:00');
         });
 

@@ -5,6 +5,7 @@ namespace App\Livewire;
 use App\Http\Controllers\VatssaDiscordSyncController as Sync;
 use App\Services\VatssaDiscordRules;
 use Illuminate\Contracts\View\View;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -58,7 +59,7 @@ class VatssaDiscordMembers extends Component
         $this->historyFor = null;
     }
 
-    private function scope(string $tab)
+    private function scope(string $tab): Builder
     {
         return DB::table('vatssa_discord_members')
             ->when($tab === 'server', fn ($q) => $q->where('in_server', true))

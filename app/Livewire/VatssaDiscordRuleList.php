@@ -7,9 +7,9 @@ use App\Http\Controllers\VatssaDiscordSyncController as Sync;
 use App\Services\ActivityLogService;
 use App\Services\VatssaDiscordRules;
 use App\Services\VatssaDiscordRuleStore;
+use App\Services\VatssaDiscordState;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Url;
 use Livewire\Component;
@@ -60,7 +60,7 @@ class VatssaDiscordRuleList extends Component
     public function approve(): void
     {
         $this->needManage();
-        Cache::put(Sync::BOT_APPROVE, Auth::id(), now()->addHour());
+        VatssaDiscordState::put(Sync::BOT_APPROVE, ['by' => Auth::id(), 'until' => now()->addHour()->timestamp]);
         ActivityLogService::warning(LogName::Role, 'Discord role sync: held changes approved');
         [$this->status, $this->error] = ['Approved. The bot applies the held changes within a few seconds.', null];
     }

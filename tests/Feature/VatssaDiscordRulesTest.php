@@ -17,6 +17,7 @@ use App\Models\VatssaGroupMember;
 use App\Services\PermissionMatrix;
 use App\Services\VatssaDiscordRules;
 use App\Services\VatssaDiscordRuleStore;
+use App\Services\VatssaDiscordState;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
@@ -262,14 +263,14 @@ class VatssaDiscordRulesTest extends TestCase
     }
 
     #[Test]
-    public function an_erased_member_is_unknown(): void
+    public function an_erased_member_gets_no_managed_roles(): void
     {
         $user = $this->person(3);
         $user->email = Sync::PSEUDONYMISED_EMAIL;
         $user->save();
         $this->rule([['division', ['value' => 'home']]]);
 
-        $this->assertNull($this->rolesFor($user->id));
+        $this->assertSame([], $this->rolesFor($user->id));
     }
 
     #[Test]
@@ -529,5 +530,94 @@ class VatssaDiscordRulesTest extends TestCase
         Livewire::actingAs($this->admin())->test(VatssaDiscordRuleEditor::class, ['ruleId' => $id])
             ->assertSee('No role changes.')->assertDontSee('Out of step: 1')
             ->set('conditions.0.division', 'visitor')->assertSee('− Edited: 1 member');
+    }
+
+    #[Test]
+    public function a_negated_condition_on_something_gone_gives_nothing(): void
+    {
+        $user = $this->person(3);
+        $group = VatssaGroup::create(['name' => 'Going']);
+        $this->rule([['group', ['group' => $group->id], true]], [self::ROLE], true, 'Not in group');
+        $this->rule([['nonsense', [], true]], [self::ROLE2], true, 'Not unknown');
+        $this->assertSame([self::ROLE], $this->rolesFor($user->id));
+
+        DB::table('vatssa_groups')->where('id', $group->id)->update(['archived_at' => now()]);
+        $this->assertSame([], $this->rolesFor($user->id));
+
+        DB::table('vatssa_groups')->where('id', $group->id)->delete();
+        $this->assertSame([], $this->rolesFor($user->id));
+    }
+
+    #[Test]
+    public function a_retired_role_stops_being_managed_once_nobody_has_it(): void
+    {
+        $this->roleOnServer(self::ROLE);
+        DB::table('vatssa_discord_guild_roles')->where('discord_role_id', self::ROLE)->update(['retired' => true]);
+        $auth = ['Authorization' => 'Bearer ' . self::TOKEN];
+        $send = fn (array $roles) => $this->postJson(route('api.vatssa.discord-members'), ['complete' => true, 'at' => microtime(true),
+            'members' => [['discord_id' => self::D, 'cid' => 0, 'name' => 'x', 'roles' => $roles]]], $auth)->assertNoContent();
+
+        $send([self::ROLE]);
+        $this->assertSame([self::ROLE], app(VatssaDiscordRules::class)->managed());
+
+        $send([]);
+        $this->assertSame([], app(VatssaDiscordRules::class)->managed());
+    }
+
+    #[Test]
+    public function changing_type_clears_a_global_area(): void
+    {
+        Livewire::actingAs($this->admin())->test(VatssaDiscordRuleEditor::class, ['ruleId' => null])
+            ->set('conditions.0.type', 'cc_role')->set('conditions.0.area', 'global')
+            ->set('conditions.0.type', 'roster')->assertSet('conditions.0.area', 'any');
+    }
+
+    #[Test]
+    public function the_editor_shows_an_archived_or_deleted_group_as_it_is(): void
+    {
+        VatssaGroup::create(['name' => 'Active']);
+        $old = VatssaGroup::create(['name' => 'Old']);
+        DB::table('vatssa_groups')->where('id', $old->id)->update(['archived_at' => now()]);
+        $id = $this->rule([['group', ['group' => $old->id]]]);
+        $admin = $this->admin();
+
+        Livewire::actingAs($admin)->test(VatssaDiscordRuleEditor::class, ['ruleId' => $id])->assertSee('Old (archived)');
+
+        DB::table('vatssa_groups')->where('id', $old->id)->delete();
+        Livewire::actingAs($admin)->test(VatssaDiscordRuleEditor::class, ['ruleId' => $id])->assertSee('(deleted group)');
+    }
+
+    #[Test]
+    public function saving_a_rule_deleted_elsewhere_is_a_404(): void
+    {
+        $this->roleOnServer(self::ROLE);
+        $id = $this->rule([['division', ['value' => 'home']]]);
+        $editor = Livewire::actingAs($this->admin())->test(VatssaDiscordRuleEditor::class, ['ruleId' => $id]);
+
+        DB::table('vatssa_discord_rules')->where('id', $id)->delete();
+        $editor->call('save')->assertNotFound();
+    }
+
+    #[Test]
+    public function an_old_approval_is_not_acted_on(): void
+    {
+        VatssaDiscordState::put(Sync::BOT_APPROVE, ['by' => 1, 'until' => now()->subMinute()->timestamp]);
+
+        $this->postJson(route('api.vatssa.discord-queue.claim'), [], ['Authorization' => 'Bearer ' . self::TOKEN])->assertJsonPath('approve', false);
+    }
+
+    #[Test]
+    public function searching_roles_keeps_picks_and_does_not_recalculate_the_preview(): void
+    {
+        $this->roleOnServer(self::ROLE, 'Streamer');
+        $this->roleOnServer(self::ROLE2, 'Examiner');
+        $editor = Livewire::actingAs($this->admin())->test(VatssaDiscordRuleEditor::class, ['ruleId' => null])
+            ->set('name', 'Search')->set('roles', [self::ROLE]);
+
+        DB::enableQueryLog();
+        $editor->set('roleSearch', 'exam')->assertSee('Examiner')->assertDontSee('Streamer');
+        $this->assertSame([], collect(DB::getQueryLog())->pluck('query')->filter(fn ($q) => str_contains($q, 'vatssa_discord_members'))->all());
+
+        $editor->set('roleSearch', '')->assertSet('roles', [self::ROLE])->assertSee('Streamer');
     }
 }

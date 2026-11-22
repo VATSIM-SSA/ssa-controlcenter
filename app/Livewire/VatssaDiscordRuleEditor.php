@@ -35,6 +35,15 @@ class VatssaDiscordRuleEditor extends Component
 
     public string $dropped = 'keep';
 
+    /**
+     * The last preview. Kept, because working it out evaluates every member twice and a
+     * search keystroke must not pay for that.
+     *
+     * @var array<string, mixed>
+     */
+    #[Locked]
+    public array $impact = [];
+
     public bool $confirmingDelete = false;
 
     // Runs on every Livewire request, where the page controller's check does not.
@@ -48,6 +57,7 @@ class VatssaDiscordRuleEditor extends Component
         $this->ruleId = $ruleId;
         if ($ruleId === null) {
             $this->conditions = [$store->blankRow()];
+            $this->impact = $this->effect($store);
 
             return;
         }
@@ -57,17 +67,34 @@ class VatssaDiscordRuleEditor extends Component
         $this->enabled = (bool) $rule->enabled;
         $this->roles = $rule->roles;
         $this->conditions = array_map(fn ($c) => $store->toRow($c), $rule->conditions);
+        $this->impact = $this->effect($store);
+    }
+
+    /**
+     * `global` exists only for CC roles. Left behind, it would show as "any area" and fail on save.
+     */
+    public function updated(string $property, mixed $value): void
+    {
+        if (preg_match('/^conditions\.(\d+)\.type$/', $property, $match) && $value !== 'cc_role'
+            && ($this->conditions[(int) $match[1]]['area'] ?? null) === 'global') {
+            $this->conditions[(int) $match[1]]['area'] = 'any';
+        }
+        if (! in_array($property, ['roleSearch', 'dropped', 'description'], true)) {
+            $this->impact = $this->effect(app(VatssaDiscordRuleStore::class));
+        }
     }
 
     public function addCondition(VatssaDiscordRuleStore $store): void
     {
         $this->conditions[] = $store->blankRow();
+        $this->impact = $this->effect($store);
     }
 
-    public function removeCondition(int $index): void
+    public function removeCondition(int $index, VatssaDiscordRuleStore $store): void
     {
         unset($this->conditions[$index]);
         $this->conditions = array_values($this->conditions);
+        $this->impact = $this->effect($store);
     }
 
     private function form(): array
@@ -76,22 +103,21 @@ class VatssaDiscordRuleEditor extends Component
             'conditions' => $this->conditions, 'roles' => $this->roles];
     }
 
-    public function save(VatssaDiscordRuleStore $store)
+    public function save(VatssaDiscordRuleStore $store): void
     {
         $data = $store->validate($this->form(), $this->ruleId);
         $store->save($this->ruleId, $data, $this->ruleId ? 'updated' : 'created', $this->dropped === 'remove');
         session()->flash('success', 'Rule saved. Affected members are queued.');
 
-        return $this->redirectRoute('vatssa.discord.rules.index');
+        $this->redirectRoute('vatssa.discord.rules.index');
     }
 
-    public function delete(VatssaDiscordRuleStore $store)
+    public function delete(VatssaDiscordRuleStore $store): void
     {
         abort_unless($this->ruleId && DB::table('vatssa_discord_rules')->where('id', $this->ruleId)->exists(), 404);
         $store->save($this->ruleId, null, 'deleted', $this->dropped === 'remove');
         session()->flash('success', 'Rule deleted.');
-
-        return $this->redirectRoute('vatssa.discord.rules.index');
+        $this->redirectRoute('vatssa.discord.rules.index');
     }
 
     private function effect(VatssaDiscordRuleStore $store): array
@@ -109,7 +135,7 @@ class VatssaDiscordRuleEditor extends Component
         }
     }
 
-    public function render(VatssaDiscordRuleStore $store): View
+    public function render(): View
     {
         $guildRoles = DB::table('vatssa_discord_guild_roles')->where('assignable', true)->orderByDesc('position')->orderBy('name')
             ->get(['discord_role_id', 'name'])->map(fn ($r) => ['id' => (string) $r->discord_role_id, 'name' => $r->name]);
@@ -117,8 +143,14 @@ class VatssaDiscordRuleEditor extends Component
         $missing = collect(array_diff($this->roles, $known))->map(fn ($id) => ['id' => (string) $id, 'name' => $id . ' (not seen on the server)']);
         $term = mb_strtolower(trim($this->roleSearch));
 
+        // A rule on an archived or deleted group must show that group, never the first in the list.
+        $selected = collect($this->conditions)->where('type', 'group')->pluck('group')->filter()->map(fn ($id) => (int) $id)->unique();
+        $groupRows = DB::table('vatssa_groups')->where(fn ($q) => $q->whereNull('archived_at')->orWhereIn('id', $selected))->orderBy('name')->get(['id', 'name', 'archived_at']);
+        $groups = $groupRows->map(fn ($g) => ['id' => (string) $g->id, 'label' => $g->name . ($g->archived_at ? ' (archived)' : '')])
+            ->concat($selected->diff($groupRows->pluck('id')->map(fn ($id) => (int) $id))->map(fn ($id) => ['id' => (string) $id, 'label' => '(deleted group)']))->values();
+
         return view('livewire.vatssa-discord-rule-editor', [
-            'effect' => $this->effect($store),
+            'effect' => $this->impact,
             'roleOptions' => $guildRoles->concat($missing)->filter(fn ($r) => $term === '' || str_contains(mb_strtolower($r['name']), $term))->values(),
             'types' => VatssaDiscordRules::TYPES,
             'endorsements' => VatssaDiscordRules::ENDORSEMENTS,
@@ -126,7 +158,7 @@ class VatssaDiscordRuleEditor extends Component
             'ratingNames' => DB::table('ratings')->orderBy('name')->pluck('name')->all(),
             'ccRoles' => array_keys(config('roles.roles')),
             'areas' => DB::table('areas')->orderBy('name')->get(['id', 'name']),
-            'groups' => DB::table('vatssa_groups')->whereNull('archived_at')->orderBy('name')->get(['id', 'name']),
+            'groups' => $groups,
         ]);
     }
 }

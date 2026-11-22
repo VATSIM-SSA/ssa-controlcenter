@@ -70,7 +70,7 @@
                                     </select>
                                 @elseif($c['type'] === 'group')
                                     <select class="form-select form-select-sm w-auto" wire:model.live="conditions.{{ $i }}.group" aria-label="Group">
-                                        @forelse($groups as $group)<option value="{{ $group->id }}">{{ $group->name }}</option>@empty<option value="">No groups yet</option>@endforelse
+                                        @forelse($groups as $group)<option value="{{ $group['id'] }}">{{ $group['label'] }}</option>@empty<option value="">No groups yet</option>@endforelse
                                     </select>
                                 @endif
 

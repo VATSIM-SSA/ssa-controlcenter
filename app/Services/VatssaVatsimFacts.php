@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use anlutro\LaravelSettings\Facade as Setting;
 use App\Helpers\VatsimRating;
 use App\Http\Controllers\VatssaDiscordSyncController as Sync;
 use App\Models\User;
@@ -50,7 +49,7 @@ class VatssaVatsimFacts
         $owner = config('app.owner_code');
         $items = $this->fetchDivision($owner);
 
-        $last = (int) Setting::get('vatssaVatsimPullCount', 0);
+        $last = (int) VatssaDiscordState::get('vatsim_pull_count', 0);
         if ($last && $items->count() < $last * (1 - self::MAX_DROP)) {
             throw new RuntimeException("Division list fell from {$last} to {$items->count()}; refused.");
         }
@@ -79,7 +78,10 @@ class VatssaVatsimFacts
                 DB::table(self::TABLE)->upsert($chunk->values()->all(), ['cid'], ['rating', 'division', 'in_org', 'source', 'needs_lookup', 'fetched_at', 'checked_at']);
             }
             // Off the list since last night: keep the old fact until VATSIM confirms.
-            DB::table(self::TABLE)->where('in_org', true)->where('fetched_at', '<', $now)->update(['in_org' => false, 'needs_lookup' => true]);
+            $offList = DB::table(self::TABLE)->where('in_org', true)->pluck('cid')->reject(fn ($cid) => $onList->has((int) $cid));
+            foreach ($offList->chunk(500) as $chunk) {
+                DB::table(self::TABLE)->whereIn('cid', $chunk->values())->update(['in_org' => false, 'needs_lookup' => true]);
+            }
 
             $users = DB::table('users')->where('email', '!=', Sync::PSEUDONYMISED_EMAIL)->get(['id', 'rating', 'division', 'refresh_token'])
                 ->reject(fn ($user) => $onList->has((int) $user->id));
@@ -97,9 +99,8 @@ class VatssaVatsimFacts
             }
         });
 
-        Setting::set('vatssaVatsimPullCount', $items->count());
-        Setting::set('vatssaVatsimPullAt', $now->toIso8601String());
-        Setting::save();
+        VatssaDiscordState::put('vatsim_pull_count', $items->count());
+        VatssaDiscordState::put('vatsim_pull_at', $now->toIso8601String());
 
         // A saved user queues itself; this is for people with no CC account.
         $changed = $rows->filter(fn ($row) => ! $ccUsers->has($row['cid']) && ($old = $before->get($row['cid']))
@@ -122,55 +123,68 @@ class VatssaVatsimFacts
 
         foreach ($rows as $row) {
             Sleep::for(1)->second();
-            $now = now();
             try {
-                $response = Http::withUserAgent(self::USER_AGENT)->acceptJson()->timeout(10)->get(self::API . "/members/{$row->cid}");
+                $outcome = $this->checkOne($row, $owner);
             } catch (\Throwable $e) {
+                // One bad row must not sit at the head of the line and block everyone else.
                 report($e);
-                DB::table(self::TABLE)->where('cid', $row->cid)->update(['checked_at' => $now]);
+                DB::table(self::TABLE)->where('cid', $row->cid)->update(['checked_at' => now()]);
 
                 continue;
             }
-
-            if ($response->status() === 429) {
+            if ($outcome === 'stop') {
                 break;
             }
-            if ($response->status() === 404) {
-                DB::table(self::TABLE)->where('cid', $row->cid)->update(['rating' => null, 'division' => null, 'in_org' => false,
-                    'source' => 'lookup', 'needs_lookup' => false, 'fetched_at' => $now, 'checked_at' => $now]);
-                $done++;
-
-                continue;
-            }
-            $body = $response->successful() ? $response->json() : null;
-            if (! is_array($body) || (int) ($body['id'] ?? 0) !== (int) $row->cid || ! is_numeric($body['rating'] ?? null) || empty($body['division_id'])) {
-                DB::table(self::TABLE)->where('cid', $row->cid)->update(['checked_at' => $now]);
-
-                continue;
-            }
-
-            $user = User::where('id', $row->cid)->where('email', '!=', Sync::PSEUDONYMISED_EMAIL)->first();
-            if ($user && config('vatssa.vatsim_write_users') && $user->division === $owner && $body['division_id'] !== $owner) {
-                if ($this->leavesLeft() <= 0) {
-                    DB::table(self::TABLE)->where('cid', $row->cid)->update(['checked_at' => $now]);
-
-                    continue;
-                }
-                $this->countLeave();
-            }
-            if ($user) {
-                $this->applyToUser($user, $body);
-            }
-
-            DB::table(self::TABLE)->where('cid', $row->cid)->update(['rating' => (int) $body['rating'], 'division' => (string) $body['division_id'],
-                'source' => 'lookup', 'needs_lookup' => false, 'fetched_at' => $now, 'checked_at' => $now]);
-            if ($row->rating === null || (int) $row->rating !== (int) $body['rating'] || $row->division !== (string) $body['division_id']) {
-                Sync::queueAuto((int) $row->cid);
-            }
-            $done++;
+            $done += $outcome === 'done' ? 1 : 0;
         }
 
         return $done;
+    }
+
+    /**
+     * Ask VATSIM about one member. Returns done, retry (no usable answer) or stop (rate limited).
+     */
+    private function checkOne(object $row, string $owner): string
+    {
+        $now = now();
+        $retry = function () use ($row, $now) {
+            DB::table(self::TABLE)->where('cid', $row->cid)->update(['checked_at' => $now]);
+
+            return 'retry';
+        };
+
+        $response = Http::withUserAgent(self::USER_AGENT)->acceptJson()->timeout(10)->get(self::API . "/members/{$row->cid}");
+        if ($response->status() === 429) {
+            return 'stop';
+        }
+        if ($response->status() === 404) {
+            DB::table(self::TABLE)->where('cid', $row->cid)->update(['rating' => null, 'division' => null, 'in_org' => false,
+                'source' => 'lookup', 'needs_lookup' => false, 'fetched_at' => $now, 'checked_at' => $now]);
+
+            return 'done';
+        }
+        $body = $response->successful() ? $response->json() : null;
+        if (! is_array($body) || (int) ($body['id'] ?? 0) !== (int) $row->cid || ! is_numeric($body['rating'] ?? null)
+            || ! is_string($body['division_id'] ?? null) || $body['division_id'] === '') {
+            return $retry();
+        }
+
+        $user = User::where('id', $row->cid)->where('email', '!=', Sync::PSEUDONYMISED_EMAIL)->first();
+        if ($user && config('vatssa.vatsim_write_users') && $user->division === $owner && $body['division_id'] !== $owner
+            && ! $this->takeLeave()) {
+            return $retry();
+        }
+        if ($user) {
+            $this->applyToUser($user, $body);
+        }
+
+        DB::table(self::TABLE)->where('cid', $row->cid)->update(['rating' => (int) $body['rating'], 'division' => $body['division_id'],
+            'source' => 'lookup', 'needs_lookup' => false, 'fetched_at' => $now, 'checked_at' => $now]);
+        if ($row->rating === null || (int) $row->rating !== (int) $body['rating'] || $row->division !== $body['division_id']) {
+            Sync::queueAuto((int) $row->cid);
+        }
+
+        return 'done';
     }
 
     /**
@@ -205,17 +219,21 @@ class VatssaVatsimFacts
         }
     }
 
-    private function leavesLeft(): int
+    private function leavesKey(): string
     {
-        [$day, $count] = array_pad(explode(':', (string) Setting::get('vatssaVatsimLeaves', '')), 2, 0);
-
-        return $day === now()->toDateString() ? self::MAX_LEAVES_PER_DAY - (int) $count : self::MAX_LEAVES_PER_DAY;
+        return 'vatsim_leaves:' . now()->toDateString();
     }
 
-    private function countLeave(): void
+    private function leavesLeft(): int
     {
-        Setting::set('vatssaVatsimLeaves', now()->toDateString() . ':' . (self::MAX_LEAVES_PER_DAY - $this->leavesLeft() + 1));
-        Setting::save();
+        return self::MAX_LEAVES_PER_DAY - (int) VatssaDiscordState::get($this->leavesKey(), 0);
+    }
+
+    private function takeLeave(): bool
+    {
+        VatssaDiscordState::pruneSeries('vatsim_leaves:', $this->leavesKey());
+
+        return VatssaDiscordState::reserve($this->leavesKey(), self::MAX_LEAVES_PER_DAY);
     }
 
     /**
@@ -247,7 +265,7 @@ class VatssaVatsimFacts
         return [
             'data' => $rows->filter(fn ($row) => $row->rating !== null && $row->division !== null)
                 ->map(fn ($row) => ['rating' => (int) $row->rating, 'division' => $row->division])->all(),
-            'pulled_at' => Setting::get('vatssaVatsimPullAt'),
+            'pulled_at' => VatssaDiscordState::get('vatsim_pull_at'),
             // Members whose check is on hold because today's limit on leavers is used up.
             'leaves_waiting' => ! config('vatssa.vatsim_write_users') || $this->leavesLeft() > 0 ? 0 : DB::table(self::TABLE)->where('needs_lookup', true)
                 ->whereIn('cid', DB::table('users')->where('division', config('app.owner_code'))->select('id'))->count(),
@@ -301,8 +319,13 @@ class VatssaVatsimFacts
     private function markForLookup(Collection $cids): void
     {
         foreach ($cids->chunk(500) as $chunk) {
-            DB::table(self::TABLE)->insertOrIgnore($chunk->map(fn ($cid) => ['cid' => $cid, 'needs_lookup' => true])->values()->all());
-            DB::table(self::TABLE)->whereIn('cid', $chunk->values())->update(['needs_lookup' => true]);
+            $erased = DB::table('users')->whereIn('id', $chunk->values())->where('email', Sync::PSEUDONYMISED_EMAIL)->pluck('id')->map(fn ($id) => (int) $id);
+            $ids = $chunk->reject(fn ($cid) => $erased->contains((int) $cid))->values();
+            if ($ids->isEmpty()) {
+                continue;
+            }
+            DB::table(self::TABLE)->insertOrIgnore($ids->map(fn ($cid) => ['cid' => $cid, 'needs_lookup' => true])->all());
+            DB::table(self::TABLE)->whereIn('cid', $ids)->update(['needs_lookup' => true]);
         }
     }
 

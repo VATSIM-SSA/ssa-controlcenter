@@ -8,6 +8,8 @@ use App\Models\Area;
 use App\Models\Training;
 use App\Models\User;
 use App\Services\VatssaVatsimFacts;
+use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Factory;
@@ -338,5 +340,56 @@ class VatssaVatsimFactsTest extends TestCase
         $this->assertSame('EUD', $this->fact(1000002)->division);
         $this->artisan('vatssa:vatsim-leavers')->expectsOutputToContain('1 confirmed')->assertSuccessful();
         $this->assertSame('SSA', DB::table('users')->where('id', 1000002)->value('division'));
+    }
+
+    #[Test]
+    public function the_shrink_guard_survives_a_stale_settings_save(): void
+    {
+        $this->org(array_map(fn ($i) => $this->item(1000000 + $i), range(1, 10)));
+        app(VatssaVatsimFacts::class)->pull();
+        DB::table(config('settings.table', 'settings'))->delete();
+
+        Http::swap(new Factory);
+        $this->org(array_map(fn ($i) => $this->item(1000000 + $i), range(1, 5)));
+        $this->artisan('vatssa:vatsim-pull')->assertFailed();
+    }
+
+    #[Test]
+    public function one_bad_row_does_not_block_the_others(): void
+    {
+        DB::table('vatssa_vatsim_members')->insert([['cid' => 1000001, 'needs_lookup' => true], ['cid' => 1000002, 'needs_lookup' => true]]);
+        if (DB::getDriverName() === 'sqlite') { // MySQL refuses the long value by itself
+            DB::unprepared("CREATE TRIGGER vatssa_test_long BEFORE UPDATE OF division ON vatssa_vatsim_members WHEN length(NEW.division) > 10 BEGIN SELECT RAISE(ABORT, 'too long'); END");
+        }
+        Http::fake(fn ($request) => (int) basename($request->url()) === 1000001
+            ? Http::response(['id' => 1000001, 'rating' => 3, 'division_id' => str_repeat('X', 500)])
+            : Http::response(['id' => 1000002, 'rating' => 3, 'division_id' => 'EUD']));
+
+        app(VatssaVatsimFacts::class)->runLookups();
+
+        $this->assertSame([1, true], [(int) $this->fact(1000001)->needs_lookup, $this->fact(1000001)->checked_at !== null]);
+        $this->assertSame(0, (int) $this->fact(1000002)->needs_lookup);
+    }
+
+    #[Test]
+    public function the_lookup_lock_expires_after_a_crash(): void
+    {
+        $this->app->make(Kernel::class);
+        $event = collect(app(Schedule::class)->events())
+            ->first(fn ($e) => str_contains((string) $e->command, 'vatsim-pull') && str_contains((string) $e->command, '--lookups'));
+
+        $this->assertNotNull($event);
+        $this->assertSame(15, $event->expiresAt);
+    }
+
+    #[Test]
+    public function an_erased_member_is_not_put_back_in_line(): void
+    {
+        $user = $this->user(1000001);
+        $user->email = Sync::PSEUDONYMISED_EMAIL;
+        $user->save();
+
+        VatssaVatsimFacts::refresh(1000001);
+        $this->assertNull($this->fact(1000001));
     }
 }
