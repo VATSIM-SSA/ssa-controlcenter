@@ -8,6 +8,8 @@ use App\Models\Area;
 use App\Models\Training;
 use App\Models\User;
 use App\Services\VatssaVatsimFacts;
+use Illuminate\Console\Events\CommandFinished;
+use Illuminate\Console\Events\CommandStarting;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -18,6 +20,8 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Sleep;
 use PHPUnit\Framework\Attributes\Test;
+use Symfony\Component\Console\Input\ArrayInput;
+use Symfony\Component\Console\Output\NullOutput;
 use Tests\TestCase;
 
 // VATSSA: CC owns VATSIM rating and division for the Discord role sync.
@@ -218,19 +222,46 @@ class VatssaVatsimFactsTest extends TestCase
     }
 
     #[Test]
-    public function lookups_stand_aside_for_the_atc_hours_job(): void
+    public function lookups_stand_aside_while_the_atc_hours_job_runs(): void
     {
-        // The schedule reads the clock when it is built, as each minute's schedule:run does.
-        $lookupsAt = function (int $hour, int $minute) {
-            $this->travelTo(now()->setTime($hour, $minute));
-            app()->forgetInstance(Schedule::class);
+        DB::table('vatssa_vatsim_members')->insert(['cid' => 1000001, 'needs_lookup' => true]);
+        Http::fake(['api.vatsim.net/*' => Http::response(['detail' => 'Not Found'], 404)]);
 
-            return collect(app(Schedule::class)->events())
-                ->first(fn ($e) => str_contains((string) $e->command, 'vatsim-pull') && str_contains((string) $e->command, '--lookups'));
-        };
+        event(new CommandStarting('update:atc:status', new ArrayInput([]), new NullOutput));
+        $this->assertSame(0, app(VatssaVatsimFacts::class)->runLookups());
+        Http::assertNothingSent();
 
-        $this->assertFalse($lookupsAt(1, 10)->filtersPass(app()));
-        $this->assertTrue($lookupsAt(2, 0)->filtersPass(app()));
+        event(new CommandFinished('update:atc:status', new ArrayInput([]), new NullOutput, 0));
+        $this->assertSame(1, app(VatssaVatsimFacts::class)->runLookups());
+    }
+
+    #[Test]
+    public function a_retry_after_date_is_obeyed(): void
+    {
+        $this->freezeTime();
+        DB::table('vatssa_vatsim_members')->insert(['cid' => 1000001, 'needs_lookup' => true]);
+        Http::fake(['api.vatsim.net/*' => Http::response([], 429, ['Retry-After' => now()->addHours(2)->toRfc7231String()])]);
+
+        app(VatssaVatsimFacts::class)->runLookups();
+        $this->travel(119)->minutes();
+        app(VatssaVatsimFacts::class)->runLookups();
+        Http::assertSentCount(1);
+    }
+
+    #[Test]
+    public function a_rate_limit_on_the_division_list_holds_the_checks(): void
+    {
+        config(['vatsim.core_api_token' => 'test']);
+        DB::table('vatssa_vatsim_members')->insert(['cid' => 1000001, 'needs_lookup' => true]);
+        Http::fake(['api.vatsim.net/*' => Http::response([], 429, ['Retry-After' => '120'])]);
+
+        try {
+            app(VatssaVatsimFacts::class)->pull();
+            $this->fail('The pull should refuse a rate limit.');
+        } catch (\RuntimeException) {
+        }
+        app(VatssaVatsimFacts::class)->runLookups();
+        Http::assertSentCount(1);
     }
 
     #[Test]

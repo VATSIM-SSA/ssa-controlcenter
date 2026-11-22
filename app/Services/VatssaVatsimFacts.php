@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Helpers\VatsimRating;
 use App\Http\Controllers\VatssaDiscordSyncController as Sync;
 use App\Models\User;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -119,7 +120,7 @@ class VatssaVatsimFacts
      */
     public function runLookups(int $limit = self::LOOKUPS_PER_RUN): int
     {
-        if (now()->timestamp < (int) VatssaDiscordState::get('vatsim_blocked_until', 0)) {
+        if ($this->lookupsHeld()) {
             return 0;
         }
         $done = 0;
@@ -130,6 +131,9 @@ class VatssaVatsimFacts
 
         foreach ($rows as $row) {
             Sleep::for(1)->second();
+            if ($this->lookupsHeld()) {
+                break;
+            }
             try {
                 $outcome = $this->checkOne($row, $owner);
             } catch (\Throwable $e) {
@@ -149,6 +153,32 @@ class VatssaVatsimFacts
     }
 
     /**
+     * True during VATSIM's Retry-After, and while the ATC hours job is using nearly all of its limit.
+     */
+    private function lookupsHeld(): bool
+    {
+        return now()->timestamp < max((int) VatssaDiscordState::get('vatsim_blocked_until', 0), (int) VatssaDiscordState::get('vatsim_atc_job_until', 0));
+    }
+
+    /**
+     * Record VATSIM's Retry-After, in seconds or as a date. At most a day, so a bad value cannot stop checks for good.
+     */
+    private function holdLookups(Response $response): void
+    {
+        $wait = trim($response->header('Retry-After'));
+        if (ctype_digit($wait)) {
+            $seconds = (int) $wait;
+        } else {
+            try {
+                $seconds = $wait === '' ? 300 : (int) ceil(now()->diffInSeconds(Carbon::parse($wait), false));
+            } catch (\Throwable) {
+                $seconds = 300;
+            }
+        }
+        VatssaDiscordState::put('vatsim_blocked_until', now()->timestamp + min(max($seconds, 0) + 1, 86400));
+    }
+
+    /**
      * Ask VATSIM about one member. Returns done, retry (no usable answer) or stop (rate limited).
      */
     private function checkOne(object $row, string $owner): string
@@ -162,8 +192,7 @@ class VatssaVatsimFacts
 
         $response = Http::withUserAgent(self::USER_AGENT)->acceptJson()->timeout(10)->get(self::API . "/members/{$row->cid}");
         if ($response->status() === 429) {
-            $wait = $response->header('Retry-After');
-            VatssaDiscordState::put('vatsim_blocked_until', now()->timestamp + (is_numeric($wait) ? min(max((int) $wait, 0) + 1, 3600) : 300));
+            $this->holdLookups($response);
 
             return 'stop';
         }
@@ -359,6 +388,9 @@ class VatssaVatsimFacts
         do {
             $response = Http::withUserAgent(self::USER_AGENT)->withHeaders(['X-API-Key' => $token])->acceptJson()->timeout(60)
                 ->get($url, ['include_inactive' => 1, 'limit' => 1000, 'offset' => $items->count()]);
+            if ($response->status() === 429) {
+                $this->holdLookups($response);
+            }
             $body = $response->successful() ? $response->json() : null;
             if (! is_array($body) || ! isset($body['count']) || ! is_array($body['items'] ?? null)) {
                 throw new RuntimeException('VATSIM gave no usable division list (HTTP ' . $response->status() . ').');

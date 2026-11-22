@@ -12,10 +12,13 @@ use App\Models\Training;
 use App\Models\User;
 use App\Models\VatssaGroup;
 use App\Models\VatssaGroupMember;
+use App\Services\VatssaDiscordState;
 use App\Services\VatssaTrainingFlags;
 use App\Services\VatssaVatsimFacts;
 use App\Tasks\Types\TheoreticalExam;
 use Illuminate\Auth\Events\Login;
+use Illuminate\Console\Events\CommandFinished;
+use Illuminate\Console\Events\CommandStarting;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Event;
@@ -122,10 +125,21 @@ class VatssaServiceProvider extends ServiceProvider
         // After upstream's member refresh (04:00), so a live login's data is this morning's.
         $this->callAfterResolving(Schedule::class, function (Schedule $schedule) {
             $schedule->command('vatssa:vatsim-pull')->dailyAt('04:30');
-            // In the background, so a slow VATSIM answer cannot hold up upstream's jobs. Not
-            // during the 01:00 ATC hours job, which uses nearly all of VATSIM's limit.
-            $schedule->command('vatssa:vatsim-pull --lookups')->everyMinute()->unlessBetween('01:00', '01:30')->withoutOverlapping(15)->runInBackground();
+            // In the background, so a slow VATSIM answer cannot hold up upstream's jobs.
+            $schedule->command('vatssa:vatsim-pull --lookups')->everyMinute()->withoutOverlapping(15)->runInBackground();
             $schedule->command('vatssa:discord-daily')->dailyAt('06:00');
+        });
+
+        // The ATC hours job uses nearly all of VATSIM's limit. The expiry covers a job that dies.
+        Event::listen(CommandStarting::class, function (CommandStarting $event) {
+            if ($event->command === 'update:atc:status') {
+                VatssaDiscordState::put('vatsim_atc_job_until', now()->addHours(3)->timestamp);
+            }
+        });
+        Event::listen(CommandFinished::class, function (CommandFinished $event) {
+            if ($event->command === 'update:atc:status') {
+                VatssaDiscordState::put('vatsim_atc_job_until', 0);
+            }
         });
 
         $queue = function ($model): void {
