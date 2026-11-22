@@ -3,6 +3,9 @@
 namespace Tests\Feature;
 
 use App\Http\Controllers\VatssaDiscordSyncController as Sync;
+use App\Livewire\VatssaDiscordMembers;
+use App\Livewire\VatssaDiscordRuleEditor;
+use App\Livewire\VatssaDiscordRuleList;
 use App\Models\Area;
 use App\Models\AtcActivity;
 use App\Models\Endorsement;
@@ -11,9 +14,12 @@ use App\Models\Training;
 use App\Models\User;
 use App\Models\VatssaGroup;
 use App\Models\VatssaGroupMember;
+use App\Services\PermissionMatrix;
 use App\Services\VatssaDiscordRules;
+use App\Services\VatssaDiscordRuleStore;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Livewire\Livewire;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
@@ -299,7 +305,9 @@ class VatssaDiscordRulesTest extends TestCase
         $mentor = User::factory()->create();
         $mentor->roleAssignments()->create(['role' => 'mentor', 'area_id' => $this->area->id]);
         $this->actingAs($mentor->fresh())->get(route('vatssa.discord.rules.index'))->assertForbidden();
-        $this->actingAs($mentor)->post(route('vatssa.discord.rules.store'), $this->body())->assertForbidden();
+        $this->actingAs($mentor)->get(route('vatssa.discord.rules.create'))->assertForbidden();
+        Livewire::actingAs($mentor)->test(VatssaDiscordRuleList::class)->assertForbidden();
+        Livewire::actingAs($mentor)->test(VatssaDiscordRuleEditor::class, ['ruleId' => null])->assertForbidden();
 
         $this->actingAs($this->admin())->get(route('vatssa.discord.rules.index'))->assertOk();
     }
@@ -314,7 +322,8 @@ class VatssaDiscordRulesTest extends TestCase
         $admin = $this->admin();
 
         $this->actingAs($admin)->get(route('vatssa.discord.rules.create'))->assertOk()->assertSee('Streamer');
-        $this->actingAs($admin)->post(route('vatssa.discord.rules.store'), $this->body())->assertRedirect(route('vatssa.discord.rules.index'));
+        Livewire::actingAs($admin)->test(VatssaDiscordRuleEditor::class, ['ruleId' => null])
+            ->set('name', 'New rule')->set('roles', [self::ROLE])->call('save')->assertHasNoErrors()->assertRedirect(route('vatssa.discord.rules.index'));
 
         $this->assertSame([self::ROLE], $this->rolesFor($member->id));
         $this->assertSame('created', DB::table('vatssa_discord_rule_audit')->value('action'));
@@ -328,15 +337,16 @@ class VatssaDiscordRulesTest extends TestCase
         $this->roleOnServer(self::ROLE);
         $this->roleOnServer(self::ROLE2, 'Above the bot', false);
         $admin = $this->admin();
-        $bad = [
-            ['conditions' => []], ['roles' => []], ['roles' => [self::ROLE2]], ['roles' => ['200000000000000009']],
-            ['conditions' => [['type' => 'hacked']]], ['conditions' => [['type' => 'division', 'division' => 'x']]],
-            ['conditions' => [['type' => 'rating', 'rating_mode' => 'in', 'ratings' => [99]]]],
-            ['conditions' => [['type' => 'group', 'group' => 999]]],
-            ['conditions' => [['type' => 'cc_role', 'role' => 'nope']]],
-        ];
-        foreach ($bad as $over) {
-            $this->actingAs($admin)->post(route('vatssa.discord.rules.store'), $this->body($over))->assertSessionHasErrors();
+        $editor = fn () => Livewire::actingAs($admin)->test(VatssaDiscordRuleEditor::class, ['ruleId' => null])->set('name', 'Bad');
+
+        $editor()->set('roles', [])->call('save')->assertHasErrors('roles');
+        $editor()->set('roles', [self::ROLE2])->call('save')->assertHasErrors('roles');
+        $editor()->set('roles', ['200000000000000009'])->call('save')->assertHasErrors('roles');
+        $editor()->set('roles', [self::ROLE])->set('conditions', [])->call('save')->assertHasErrors('conditions');
+        foreach ([['type' => 'hacked'], ['division' => 'x'], ['type' => 'rating', 'rating_mode' => 'in', 'ratings' => ['99']],
+            ['type' => 'group', 'group' => '999'], ['type' => 'cc_role', 'role' => 'nope']] as $over) {
+            $row = app(VatssaDiscordRuleStore::class)->blankRow();
+            $editor()->set('roles', [self::ROLE])->set('conditions', [[...$row, ...$over]])->call('save')->assertHasErrors();
         }
         $this->assertSame(0, DB::table('vatssa_discord_rules')->count());
     }
@@ -348,8 +358,9 @@ class VatssaDiscordRulesTest extends TestCase
         $member = $this->person(3);
         DB::table('vatssa_discord_members')->insert(['discord_id' => self::D, 'user_id' => $member->id, 'vatsim_linked' => true, 'role_ids' => '[]', 'last_seen_at' => now()]);
 
-        $this->actingAs($this->admin())->postJson(route('vatssa.discord.rules.preview'), $this->body())->assertOk()
-            ->assertJsonPath('adds.0.role', 'Streamer')->assertJsonPath('adds.0.members', 1)->assertJsonPath('counted', 1);
+        Livewire::actingAs($this->admin())->test(VatssaDiscordRuleEditor::class, ['ruleId' => null])
+            ->set('name', 'New rule')->set('roles', [self::ROLE])
+            ->assertSee('+ Streamer: 1 member')->assertSee('From 1 accounts');
         $this->assertSame(0, DB::table('vatssa_discord_rules')->count());
     }
 
@@ -360,11 +371,11 @@ class VatssaDiscordRulesTest extends TestCase
         $admin = $this->admin();
 
         $keep = $this->rule([['division', ['value' => 'home']]], [self::ROLE], true, 'Keep');
-        $this->actingAs($admin)->delete(route('vatssa.discord.rules.destroy', $keep))->assertRedirect();
+        Livewire::actingAs($admin)->test(VatssaDiscordRuleEditor::class, ['ruleId' => $keep])->set('confirmingDelete', true)->call('delete')->assertRedirect();
         $this->assertSame([], app(VatssaDiscordRules::class)->managed()); // no longer touched
 
         $remove = $this->rule([['division', ['value' => 'home']]], [self::ROLE], true, 'Remove');
-        $this->actingAs($admin)->delete(route('vatssa.discord.rules.destroy', $remove), ['dropped' => 'remove'])->assertRedirect();
+        Livewire::actingAs($admin)->test(VatssaDiscordRuleEditor::class, ['ruleId' => $remove])->set('confirmingDelete', true)->set('dropped', 'remove')->call('delete')->assertRedirect();
         $this->assertSame([self::ROLE], app(VatssaDiscordRules::class)->managed()); // managed, wanted by nobody
         $this->assertSame([], $this->rolesFor($this->person(3)->id));
     }
@@ -375,24 +386,32 @@ class VatssaDiscordRulesTest extends TestCase
         $this->roleOnServer(self::ROLE);
         $this->roleOnServer(self::ROLE2);
         $admin = $this->admin();
-        $this->actingAs($admin)->post(route('vatssa.discord.rules.store'), $this->body());
-        $id = DB::table('vatssa_discord_rules')->value('id');
+        Livewire::actingAs($admin)->test(VatssaDiscordRuleEditor::class, ['ruleId' => null])->set('name', 'New rule')->set('roles', [self::ROLE])->call('save');
+        $id = (int) DB::table('vatssa_discord_rules')->value('id');
 
-        $this->actingAs($admin)->patch(route('vatssa.discord.rules.update', $id), $this->body(['name' => 'Changed', 'roles' => [self::ROLE2]]))->assertRedirect();
-        $this->actingAs($admin)->post(route('vatssa.discord.rules.restore', DB::table('vatssa_discord_rule_audit')->max('id')))->assertRedirect();
+        Livewire::actingAs($admin)->test(VatssaDiscordRuleEditor::class, ['ruleId' => $id])->set('name', 'Changed')->set('roles', [self::ROLE2])->call('save')->assertHasNoErrors();
+        $list = Livewire::actingAs($admin)->test(VatssaDiscordRuleList::class);
+        $list->call('restore', (int) DB::table('vatssa_discord_rule_audit')->max('id'));
         $this->assertSame('New rule', DB::table('vatssa_discord_rules')->where('id', $id)->value('name'));
         $this->assertSame(self::ROLE, (string) DB::table('vatssa_discord_rule_roles')->where('rule_id', $id)->value('discord_role_id'));
 
-        $this->actingAs($admin)->delete(route('vatssa.discord.rules.destroy', $id));
-        $this->actingAs($admin)->post(route('vatssa.discord.rules.restore', DB::table('vatssa_discord_rule_audit')->max('id')))->assertRedirect();
+        Livewire::actingAs($admin)->test(VatssaDiscordRuleEditor::class, ['ruleId' => $id])->set('confirmingDelete', true)->call('delete');
+        Livewire::actingAs($admin)->test(VatssaDiscordRuleList::class)->call('restore', (int) DB::table('vatssa_discord_rule_audit')->max('id'));
         $this->assertSame('New rule', DB::table('vatssa_discord_rules')->where('id', $id)->value('name'));
     }
 
     #[Test]
-    public function the_edit_page_loads_an_existing_rule(): void
+    public function the_edit_page_loads_an_existing_rule_and_keeps_its_conditions(): void
     {
-        $id = $this->rule([['rating', ['mode' => 'in', 'values' => [3]]]]);
-        $this->actingAs($this->admin())->get(route('vatssa.discord.rules.edit', $id))->assertOk()->assertSee('Save rule');
+        $id = $this->rule([['rating', ['mode' => 'min', 'value' => 5], true]]);
+        $this->roleOnServer(self::ROLE);
+        $admin = $this->admin();
+        $this->actingAs($admin)->get(route('vatssa.discord.rules.edit', $id))->assertOk()->assertSee('Save rule');
+
+        Livewire::actingAs($admin)->test(VatssaDiscordRuleEditor::class, ['ruleId' => $id])->call('save')->assertHasNoErrors();
+        $saved = DB::table('vatssa_discord_rule_conditions')->where('rule_id', $id)->first();
+        $this->assertSame(['mode' => 'min', 'value' => 5], json_decode($saved->params, true));
+        $this->assertSame(1, (int) $saved->negated);
     }
 
     #[Test]
@@ -422,38 +441,47 @@ class VatssaDiscordRulesTest extends TestCase
     {
         $auth = ['Authorization' => 'Bearer ' . self::TOKEN];
         $admin = $this->admin();
-        $this->actingAs($admin)->get(route('vatssa.discord.rules.index'))->assertSee('Bot offline');
+        Livewire::actingAs($admin)->test(VatssaDiscordRuleList::class)->assertSee('Bot offline');
 
         $status = ['mode' => 'live', 'paused_removals' => true, 'paused_adds' => false, 'frozen' => 1];
         $this->postJson(route('api.vatssa.discord-queue.claim'), ['status' => $status], $auth)->assertJsonPath('approve', false);
-        $this->actingAs($admin)->get(route('vatssa.discord.rules.index'))->assertSee('Paused by a safety limit')->assertSee('Approve and resume');
+        $list = Livewire::actingAs($admin)->test(VatssaDiscordRuleList::class)->assertSee('Paused by a safety limit')->assertSee('Approve and resume');
 
-        $this->actingAs($admin)->post(route('vatssa.discord.rules.approve'))->assertRedirect();
+        $list->call('approve');
         $this->postJson(route('api.vatssa.discord-queue.claim'), ['status' => $status], $auth)->assertJsonPath('approve', true);
         $this->postJson(route('api.vatssa.discord-queue.claim'), ['status' => $status], $auth)->assertJsonPath('approve', false);
 
         $this->travel(5)->minutes();
-        $this->actingAs($admin)->get(route('vatssa.discord.rules.index'))->assertSee('Bot offline');
+        Livewire::actingAs($admin)->test(VatssaDiscordRuleList::class)->assertSee('Bot offline');
     }
 
     #[Test]
-    public function approval_needs_the_manage_permission(): void
+    public function a_viewer_without_manage_cannot_change_anything(): void
     {
-        $mentor = User::factory()->create();
-        $mentor->roleAssignments()->create(['role' => 'mentor', 'area_id' => $this->area->id]);
-        $this->actingAs($mentor->fresh())->post(route('vatssa.discord.rules.approve'))->assertForbidden();
+        $id = $this->rule([['division', ['value' => 'home']]]);
+        $viewer = User::factory()->create();
+        $viewer->roleAssignments()->create(['role' => 'mentor', 'area_id' => $this->area->id]);
+        config(['roles.matrix.mentor' => [...config('roles.matrix.mentor'), 'vatssa.discord.rules.view']]);
+        app()->forgetInstance(PermissionMatrix::class);
+
+        $list = Livewire::actingAs($viewer->fresh())->test(VatssaDiscordRuleList::class)->assertOk()->assertDontSee('New rule');
+        $list->call('toggle', $id)->assertForbidden();
+        Livewire::actingAs($viewer->fresh())->test(VatssaDiscordRuleList::class)->call('approve')->assertForbidden();
+        $this->assertSame(1, (int) DB::table('vatssa_discord_rules')->where('id', $id)->value('enabled'));
     }
 
     #[Test]
-    public function the_rule_list_groups_by_discord_role(): void
+    public function the_rule_list_groups_by_discord_role_and_searches(): void
     {
         $this->roleOnServer(self::ROLE, 'Approved Controller');
+        $this->roleOnServer(self::ROLE2, 'Streamer');
         $this->rule([['division', ['value' => 'home']]], [self::ROLE], true, 'Approved home');
         $this->rule([['division', ['value' => 'visitor']]], [self::ROLE], true, 'Approved visitor');
+        $this->rule([['division', ['value' => 'home']]], [self::ROLE2], true, 'Stream');
 
-        $page = $this->actingAs($this->admin())->get(route('vatssa.discord.rules.index'))->assertOk();
-        $this->assertSame(1, substr_count($page->getContent(), 'vd-role"'));
-        $page->assertSee('Approved home')->assertSee('Approved visitor')->assertSee('Approved Controller');
+        $list = Livewire::actingAs($this->admin())->test(VatssaDiscordRuleList::class)->assertSee('Approved home')->assertSee('Approved visitor');
+        $this->assertSame(2, substr_count($list->html(), 'class="vd-role"'));
+        $list->set('search', 'streamer')->assertSee('Stream')->assertDontSee('Approved home');
     }
 
     #[Test]
@@ -472,13 +500,19 @@ class VatssaDiscordRulesTest extends TestCase
     }
 
     #[Test]
-    public function the_members_page_keeps_long_ids_exact(): void
+    public function the_members_page_filters_searches_and_keeps_long_ids_exact(): void
     {
-        DB::table('vatssa_discord_members')->insert(['discord_id' => self::D, 'name' => '<b>x</b>', 'vatsim_linked' => false, 'in_server' => true, 'last_seen_at' => now()]);
+        DB::table('vatssa_discord_members')->insert([
+            ['discord_id' => self::D, 'name' => '<b>x</b>', 'vatsim_linked' => false, 'is_bot' => false, 'in_server' => true, 'last_seen_at' => now()],
+            ['discord_id' => '100000000000000002', 'name' => 'robot', 'vatsim_linked' => false, 'is_bot' => true, 'in_server' => true, 'last_seen_at' => now()],
+        ]);
         DB::table('vatssa_discord_member_history')->insert(['discord_id' => self::D, 'event' => 'joined', 'created_at' => now()]);
 
-        $this->actingAs($this->admin())->get(route('vatssa.discord.members'))->assertOk()
-            ->assertSee('d' . self::D, false)->assertDontSee('<b>x</b>', false);
+        $page = Livewire::actingAs($this->admin())->test(VatssaDiscordMembers::class)->assertSee(self::D)->assertDontSeeHtml('<b>x</b>');
+        $page->call('openHistory', self::D)->assertSee('Joined the server')->call('closeHistory')->assertDontSee('Joined the server');
+        $page->call('setTab', 'bots')->assertSee('robot')->assertDontSee(self::D);
+        $page->call('setTab', 'server')->set('search', 'robot')->assertDontSee(self::D);
+        $page->call('openHistory', 'not-an-id')->assertNotFound();
     }
 
     #[Test]
@@ -492,11 +526,8 @@ class VatssaDiscordRulesTest extends TestCase
         DB::table('vatssa_discord_members')->insert(['discord_id' => self::D, 'user_id' => $member->id, 'vatsim_linked' => true,
             'role_ids' => json_encode([self::ROLE, self::ROLE2]), 'last_seen_at' => now()]);
 
-        $admin = $this->admin();
-        $body = fn (array $over = []) => $this->body(['name' => 'Edited rule', 'rule_id' => $id, ...$over]);
-        $this->actingAs($admin)->postJson(route('vatssa.discord.rules.preview'), $body())->assertOk()
-            ->assertJsonPath('adds', [])->assertJsonPath('removes', []);
-        $this->actingAs($admin)->postJson(route('vatssa.discord.rules.preview'), $body(['conditions' => [['type' => 'division', 'division' => 'visitor']]]))
-            ->assertJsonPath('removes.0.role', 'Edited')->assertJsonCount(1, 'removes');
+        Livewire::actingAs($this->admin())->test(VatssaDiscordRuleEditor::class, ['ruleId' => $id])
+            ->assertSee('No role changes.')->assertDontSee('Out of step: 1')
+            ->set('conditions.0.division', 'visitor')->assertSee('− Edited: 1 member');
     }
 }

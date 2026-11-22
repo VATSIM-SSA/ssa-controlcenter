@@ -22,17 +22,10 @@ foreach (array_keys(VatssaTrainingFlags::FLAGS) as $flag) {
 Route::post('/user/{user}/discord-sync', [VatssaDiscordSyncController::class, 'store'])
     ->middleware('throttle:30,1,vatssa-discord-button')->name('vatssa.user.discord-sync');
 Route::get('/discord/members', [VatssaDiscordSyncController::class, 'index'])->name('vatssa.discord.members');
-Route::prefix('discord/rules')->whereNumber(['rule', 'audit'])->name('vatssa.discord.rules.')->controller(VatssaDiscordRuleController::class)->group(function () {
+Route::prefix('discord/rules')->whereNumber('rule')->name('vatssa.discord.rules.')->controller(VatssaDiscordRuleController::class)->group(function () {
     Route::get('/', 'index')->name('index');
     Route::get('/new', 'create')->name('create');
-    Route::post('/', 'store')->name('store');
-    Route::post('/preview', 'preview')->name('preview');
-    Route::post('/approve', 'approve')->name('approve');
-    Route::post('/history/{audit}/restore', 'restore')->name('restore');
     Route::get('/{rule}', 'edit')->name('edit');
-    Route::patch('/{rule}', 'update')->name('update');
-    Route::post('/{rule}/toggle', 'toggle')->name('toggle');
-    Route::delete('/{rule}', 'destroy')->name('destroy');
 });
 
 // Groups: named lists of people by VATSIM ID. Rights in VatssaGroup.

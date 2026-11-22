@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Http\Controllers\VatssaDiscordSyncController as Sync;
+use App\Livewire\VatssaDiscordMembers;
 use App\Models\ApiKey;
 use App\Models\Area;
 use App\Models\AtcActivity;
@@ -14,6 +15,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Testing\TestResponse;
+use Livewire\Livewire;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
@@ -573,7 +575,8 @@ class VatssaDiscordSyncTest extends TestCase
         $this->actingAs($this->withRole('mentor', true))->get(route('vatssa.discord.members'))->assertForbidden();
         $admin = $this->withRole('admin');
         $this->actingAs($admin)->get(route('vatssa.discord.members'))->assertOk()->assertSee('alice')->assertSee('plainbob');
-        $this->actingAs($admin)->get(route('vatssa.discord.members', ['show' => 'not_vatsim']))->assertSee('plainbob')->assertDontSee('alice');
-        $this->actingAs($admin)->get(route('vatssa.discord.members', ['q' => (string) $this->member->id]))->assertSee('alice')->assertDontSee('plainbob');
+        $page = Livewire::actingAs($admin)->test(VatssaDiscordMembers::class);
+        $page->call('setTab', 'not_vatsim')->assertSee('plainbob')->assertDontSee('alice');
+        $page->call('setTab', 'server')->set('search', (string) $this->member->id)->assertSee('alice')->assertDontSee('plainbob');
     }
 }

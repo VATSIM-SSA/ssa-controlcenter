@@ -467,39 +467,13 @@ class VatssaDiscordSyncController extends Controller
     }
 
     /**
-     * Staff page: every Discord account the bot has seen.
+     * Staff page: every Discord account the bot has seen. See App\Livewire\VatssaDiscordMembers.
      */
-    public function index(Request $request, VatssaDiscordRules $rules): View
+    public function index(Request $request): View
     {
         abort_unless($request->user()->hasPermission('vatssa.discord.members.view'), 403);
 
-        $filters = $request->validate(['q' => 'nullable|string|max:100', 'show' => 'nullable|in:server,not_vatsim,bots,left']);
-        $show = $filters['show'] ?? 'server';
-        $search = trim($filters['q'] ?? '');
-
-        $scope = fn (string $tab) => DB::table(self::MEMBERS)
-            ->when($tab === 'server', fn ($q) => $q->where('in_server', true))
-            ->when($tab === 'not_vatsim', fn ($q) => $q->where('in_server', true)->where('is_bot', false)->where('vatsim_linked', false))
-            ->when($tab === 'bots', fn ($q) => $q->where('in_server', true)->where('is_bot', true))
-            ->when($tab === 'left', fn ($q) => $q->where('in_server', false));
-        $counts = collect(['server', 'not_vatsim', 'bots', 'left'])->mapWithKeys(fn ($tab) => [$tab => $scope($tab)->count()]);
-
-        $members = $scope($show)
-            ->when($search !== '', fn ($q) => $q->where(fn ($w) => $w->where('name', 'like', '%' . addcslashes($search, '%_\\') . '%')
-                ->orWhere('discord_id', $search)->orWhere('user_id', ctype_digit($search) ? $search : -1)))
-            ->orderBy('name')->paginate(50)->withQueryString();
-
-        $historyText = DB::table(self::HISTORY)->whereIn('discord_id', $members->pluck('discord_id'))
-            ->orderByDesc('id')->get()->groupBy(fn ($event) => 'd' . $event->discord_id)
-            ->map(fn ($events) => $events->take(30)->map(fn ($event) => [
-                'when' => Carbon::parse($event->created_at)->format('j M Y H:i'),
-                'what' => (self::EVENTS[$event->event] ?? $event->event) . ($event->detail ? ': ' . $event->detail : ''),
-            ])->values());
-
-        return view('vatssa.discord.members', [
-            'members' => $members, 'historyText' => $historyText, 'show' => $show, 'search' => $search, 'counts' => $counts,
-            'managed' => $rules->managed(), 'roleNames' => self::roleNames(),
-        ]);
+        return view('vatssa.discord.members');
     }
 
     /**
