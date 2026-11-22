@@ -322,7 +322,7 @@ mentor only for members they teach. Matrix: `vatssa.discord.members.view`,
 `vatssa.discord.rules.view`, `vatssa.discord.rules.manage`. **CC decides every role** through
 the rules; the bot applies the answer from `POST /api/vatssa/discord-roles`.
 
-**Writes `users`.** The nightly pull (04:30, after upstream's `update:member:data` at
+**Writes `users` only with `VATSSA_VATSIM_WRITE_USERS=true`** (default off; `vatssa:vatsim-leavers` previews it). The nightly pull (04:30, after upstream's `update:member:data` at
 04:00) and individual checks update rating, region, division and subdivision through the
 model. Upstream's `update:member:details` (05:00) then closes trainings and removes
 mentors for anyone who left, so only an individual VATSIM answer naming another division

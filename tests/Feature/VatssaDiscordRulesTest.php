@@ -416,4 +416,87 @@ class VatssaDiscordRulesTest extends TestCase
         $send(self::D, $member->id); // nothing changed: no new queue row
         $this->assertSame(0, DB::table('vatssa_discord_queue')->count());
     }
+
+    #[Test]
+    public function the_page_shows_the_bot_and_approval_reaches_it_once(): void
+    {
+        $auth = ['Authorization' => 'Bearer ' . self::TOKEN];
+        $admin = $this->admin();
+        $this->actingAs($admin)->get(route('vatssa.discord.rules.index'))->assertSee('Bot offline');
+
+        $status = ['mode' => 'live', 'paused_removals' => true, 'paused_adds' => false, 'frozen' => 1];
+        $this->postJson(route('api.vatssa.discord-queue.claim'), ['status' => $status], $auth)->assertJsonPath('approve', false);
+        $this->actingAs($admin)->get(route('vatssa.discord.rules.index'))->assertSee('Paused by a safety limit')->assertSee('Approve and resume');
+
+        $this->actingAs($admin)->post(route('vatssa.discord.rules.approve'))->assertRedirect();
+        $this->postJson(route('api.vatssa.discord-queue.claim'), ['status' => $status], $auth)->assertJsonPath('approve', true);
+        $this->postJson(route('api.vatssa.discord-queue.claim'), ['status' => $status], $auth)->assertJsonPath('approve', false);
+
+        $this->travel(5)->minutes();
+        $this->actingAs($admin)->get(route('vatssa.discord.rules.index'))->assertSee('Bot offline');
+    }
+
+    #[Test]
+    public function approval_needs_the_manage_permission(): void
+    {
+        $mentor = User::factory()->create();
+        $mentor->roleAssignments()->create(['role' => 'mentor', 'area_id' => $this->area->id]);
+        $this->actingAs($mentor->fresh())->post(route('vatssa.discord.rules.approve'))->assertForbidden();
+    }
+
+    #[Test]
+    public function the_rule_list_groups_by_discord_role(): void
+    {
+        $this->roleOnServer(self::ROLE, 'Approved Controller');
+        $this->rule([['division', ['value' => 'home']]], [self::ROLE], true, 'Approved home');
+        $this->rule([['division', ['value' => 'visitor']]], [self::ROLE], true, 'Approved visitor');
+
+        $page = $this->actingAs($this->admin())->get(route('vatssa.discord.rules.index'))->assertOk();
+        $this->assertSame(1, substr_count($page->getContent(), 'vd-role"'));
+        $page->assertSee('Approved home')->assertSee('Approved visitor')->assertSee('Approved Controller');
+    }
+
+    #[Test]
+    public function the_profile_shows_roles_and_what_is_waiting(): void
+    {
+        $this->roleOnServer(self::ROLE, 'Should have');
+        $this->roleOnServer(self::ROLE2, 'Should lose');
+        $member = $this->person(3);
+        $this->rule([['division', ['value' => 'home']]], [self::ROLE], true, 'A');
+        $this->rule([['division', ['value' => 'visitor']]], [self::ROLE2], true, 'B');
+        DB::table('vatssa_discord_members')->insert(['discord_id' => self::D, 'user_id' => $member->id, 'vatsim_linked' => true,
+            'in_server' => true, 'role_ids' => json_encode([self::ROLE2]), 'last_seen_at' => now()]);
+
+        $this->actingAs($this->admin())->get(route('user.show', $member->id))->assertOk()
+            ->assertSee('Waiting to add: Should have')->assertSee('Waiting to remove: Should lose');
+    }
+
+    #[Test]
+    public function the_members_page_keeps_long_ids_exact(): void
+    {
+        DB::table('vatssa_discord_members')->insert(['discord_id' => self::D, 'name' => '<b>x</b>', 'vatsim_linked' => false, 'in_server' => true, 'last_seen_at' => now()]);
+        DB::table('vatssa_discord_member_history')->insert(['discord_id' => self::D, 'event' => 'joined', 'created_at' => now()]);
+
+        $this->actingAs($this->admin())->get(route('vatssa.discord.members'))->assertOk()
+            ->assertSee('d' . self::D, false)->assertDontSee('<b>x</b>', false);
+    }
+
+    #[Test]
+    public function the_preview_shows_only_what_this_edit_changes(): void
+    {
+        $this->roleOnServer(self::ROLE, 'Edited');
+        $this->roleOnServer(self::ROLE2, 'Out of step');
+        $member = $this->person(3);
+        $this->rule([['division', ['value' => 'visitor']]], [self::ROLE2], true, 'Other rule'); // member has it, should not
+        $id = $this->rule([['division', ['value' => 'home']]], [self::ROLE], true, 'Edited rule');
+        DB::table('vatssa_discord_members')->insert(['discord_id' => self::D, 'user_id' => $member->id, 'vatsim_linked' => true,
+            'role_ids' => json_encode([self::ROLE, self::ROLE2]), 'last_seen_at' => now()]);
+
+        $admin = $this->admin();
+        $body = fn (array $over = []) => $this->body(['name' => 'Edited rule', 'rule_id' => $id, ...$over]);
+        $this->actingAs($admin)->postJson(route('vatssa.discord.rules.preview'), $body())->assertOk()
+            ->assertJsonPath('adds', [])->assertJsonPath('removes', []);
+        $this->actingAs($admin)->postJson(route('vatssa.discord.rules.preview'), $body(['conditions' => [['type' => 'division', 'division' => 'visitor']]]))
+            ->assertJsonPath('removes.0.role', 'Edited')->assertJsonCount(1, 'removes');
+    }
 }

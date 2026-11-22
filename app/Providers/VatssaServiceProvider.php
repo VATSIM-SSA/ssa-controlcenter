@@ -122,7 +122,8 @@ class VatssaServiceProvider extends ServiceProvider
         // After upstream's member refresh (04:00), so a live login's data is this morning's.
         $this->callAfterResolving(Schedule::class, function (Schedule $schedule) {
             $schedule->command('vatssa:vatsim-pull')->dailyAt('04:30');
-            $schedule->command('vatssa:vatsim-pull --lookups')->everyMinute()->withoutOverlapping();
+            // In the background: up to 40 one-second checks must not hold up upstream's jobs.
+            $schedule->command('vatssa:vatsim-pull --lookups')->everyMinute()->withoutOverlapping()->runInBackground();
             $schedule->command('vatssa:discord-daily')->dailyAt('06:00');
         });
 

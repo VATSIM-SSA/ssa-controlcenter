@@ -117,7 +117,7 @@ class VatssaVatsimFacts
         $done = 0;
         $owner = config('app.owner_code');
         $rows = DB::table(self::TABLE)->where('needs_lookup', true)
-            ->when($this->leavesLeft() <= 0, fn ($q) => $q->whereNotIn('cid', DB::table('users')->where('division', $owner)->select('id')))
+            ->when(config('vatssa.vatsim_write_users') && $this->leavesLeft() <= 0, fn ($q) => $q->whereNotIn('cid', DB::table('users')->where('division', $owner)->select('id')))
             ->orderByRaw('checked_at IS NOT NULL')->orderBy('checked_at')->limit($limit)->get();
 
         foreach ($rows as $row) {
@@ -150,7 +150,7 @@ class VatssaVatsimFacts
             }
 
             $user = User::where('id', $row->cid)->where('email', '!=', Sync::PSEUDONYMISED_EMAIL)->first();
-            if ($user && $user->division === $owner && $body['division_id'] !== $owner) {
+            if ($user && config('vatssa.vatsim_write_users') && $user->division === $owner && $body['division_id'] !== $owner) {
                 if ($this->leavesLeft() <= 0) {
                     DB::table(self::TABLE)->where('cid', $row->cid)->update(['checked_at' => $now]);
 
@@ -181,6 +181,9 @@ class VatssaVatsimFacts
      */
     private function applyToUser(User $user, array $vatsim): void
     {
+        if (! config('vatssa.vatsim_write_users')) {
+            return;
+        }
         if ($rating = VatsimRating::tryFrom((int) $vatsim['rating'])) {
             $user->rating = $rating;
             $user->rating_short = $rating->name;
@@ -246,7 +249,7 @@ class VatssaVatsimFacts
                 ->map(fn ($row) => ['rating' => (int) $row->rating, 'division' => $row->division])->all(),
             'pulled_at' => Setting::get('vatssaVatsimPullAt'),
             // Members whose check is on hold because today's limit on leavers is used up.
-            'leaves_waiting' => $this->leavesLeft() > 0 ? 0 : DB::table(self::TABLE)->where('needs_lookup', true)
+            'leaves_waiting' => ! config('vatssa.vatsim_write_users') || $this->leavesLeft() > 0 ? 0 : DB::table(self::TABLE)->where('needs_lookup', true)
                 ->whereIn('cid', DB::table('users')->where('division', config('app.owner_code'))->select('id'))->count(),
         ];
     }

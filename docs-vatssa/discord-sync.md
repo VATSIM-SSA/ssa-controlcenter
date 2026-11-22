@@ -24,7 +24,8 @@ On a member's profile, under their VATSIM ID and name:
 
 - **04:30:** the whole SSA list arrives with `VATSIM_CORE_API_TOKEN`. A failed, malformed or much shorter list (over 20% down) changes nothing.
 - **Anyone who says SSA but is not on the list** (usually an expired login) is checked individually. Their old details stay until VATSIM answers. Only an answer naming another division counts as leaving.
-- **A confirmed leaver** has `users` updated, and upstream's 05:00 job closes their training, removes mentor roles and takes them off the roster. At most 45 leavers are applied a day; the rest wait for the next day and `#tech-status` is told.
+- **`VATSSA_VATSIM_WRITE_USERS`** is off by default: VATSIM's answers are stored but `users` does not change. `php artisan vatssa:vatsim-leavers` lists who would leave and what they would lose.
+- **With it on, a confirmed leaver** has `users` updated, and upstream's 05:00 job closes their training, removes mentor roles and takes them off the roster. At most 45 leavers are applied a day; the rest wait for the next day and `#tech-status` is told.
 - **Other divisions:** a live CC login supplies the details. Anyone else, including people with no CC account, is checked individually and again after a day.
 - **Checks** run every minute, about one a second, and stop on a rate limit. No answer never changes anything.
 

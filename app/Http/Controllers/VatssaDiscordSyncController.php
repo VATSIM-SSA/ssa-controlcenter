@@ -16,6 +16,7 @@ use Illuminate\Http\Response;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -33,6 +34,10 @@ class VatssaDiscordSyncController extends Controller
     private const MEMBERS = 'vatssa_discord_members';
 
     private const HISTORY = 'vatssa_discord_member_history';
+
+    private const BOT_STATUS = 'vatssa:discord-bot-status';
+
+    public const BOT_APPROVE = 'vatssa:discord-bot-approve';
 
     /**
      * An automatic request is queued from inside a save, before that request has
@@ -170,8 +175,19 @@ class VatssaDiscordSyncController extends Controller
      */
     public function claim(Request $request): JsonResponse
     {
-        $limit = (int) ($request->validate(['limit' => 'sometimes|integer|min:1|max:50'])['limit'] ?? 20);
+        $input = $request->validate([
+            'limit' => 'sometimes|integer|min:1|max:50',
+            'status' => 'sometimes|array',
+            'status.mode' => 'required_with:status|in:report,adds,live',
+            'status.paused_removals' => 'required_with:status|boolean',
+            'status.paused_adds' => 'required_with:status|boolean',
+            'status.frozen' => 'required_with:status|integer|min:0',
+        ]);
+        $limit = (int) ($input['limit'] ?? 20);
         $now = now();
+        if (isset($input['status'])) {
+            Cache::put(self::BOT_STATUS, [...$input['status'], 'seen_at' => $now->toIso8601String()], now()->addDays(7));
+        }
 
         $claimed = DB::transaction(function () use ($limit, $now) {
             $rows = DB::table(self::QUEUE)
@@ -204,7 +220,7 @@ class VatssaDiscordSyncController extends Controller
             return $ids;
         });
 
-        return response()->json(['data' => $claimed, 'accounts' => $accounts]);
+        return response()->json(['data' => $claimed, 'accounts' => $accounts, 'approve' => (bool) Cache::pull(self::BOT_APPROVE)]);
     }
 
     /**
@@ -453,7 +469,7 @@ class VatssaDiscordSyncController extends Controller
     /**
      * Staff page: every Discord account the bot has seen.
      */
-    public function index(Request $request): View
+    public function index(Request $request, VatssaDiscordRules $rules): View
     {
         abort_unless($request->user()->hasPermission('vatssa.discord.members.view'), 403);
 
@@ -461,19 +477,80 @@ class VatssaDiscordSyncController extends Controller
         $show = $filters['show'] ?? 'server';
         $search = trim($filters['q'] ?? '');
 
-        $members = DB::table(self::MEMBERS)
-            ->when($show === 'server', fn ($q) => $q->where('in_server', true))
-            ->when($show === 'not_vatsim', fn ($q) => $q->where('in_server', true)->where('is_bot', false)->where('vatsim_linked', false))
-            ->when($show === 'bots', fn ($q) => $q->where('in_server', true)->where('is_bot', true))
-            ->when($show === 'left', fn ($q) => $q->where('in_server', false))
+        $scope = fn (string $tab) => DB::table(self::MEMBERS)
+            ->when($tab === 'server', fn ($q) => $q->where('in_server', true))
+            ->when($tab === 'not_vatsim', fn ($q) => $q->where('in_server', true)->where('is_bot', false)->where('vatsim_linked', false))
+            ->when($tab === 'bots', fn ($q) => $q->where('in_server', true)->where('is_bot', true))
+            ->when($tab === 'left', fn ($q) => $q->where('in_server', false));
+        $counts = collect(['server', 'not_vatsim', 'bots', 'left'])->mapWithKeys(fn ($tab) => [$tab => $scope($tab)->count()]);
+
+        $members = $scope($show)
             ->when($search !== '', fn ($q) => $q->where(fn ($w) => $w->where('name', 'like', '%' . addcslashes($search, '%_\\') . '%')
                 ->orWhere('discord_id', $search)->orWhere('user_id', ctype_digit($search) ? $search : -1)))
             ->orderBy('name')->paginate(50)->withQueryString();
 
-        $history = DB::table(self::HISTORY)->whereIn('discord_id', $members->pluck('discord_id'))
-            ->orderByDesc('id')->get()->groupBy('discord_id');
+        $historyText = DB::table(self::HISTORY)->whereIn('discord_id', $members->pluck('discord_id'))
+            ->orderByDesc('id')->get()->groupBy(fn ($event) => 'd' . $event->discord_id)
+            ->map(fn ($events) => $events->take(30)->map(fn ($event) => [
+                'when' => Carbon::parse($event->created_at)->format('j M Y H:i'),
+                'what' => (self::EVENTS[$event->event] ?? $event->event) . ($event->detail ? ': ' . $event->detail : ''),
+            ])->values());
 
-        return view('vatssa.discord.members', compact('members', 'history', 'show', 'search'));
+        return view('vatssa.discord.members', [
+            'members' => $members, 'historyText' => $historyText, 'show' => $show, 'search' => $search, 'counts' => $counts,
+            'managed' => $rules->managed(), 'roleNames' => self::roleNames(),
+        ]);
+    }
+
+    /**
+     * Discord role names, keyed 'r<id>' because PHP would turn a bare snowflake key into an int.
+     */
+    private static function roleNames(): Collection
+    {
+        return DB::table('vatssa_discord_guild_roles')->pluck('name', 'discord_role_id')->mapWithKeys(fn ($name, $id) => ['r' . $id => $name]);
+    }
+
+    /**
+     * For the profile: the roles this account has, and what the rules still want changed.
+     *
+     * @return array{current: array<int, string>, add: array<int, string>, remove: array<int, string>}|null
+     */
+    public static function rolesFor(?object $account): ?array
+    {
+        if (! $account?->in_server || $account->role_ids === null || ! $account->user_id) {
+            return null;
+        }
+        try {
+            $rules = app(VatssaDiscordRules::class);
+            $managed = $rules->managed();
+            $have = array_map('strval', json_decode($account->role_ids, true) ?: []);
+            $id = (string) $account->discord_id;
+            $want = $rules->evaluate([['discord_id' => $id, 'cid' => (int) $account->user_id]])['roles'][$id] ?? null;
+            $names = self::roleNames();
+            $label = fn (array $ids) => array_values(array_map(fn ($role) => $names->get('r' . $role) ?? $role, $ids));
+
+            return [
+                'current' => $label(array_intersect($have, $managed)),
+                'add' => $want === null ? [] : $label(array_diff($want, $have)),
+                'remove' => $want === null ? [] : $label(array_diff(array_intersect($have, $managed), $want)),
+            ];
+        } catch (\Throwable $e) {
+            report($e);
+
+            return null;
+        }
+    }
+
+    /**
+     * What the bot last said about itself, for the rule page. Null if never heard from.
+     *
+     * @return array{mode: string, paused_removals: bool, paused_adds: bool, frozen: int, seen_at: string, online: bool}|null
+     */
+    public static function botStatus(): ?array
+    {
+        $status = Cache::get(self::BOT_STATUS);
+
+        return $status ? [...$status, 'online' => Carbon::parse($status['seen_at'])->gt(now()->subMinutes(2))] : null;
     }
 
     /**

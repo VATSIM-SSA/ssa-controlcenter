@@ -29,7 +29,7 @@ class VatssaVatsimFactsTest extends TestCase
     {
         parent::setUp();
         Sleep::fake();
-        config(['app.mode' => 'division', 'app.owner_code' => 'SSA', 'vatsim.core_api_token' => 'core-token', 'vatssa.discord_bot_token' => self::TOKEN]);
+        config(['app.mode' => 'division', 'app.owner_code' => 'SSA', 'vatssa.vatsim_write_users' => true, 'vatsim.core_api_token' => 'core-token', 'vatssa.discord_bot_token' => self::TOKEN]);
     }
 
     private function org(array $items, ?int $count = null): void
@@ -317,5 +317,26 @@ class VatssaVatsimFactsTest extends TestCase
         $this->travel(1)->days();
         app(VatssaVatsimFacts::class)->runLookups(100);
         $this->assertSame(count($cids), DB::table('users')->whereIn('id', $cids)->where('division', 'EUD')->count());
+    }
+
+    #[Test]
+    public function with_writing_off_users_stay_put_and_leavers_can_be_previewed(): void
+    {
+        config(['vatssa.vatsim_write_users' => false]);
+        $this->user(1000001, 'SSA', 3);
+        $this->user(1000002, 'SSA', 3);
+        $this->org([$this->item(1000001, 5)]);
+        app(VatssaVatsimFacts::class)->pull();
+        $this->assertSame(3, (int) DB::table('users')->where('id', 1000001)->value('rating'));
+        $this->assertSame(5, (int) $this->fact(1000001)->rating);
+
+        Http::swap(new Factory);
+        Http::fake(['api.vatsim.net/v2/members/1000002' => Http::response(['id' => 1000002, 'rating' => 3, 'division_id' => 'EUD'])]);
+        app(VatssaVatsimFacts::class)->runLookups();
+
+        $this->assertSame('SSA', DB::table('users')->where('id', 1000002)->value('division'));
+        $this->assertSame('EUD', $this->fact(1000002)->division);
+        $this->artisan('vatssa:vatsim-leavers')->expectsOutputToContain('1 confirmed')->assertSuccessful();
+        $this->assertSame('SSA', DB::table('users')->where('id', 1000002)->value('division'));
     }
 }

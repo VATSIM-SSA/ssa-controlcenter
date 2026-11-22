@@ -2,80 +2,114 @@
 
 @section('title', $rule->id ? 'Edit rule' : 'New rule')
 
+@section('title-flex')
+    <div class="d-flex align-items-center"><a href="{{ route('vatssa.discord.rules.index') }}" class="btn btn-icon btn-light d-inline-flex align-items-center">All rules</a></div>
+@endsection
+
 @section('content')
+@include('vatssa.discord._style')
+
 <form method="post" id="ruleForm" action="{{ $rule->id ? route('vatssa.discord.rules.update', $rule->id) : route('vatssa.discord.rules.store') }}">
     @csrf
     @if($rule->id) @method('PATCH') @endif
     <input type="hidden" name="enabled" value="{{ $rule->enabled ? 1 : 0 }}">
 
-    <div class="card shadow mb-3">
-        <div class="card-header bg-primary py-3"><h6 class="m-0 fw-bold text-white">{{ $rule->id ? 'Edit rule' : 'New rule' }}</h6></div>
-        <div class="card-body">
-            <div class="row g-3">
-                <div class="col-md-5">
-                    <label class="form-label" for="name">Name</label>
-                    <input id="name" name="name" maxlength="80" required class="form-control @error('name') is-invalid @enderror" value="{{ old('name', $rule->name) }}">
-                    @error('name')<div class="invalid-feedback">{{ $message }}</div>@enderror
+    <div class="row">
+        <div class="col-lg-8">
+            <div class="card shadow mb-3">
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-5">
+                            <label class="form-label fw-bold" for="name">Name</label>
+                            <input id="name" name="name" maxlength="80" required class="form-control @error('name') is-invalid @enderror" value="{{ old('name', $rule->name) }}" placeholder="ATC TWR: home">
+                            @error('name')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                        </div>
+                        <div class="col-md-7">
+                            <label class="form-label fw-bold" for="description">Description <span class="fw-normal text-muted">(optional)</span></label>
+                            <input id="description" name="description" maxlength="255" class="form-control" value="{{ old('description', $rule->description) }}">
+                        </div>
+                    </div>
                 </div>
-                <div class="col-md-7">
-                    <label class="form-label" for="description">Description</label>
-                    <input id="description" name="description" maxlength="255" class="form-control" value="{{ old('description', $rule->description) }}">
+            </div>
+
+            <div class="card shadow mb-3">
+                <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                    <span class="fw-bold">Given when all of these are true</span>
+                    <button type="button" class="btn btn-sm btn-icon btn-light" id="addCondition"><i class="fas fa-plus"></i> Add condition</button>
+                </div>
+                <div class="card-body" id="conditions"></div>
+                @error('conditions')<div class="card-footer text-danger">{{ $message }}</div>@enderror
+            </div>
+
+            <div class="d-flex flex-wrap align-items-center gap-2 mb-4">
+                <button class="btn btn-success">Save rule</button>
+                <a href="{{ route('vatssa.discord.rules.index') }}" class="btn btn-icon btn-light d-inline-flex align-items-center">Cancel</a>
+                @if($rule->id)
+                    <button type="button" class="btn btn-icon btn-outline-danger ms-auto" id="deleteButton"><i class="fas fa-trash"></i> Delete rule</button>
+                @endif
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="vd-sticky">
+                <div class="card shadow mb-3">
+                    <div class="card-header py-3 fw-bold">Gives these Discord roles</div>
+                    <div class="card-body">
+                        @if($guildRoles->isEmpty() && ! $rule->roles)
+                            <p class="text-muted mb-0">The bot has not reported the server's roles yet.</p>
+                        @else
+                            <input type="search" id="roleSearch" class="form-control form-control-sm mb-2" placeholder="Search roles" aria-label="Search roles">
+                            <div class="vd-role-list" id="roleList">
+                                @php($selected = array_map('strval', old('roles', $rule->roles)))
+                                @foreach($guildRoles as $role)
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" name="roles[]" id="role{{ $role->discord_role_id }}" value="{{ $role->discord_role_id }}" @checked(in_array((string) $role->discord_role_id, $selected, true))>
+                                        <label class="form-check-label" for="role{{ $role->discord_role_id }}">{{ $role->name }}</label>
+                                    </div>
+                                @endforeach
+                                @foreach(array_diff($rule->roles, $guildRoles->pluck('discord_role_id')->map(fn ($id) => (string) $id)->all()) as $missing)
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" name="roles[]" id="role{{ $missing }}" value="{{ $missing }}" @checked(in_array($missing, $selected, true))>
+                                        <label class="form-check-label" for="role{{ $missing }}">{{ $missing }} <span class="text-muted">(not seen on the server)</span></label>
+                                    </div>
+                                @endforeach
+                            </div>
+                        @endif
+                        @error('roles')<div class="text-danger small mt-2">{{ $message }}</div>@enderror
+                    </div>
+                </div>
+
+                <div class="card shadow mb-3">
+                    <div class="card-header py-3 fw-bold">What this changes</div>
+                    <div class="card-body" id="previewBody"><span class="text-muted">Pick a condition and a role.</span></div>
                 </div>
             </div>
         </div>
     </div>
-
-    <div class="card shadow mb-3">
-        <div class="card-header py-3 d-flex justify-content-between align-items-center">
-            <span class="fw-bold">When all of these hold</span>
-            <button type="button" class="btn btn-sm btn-icon btn-light" id="addCondition"><i class="fas fa-plus"></i> Add condition</button>
-        </div>
-        <div class="card-body" id="conditions"></div>
-        @error('conditions')<div class="card-footer text-danger">{{ $message }}</div>@enderror
-    </div>
-
-    <div class="card shadow mb-3">
-        <div class="card-header py-3 fw-bold">Give these Discord roles</div>
-        <div class="card-body">
-            @if($guildRoles->isEmpty())
-                <p class="text-muted mb-2">The bot has not reported the server's roles yet.</p>
-            @endif
-            <select name="roles[]" multiple size="8" class="form-select @error('roles') is-invalid @enderror" aria-label="Discord roles" required>
-                @foreach($guildRoles as $role)
-                    <option value="{{ $role->discord_role_id }}" @selected(in_array((string) $role->discord_role_id, $rule->roles, true))>{{ $role->name }}</option>
-                @endforeach
-                @foreach(array_diff($rule->roles, $guildRoles->pluck('discord_role_id')->map(fn ($id) => (string) $id)->all()) as $missing)
-                    <option value="{{ $missing }}" selected>{{ $missing }} (not seen on the server)</option>
-                @endforeach
-            </select>
-            @error('roles')<div class="invalid-feedback">{{ $message }}</div>@enderror
-        </div>
-    </div>
-
-    <div class="card shadow mb-3 d-none" id="previewCard">
-        <div class="card-header py-3 fw-bold">What this would change</div>
-        <div class="card-body" id="previewBody"></div>
-    </div>
-
-    <div class="d-flex flex-wrap gap-2 mb-4">
-        <button type="button" class="btn btn-icon btn-light" id="previewButton">Preview changes</button>
-        <button class="btn btn-success">Save rule</button>
-        <a href="{{ route('vatssa.discord.rules.index') }}" class="btn btn-icon btn-light">Cancel</a>
-        @if($rule->id)
-            <button type="button" class="btn btn-icon btn-danger ms-auto" id="deleteButton"><i class="fas fa-trash"></i> Delete rule</button>
-        @endif
-    </div>
 </form>
 
 @if($rule->id)
-    <form method="post" id="deleteForm" action="{{ route('vatssa.discord.rules.destroy', $rule->id) }}">@csrf @method('DELETE')<input type="hidden" name="dropped" id="deleteDropped" value="keep"></form>
+    <div class="modal fade" id="deleteRule" tabindex="-1" aria-labelledby="deleteRuleLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <form method="post" class="modal-content" action="{{ route('vatssa.discord.rules.destroy', $rule->id) }}">@csrf @method('DELETE')
+                <div class="modal-header"><h5 class="modal-title" id="deleteRuleLabel">Delete {{ $rule->name }}?</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+                <div class="modal-body" id="deleteBody">Checking what this affects…</div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-icon btn-light" data-bs-dismiss="modal">Cancel</button>
+                    <button class="btn btn-danger">Delete rule</button>
+                </div>
+            </form>
+        </div>
+    </div>
 @endif
 
 <template id="conditionTemplate">
-    <div class="border rounded p-2 mb-2 condition">
+    <div class="vd-rule-row">
+        <div class="vd-and">AND</div>
         <div class="d-flex flex-wrap gap-2 align-items-center">
-            <select class="form-select form-select-sm w-auto" data-name="negated" aria-label="Is or is not">
-                <option value="0">Is</option><option value="1">Is NOT</option>
+            <select class="form-select form-select-sm w-auto" data-name="negated" aria-label="If or if not">
+                <option value="0">If</option><option value="1">If not</option>
             </select>
             <select class="form-select form-select-sm w-auto" data-name="type" aria-label="Condition">
                 @foreach($types as $value => $label)<option value="{{ $value }}">{{ $label }}</option>@endforeach
@@ -87,9 +121,6 @@
 
             <select class="form-select form-select-sm w-auto" data-name="rating_mode" data-for="rating" aria-label="How to compare">
                 <option value="in">is one of</option><option value="min">at least</option><option value="max">at most</option>
-            </select>
-            <select class="form-select form-select-sm w-auto" data-name="ratings" data-for="rating" data-mode="in" multiple size="3" aria-label="Ratings">
-                @foreach($ratings as $r)<option value="{{ $r['value'] }}">{{ $r['name'] }}</option>@endforeach
             </select>
             <select class="form-select form-select-sm w-auto" data-name="rating_value" data-for="rating" data-mode="minmax" aria-label="Rating">
                 @foreach($ratings as $r)<option value="{{ $r['value'] }}">{{ $r['name'] }}</option>@endforeach
@@ -106,7 +137,7 @@
                 <option value="any">with rating</option><option value="highest">highest is</option><option value="at_least">highest at least</option>
             </select>
             <select class="form-select form-select-sm w-auto" data-name="endorsement_rating" data-for="endorsement" aria-label="Endorsement rating">
-                <option value="">any rating</option>
+                <option value="">any</option>
                 @foreach($ratingNames as $name)<option value="{{ $name }}">{{ $name }}</option>@endforeach
             </select>
 
@@ -122,6 +153,12 @@
 
             <button type="button" class="btn btn-sm btn-icon btn-light ms-auto remove" aria-label="Remove condition"><i class="fas fa-xmark"></i></button>
         </div>
+        <div class="vd-rating-picker d-flex flex-wrap gap-1 mt-2" data-for="rating" data-mode="in" role="group" aria-label="Ratings">
+            @foreach($ratings as $r)
+                <input type="checkbox" class="btn-check" data-name="ratings" value="{{ $r['value'] }}" autocomplete="off">
+                <label class="btn btn-sm btn-outline-secondary">{{ $r['name'] }}</label>
+            @endforeach
+        </div>
     </div>
 </template>
 @endsection
@@ -132,10 +169,17 @@
     const box = document.getElementById('conditions');
     const template = document.getElementById('conditionTemplate');
     const form = document.getElementById('ruleForm');
-    const previewCard = document.getElementById('previewCard');
     const previewBody = document.getElementById('previewBody');
     const ruleId = @js($rule->id);
-    let next = 0;
+    const previewUrl = @js(route('vatssa.discord.rules.preview'));
+    let next = 0, timer = null, latest = 0;
+
+    function setEnabled(el, on) {
+        el.classList.toggle('d-none', !on);
+        [el, ...el.querySelectorAll('input')].forEach(field => {
+            if (field.matches('input, select')) field.disabled = !on;
+        });
+    }
 
     function refresh(row) {
         const type = row.querySelector('[data-name=type]').value;
@@ -144,30 +188,39 @@
             let show = el.dataset.for.split(' ').includes(type);
             if (show && el.dataset.mode === 'in') show = mode === 'in';
             if (show && el.dataset.mode === 'minmax') show = mode !== 'in';
-            el.classList.toggle('d-none', !show);
-            el.disabled = !show;
+            setEnabled(el, show);
         });
         const global = row.querySelector('[data-global]');
         global.hidden = global.disabled = type !== 'cc_role';
+        const area = row.querySelector('[data-name=area]');
+        if (global.disabled && area.value === 'global') area.value = 'any';
+    }
+
+    function markFirst() {
+        box.querySelectorAll('.vd-rule-row').forEach((row, i) => row.querySelector('.vd-and').classList.toggle('d-none', i === 0));
     }
 
     function add(condition) {
         const row = template.content.firstElementChild.cloneNode(true);
         const index = next++;
         row.querySelectorAll('[data-name]').forEach(el => {
-            el.name = 'conditions[' + index + '][' + el.dataset.name + ']' + (el.multiple ? '[]' : '');
+            el.name = 'conditions[' + index + '][' + el.dataset.name + ']' + (el.type === 'checkbox' ? '[]' : '');
+        });
+        row.querySelectorAll('.vd-rating-picker input').forEach(input => {
+            input.id = 'rating' + index + '_' + input.value;
+            input.nextElementSibling.htmlFor = input.id;
         });
         const set = (name, value) => { if (value !== undefined && value !== null) row.querySelector('[data-name=' + name + ']').value = String(value); };
         if (condition) {
             const p = condition.params || {};
             set('negated', condition.negated ? 1 : 0);
             set('type', condition.type);
-            set('division', p.value === 'home' || p.value === 'visitor' ? p.value : null);
+            if (condition.type === 'division') set('division', p.value);
             if (condition.type === 'rating') {
                 set('rating_mode', p.mode);
                 if (p.mode === 'in') {
                     const wanted = (p.values || []).map(String);
-                    row.querySelectorAll('[data-name=ratings] option').forEach(o => { o.selected = wanted.includes(o.value); });
+                    row.querySelectorAll('[data-name=ratings]').forEach(input => { input.checked = wanted.includes(input.value); });
                 } else { set('rating_value', p.value); }
             }
             set('role', p.role);
@@ -175,78 +228,108 @@
             set('group', p.group);
             set('area', p.area);
         }
-        row.addEventListener('change', () => refresh(row));
-        row.querySelector('.remove').addEventListener('click', () => row.remove());
+        row.addEventListener('change', () => { refresh(row); schedule(); });
+        row.querySelector('.remove').addEventListener('click', () => { row.remove(); markFirst(); schedule(); });
         box.appendChild(row);
         refresh(row);
+        markFirst();
     }
 
-    function line(text) {
-        const p = document.createElement('p');
-        p.className = 'mb-1';
+    function line(parent, text, muted) {
+        const p = document.createElement('div');
+        p.className = muted ? 'small text-muted mt-2' : 'mb-1';
         p.textContent = text;
-        previewBody.appendChild(p);
+        parent.appendChild(p);
     }
 
-    async function preview(extra) {
+    async function fetchPreview(extra) {
         const data = new FormData(form);
         data.delete('_method');
+        data.delete('dropped');
         if (ruleId) data.set('rule_id', ruleId);
         Object.entries(extra || {}).forEach(([k, v]) => data.set(k, v));
-        const response = await fetch(@js(route('vatssa.discord.rules.preview')), { method: 'POST', body: data, headers: { Accept: 'application/json' } });
-        const body = await response.json();
-        previewCard.classList.remove('d-none');
-        previewBody.replaceChildren();
-        if (!response.ok) { line(body.message || 'Could not preview this rule.'); return null; }
-        body.adds.forEach(r => line('Adds ' + r.role + ' to ' + r.members + (r.members === 1 ? ' member' : ' members')));
-        body.removes.forEach(r => line('Removes ' + r.role + ' from ' + r.members + (r.members === 1 ? ' member' : ' members')));
-        if (!body.adds.length && !body.removes.length) line('No role changes.');
-        const small = document.createElement('small');
-        small.className = 'text-muted';
-        small.textContent = 'Based on ' + body.counted + ' accounts. People with no CC account are not counted.';
-        previewBody.appendChild(small);
-        return body;
+        const response = await fetch(previewUrl, { method: 'POST', body: data, headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+        return { ok: response.ok, body: await response.json().catch(() => ({})) };
     }
 
-    function droppedChoice(body) {
-        previewBody.querySelector('#droppedBox')?.remove();
-        if (!body || !body.dropped.length) return;
+    function droppedChoice(parent, dropped) {
+        if (!dropped.length) return;
         const wrap = document.createElement('div');
-        wrap.id = 'droppedBox';
-        wrap.className = 'mt-3';
-        const names = body.dropped.map(r => r.role + ' (' + r.members + ')').join(', ');
+        wrap.className = 'mt-3 pt-3 border-top';
         const label = document.createElement('label');
         label.className = 'form-label';
-        label.htmlFor = 'dropped';
-        label.textContent = 'No rule gives these any more: ' + names + '. What should happen to members who have them?';
+        label.htmlFor = 'dropped' + parent.id;
+        label.textContent = 'No rule gives ' + dropped.map(r => r.role + ' (' + r.members + ')').join(', ') + ' any more. For members who have it:';
         const select = document.createElement('select');
-        select.className = 'form-select form-select-sm w-auto';
-        select.id = 'dropped';
+        select.className = 'form-select form-select-sm';
+        select.id = 'dropped' + parent.id;
         select.name = 'dropped';
         [['keep', 'Keep it on them'], ['remove', 'Remove it']].forEach(([value, text]) => select.add(new Option(text, value)));
         wrap.append(label, select);
-        previewBody.appendChild(wrap);
+        parent.appendChild(wrap);
     }
 
-    document.getElementById('addCondition').addEventListener('click', () => add());
-    document.getElementById('previewButton').addEventListener('click', async () => droppedChoice(await preview()));
+    function renderChanges(parent, body) {
+        const plural = n => n + (n === 1 ? ' member' : ' members');
+        body.adds.forEach(r => line(parent, '+ ' + r.role + ': ' + plural(r.members)));
+        body.removes.forEach(r => line(parent, '− ' + r.role + ': ' + plural(r.members)));
+        if (!body.adds.length && !body.removes.length) line(parent, 'No role changes.');
+        line(parent, 'From ' + body.counted + ' accounts. People with no CC account are not counted.', true);
+    }
+
+    async function preview() {
+        const ticket = ++latest;
+        const hasRole = form.querySelector('[name="roles[]"]:checked');
+        if (!hasRole || !document.getElementById('name').value.trim()) {
+            previewBody.replaceChildren();
+            line(previewBody, 'Add a name and pick a role to see the effect.', true);
+            return;
+        }
+        const { ok, body } = await fetchPreview();
+        if (ticket !== latest) return;
+        previewBody.replaceChildren();
+        if (!ok) { line(previewBody, body.message || 'This rule is not complete yet.', true); return; }
+        renderChanges(previewBody, body);
+        droppedChoice(previewBody, body.dropped);
+    }
+
+    function schedule() {
+        clearTimeout(timer);
+        timer = setTimeout(preview, 400);
+    }
+
+    document.getElementById('addCondition').addEventListener('click', () => { add(); schedule(); });
+    form.querySelectorAll('[name="roles[]"], #name').forEach(el => el.addEventListener('change', schedule));
+
+    const roleSearch = document.getElementById('roleSearch');
+    if (roleSearch) {
+        roleSearch.addEventListener('input', () => {
+            const term = roleSearch.value.trim().toLowerCase();
+            document.querySelectorAll('#roleList .form-check').forEach(item => {
+                item.classList.toggle('d-none', term !== '' && !item.textContent.toLowerCase().includes(term));
+            });
+        });
+        roleSearch.addEventListener('keydown', e => { if (e.key === 'Enter') e.preventDefault(); });
+    }
 
     const deleteButton = document.getElementById('deleteButton');
     if (deleteButton) {
+        const modalEl = document.getElementById('deleteRule');
+        const deleteBody = document.getElementById('deleteBody');
         deleteButton.addEventListener('click', async () => {
-            const body = await preview({ delete: 1 });
-            if (!body) return;
-            const names = body.dropped.map(r => r.role + ' (' + r.members + ')').join(', ');
-            let remove = false;
-            if (names) remove = confirm('No rule will give: ' + names + '.\n\nOK removes these roles from those members. Cancel keeps them.');
-            if (!confirm('Delete this rule?')) return;
-            document.getElementById('deleteDropped').value = remove ? 'remove' : 'keep';
-            document.getElementById('deleteForm').submit();
+            deleteBody.textContent = 'Checking what this affects…';
+            bootstrap.Modal.getOrCreateInstance(modalEl).show();
+            const { ok, body } = await fetchPreview({ delete: 1 });
+            deleteBody.replaceChildren();
+            if (!ok) { line(deleteBody, 'Could not check the effect. The rule can still be deleted.', true); return; }
+            renderChanges(deleteBody, body);
+            droppedChoice(deleteBody, body.dropped);
         });
     }
 
     const initial = @js($rule->conditions);
     initial.length ? initial.forEach(add) : add();
+    preview();
 })();
 </script>
 @endsection

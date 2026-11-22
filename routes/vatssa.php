@@ -27,6 +27,7 @@ Route::prefix('discord/rules')->whereNumber(['rule', 'audit'])->name('vatssa.dis
     Route::get('/new', 'create')->name('create');
     Route::post('/', 'store')->name('store');
     Route::post('/preview', 'preview')->name('preview');
+    Route::post('/approve', 'approve')->name('approve');
     Route::post('/history/{audit}/restore', 'restore')->name('restore');
     Route::get('/{rule}', 'edit')->name('edit');
     Route::patch('/{rule}', 'update')->name('update');

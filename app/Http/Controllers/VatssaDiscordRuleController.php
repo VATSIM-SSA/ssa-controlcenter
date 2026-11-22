@@ -2,14 +2,17 @@
 
 namespace App\Http\Controllers;
 
+use App\Helpers\LogName;
 use App\Helpers\VatsimRating;
 use App\Http\Controllers\VatssaDiscordSyncController as Sync;
+use App\Services\ActivityLogService;
 use App\Services\VatssaDiscordRules;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -40,12 +43,36 @@ class VatssaDiscordRuleController extends Controller
             $rule->words = collect($rule->conditions)->map(fn ($c) => $this->engine->describe($c, $groups, $areas))->all();
         }
 
+        // One line per Discord role: a role is given if any of its rules holds.
+        $known = DB::table('vatssa_discord_guild_roles')->get()->mapWithKeys(fn ($r) => ['r' . $r->discord_role_id => $r]);
+        $byRole = $rules->flatMap(fn ($rule) => array_map(fn ($role) => ['role' => (string) $role, 'rule' => $rule], $rule->roles))
+            ->groupBy(fn ($row) => 'r' . $row['role'])
+            ->map(fn ($rows, $key) => [
+                'name' => $known->get($key)?->name ?? $rows[0]['role'],
+                'position' => (int) ($known->get($key)?->position ?? 0),
+                'rules' => $rows->pluck('rule')->sortByDesc('enabled')->values(),
+            ])->sortBy([['position', 'desc'], ['name', 'asc']])->values();
+
         return view('vatssa.discord.rules.index', [
             'rules' => $rules,
-            'roleNames' => DB::table('vatssa_discord_guild_roles')->pluck('name', 'discord_role_id')->mapWithKeys(fn ($n, $id) => [(string) $id => $n]),
+            'byRole' => $byRole,
+            'bot' => Sync::botStatus(),
             'audit' => DB::table(self::AUDIT)->orderByDesc('id')->limit(30)->get(),
             'canManage' => Auth::user()->hasPermission('vatssa.discord.rules.manage'),
         ]);
+    }
+
+    /**
+     * Release a batch the hourly limits held back. The bot's next poll clears the pause and
+     * runs one sweep without the limits.
+     */
+    public function approve(): RedirectResponse
+    {
+        $this->need('vatssa.discord.rules.manage');
+        Cache::put(Sync::BOT_APPROVE, Auth::id(), now()->addHour());
+        ActivityLogService::warning(LogName::Role, 'Discord role sync: held changes approved');
+
+        return back()->withSuccess('Approved. The bot applies the held changes within a few seconds.');
     }
 
     public function create(): View
@@ -158,15 +185,20 @@ class VatssaDiscordRuleController extends Controller
         $members = DB::table('vatssa_discord_members')->where('in_server', true)->where('is_bot', false)->whereNotNull('role_ids')
             ->where(fn ($q) => $q->whereNotNull('user_id')->orWhere('vatsim_linked', false))->get(['discord_id', 'user_id', 'role_ids']);
         $have = $members->mapWithKeys(fn ($m) => ['d' . $m->discord_id => array_map('strval', json_decode($m->role_ids, true) ?: [])]);
-        $wanted = $this->engine->evaluate($members->map(fn ($m) => ['discord_id' => (string) $m->discord_id, 'cid' => (int) $m->user_id])->all(), $proposed);
+        // Only what this edit changes: a member already out of step for another reason is not its doing.
+        $accounts = $members->map(fn ($m) => ['discord_id' => (string) $m->discord_id, 'cid' => (int) $m->user_id])->all();
+        $was = $this->engine->evaluate($accounts, $current)['roles'];
+        $wanted = $this->engine->evaluate($accounts, $proposed);
 
         $adds = $removes = [];
         foreach ($wanted['roles'] as $discordId => $want) {
+            $discordId = (string) $discordId;
             $roles = $have['d' . $discordId] ?? [];
-            foreach (array_diff($want, $roles) as $role) {
+            $old = $was[$discordId] ?? [];
+            foreach (array_diff($want, $old, $roles) as $role) {
                 $adds[$role] = ($adds[$role] ?? 0) + 1;
             }
-            foreach (array_diff(array_intersect($roles, $after), $want) as $role) {
+            foreach (array_intersect(array_diff($old, $want), $roles, $after) as $role) {
                 $removes[$role] = ($removes[$role] ?? 0) + 1;
             }
         }
