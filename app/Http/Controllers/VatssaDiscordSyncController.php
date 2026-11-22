@@ -506,13 +506,14 @@ class VatssaDiscordSyncController extends Controller
      */
     public function controllerNames(Request $request): JsonResponse
     {
+        /** @var array{cids: list<int>} $data */
         $data = $request->validate([
             'cids' => 'present|array|max:200',
             'cids.*' => 'required|integer|min:1',
         ]);
 
         $names = User::whereIn('id', $data['cids'])
-            ->where(fn ($q) => $q->whereNull('email')->orWhere('email', '!=', 'void@void.void'))
+            ->where(fn ($q) => $q->whereNull('email')->orWhere('email', '!=', self::PSEUDONYMISED_EMAIL))
             ->get(['id', 'first_name', 'last_name'])
             ->mapWithKeys(fn (User $u) => [$u->id => trim($u->first_name . ' ' . $u->last_name)])
             ->filter();
