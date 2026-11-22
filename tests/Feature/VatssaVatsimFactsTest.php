@@ -181,6 +181,59 @@ class VatssaVatsimFactsTest extends TestCase
     }
 
     #[Test]
+    public function a_rate_limit_holds_every_lookup_until_vatsim_says_so(): void
+    {
+        DB::table('vatssa_vatsim_members')->insert(['cid' => 1000001, 'needs_lookup' => true]);
+        Http::fake(['api.vatsim.net/*' => Http::response([], 429, ['Retry-After' => '155'])]);
+
+        app(VatssaVatsimFacts::class)->runLookups();
+        $this->travel(150)->seconds();
+        app(VatssaVatsimFacts::class)->runLookups();
+        Http::assertSentCount(1);
+
+        $this->travel(10)->seconds();
+        app(VatssaVatsimFacts::class)->runLookups();
+        Http::assertSentCount(2);
+    }
+
+    #[Test]
+    public function the_scheduler_checks_five_members_a_run(): void
+    {
+        DB::table('vatssa_vatsim_members')->insert(array_map(fn ($cid) => ['cid' => $cid, 'needs_lookup' => true], range(1000001, 1000006)));
+        Http::fake(['api.vatsim.net/*' => Http::response(['detail' => 'Not Found'], 404)]);
+
+        $this->assertSame(5, app(VatssaVatsimFacts::class)->runLookups());
+        Http::assertSentCount(5);
+    }
+
+    #[Test]
+    public function a_404_that_is_not_from_vatsim_changes_nothing(): void
+    {
+        DB::table('vatssa_vatsim_members')->insert(['cid' => 1000001, 'rating' => 3, 'division' => 'SSA', 'needs_lookup' => true]);
+        Http::fake(['api.vatsim.net/*' => Http::response('<html>nginx</html>', 404)]);
+
+        app(VatssaVatsimFacts::class)->runLookups();
+
+        $this->assertSame([3, 'SSA', 1], [(int) $this->fact(1000001)->rating, $this->fact(1000001)->division, (int) $this->fact(1000001)->needs_lookup]);
+    }
+
+    #[Test]
+    public function lookups_stand_aside_for_the_atc_hours_job(): void
+    {
+        // The schedule reads the clock when it is built, as each minute's schedule:run does.
+        $lookupsAt = function (int $hour, int $minute) {
+            $this->travelTo(now()->setTime($hour, $minute));
+            app()->forgetInstance(Schedule::class);
+
+            return collect(app(Schedule::class)->events())
+                ->first(fn ($e) => str_contains((string) $e->command, 'vatsim-pull') && str_contains((string) $e->command, '--lookups'));
+        };
+
+        $this->assertFalse($lookupsAt(1, 10)->filtersPass(app()));
+        $this->assertTrue($lookupsAt(2, 0)->filtersPass(app()));
+    }
+
+    #[Test]
     public function the_bot_gets_facts_and_unknown_cids_go_in_line(): void
     {
         DB::table('vatssa_vatsim_members')->insert(['cid' => 1000001, 'rating' => 3, 'division' => 'SSA', 'source' => 'org', 'needs_lookup' => false]);
@@ -365,7 +418,7 @@ class VatssaVatsimFactsTest extends TestCase
             ? Http::response(['id' => 1000001, 'rating' => 3, 'division_id' => str_repeat('X', 500)])
             : Http::response(['id' => 1000002, 'rating' => 3, 'division_id' => 'EUD']));
 
-        app(VatssaVatsimFacts::class)->runLookups();
+        app(VatssaVatsimFacts::class)->runLookups(2);
 
         $this->assertSame([1, true], [(int) $this->fact(1000001)->needs_lookup, $this->fact(1000001)->checked_at !== null]);
         $this->assertSame(0, (int) $this->fact(1000002)->needs_lookup);

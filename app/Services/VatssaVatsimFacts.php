@@ -35,6 +35,9 @@ class VatssaVatsimFacts
 
     public const MAX_LEAVES_PER_DAY = 45;
 
+    /** VATSIM allows about 10 calls a minute per server. This leaves room for members' page loads and the bot. */
+    public const LOOKUPS_PER_RUN = 5;
+
     private const RATING_NAMES = [
         'INA' => 'Inactive', 'SUS' => 'Suspended', 'OBS' => 'Pilot/Observer', 'S1' => 'Tower Trainee', 'S2' => 'Tower Controller',
         'S3' => 'TMA Controller', 'C1' => 'Enroute Controller', 'C3' => 'Senior Controller', 'I1' => 'Instructor',
@@ -111,10 +114,14 @@ class VatssaVatsimFacts
     }
 
     /**
-     * Check waiting members one at a time, about one a second. Stops on a rate limit.
+     * Check waiting members, five a minute from the scheduler. After a rate limit, none until
+     * VATSIM's wait is over, so these checks never hold up a member's training request.
      */
-    public function runLookups(int $limit = 40): int
+    public function runLookups(int $limit = self::LOOKUPS_PER_RUN): int
     {
+        if (now()->timestamp < (int) VatssaDiscordState::get('vatsim_blocked_until', 0)) {
+            return 0;
+        }
         $done = 0;
         $owner = config('app.owner_code');
         $rows = DB::table(self::TABLE)->where('needs_lookup', true)
@@ -155,9 +162,17 @@ class VatssaVatsimFacts
 
         $response = Http::withUserAgent(self::USER_AGENT)->acceptJson()->timeout(10)->get(self::API . "/members/{$row->cid}");
         if ($response->status() === 429) {
+            $wait = $response->header('Retry-After');
+            VatssaDiscordState::put('vatsim_blocked_until', now()->timestamp + (is_numeric($wait) ? min(max((int) $wait, 0) + 1, 3600) : 300));
+
             return 'stop';
         }
         if ($response->status() === 404) {
+            // Only VATSIM's own answer means no such member: a proxy's 404 must change nothing.
+            $detail = $response->json('detail');
+            if (! is_string($detail) || rtrim($detail, '.') !== 'Not Found') {
+                return $retry();
+            }
             DB::table(self::TABLE)->where('cid', $row->cid)->update(['rating' => null, 'division' => null, 'in_org' => false,
                 'source' => 'lookup', 'needs_lookup' => false, 'fetched_at' => $now, 'checked_at' => $now]);
 
