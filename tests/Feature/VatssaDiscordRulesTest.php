@@ -620,4 +620,19 @@ class VatssaDiscordRulesTest extends TestCase
 
         $editor->set('roleSearch', '')->assertSet('roles', [self::ROLE])->assertSee('Streamer');
     }
+
+    #[Test]
+    public function discord_links_sit_in_the_users_and_administration_menus_for_admins_only(): void
+    {
+        $html = $this->actingAs($this->admin())->get(route('dashboard'))->assertOk()->getContent();
+        $users = strpos($html, 'id="collapseMem"');
+        $admin = strpos($html, 'id="collapseUtilities"');
+
+        $this->assertGreaterThan($users, strpos($html, 'Discord members'));
+        $this->assertLessThan($admin, strpos($html, 'Discord members'));
+        $this->assertGreaterThan($admin, strpos($html, 'Discord rules'));
+
+        $this->actingAs(User::factory()->create())->get(route('dashboard'))->assertOk()
+            ->assertDontSee('Discord members')->assertDontSee('Discord rules');
+    }
 }

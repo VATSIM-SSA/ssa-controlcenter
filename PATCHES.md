@@ -470,6 +470,10 @@ workflow went green.
 `@include('vatssa.sidebar.groups')`, the Groups link for group staff and managers.
 **Detector:** `tests/Feature/VatssaGroupsTest.php` (sidebar test).
 
+**Also (2026-11-22):** **Discord members** sits in the Users section and **Discord rules**
+in Administration. Each section's guard and active state include the new permission or route.
+**Detector:** `tests/Feature/VatssaDiscordRulesTest.php` (sidebar test).
+
 Two items in the Reports section render with no `@can` guard while every other
 item in that section has one: **Mentors** and **Feedback**. Their controllers
 authorise `viewMentors` and `viewFeedback` on `ManagementReport`, so anyone who
