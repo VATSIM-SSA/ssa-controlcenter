@@ -13,7 +13,12 @@ use App\Models\User;
 use App\Models\VatssaGroup;
 use App\Models\VatssaGroupMember;
 use App\Services\VatssaTrainingFlags;
+use App\Services\VatssaVatsimFacts;
 use App\Tasks\Types\TheoreticalExam;
+use Illuminate\Auth\Events\Login;
+use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\View;
@@ -82,16 +87,16 @@ class VatssaServiceProvider extends ServiceProvider
         if (! $this->app->routesAreCached()) {
             Route::middleware(['web', 'auth', 'activity', 'suspended'])
                 ->group(base_path('routes/vatssa.php'));
-            // Not the 'api' group: its throttle:60,1 counter is shared with /api/users,
-            // and one batch of instant-sync results is up to 100 calls. Own counter.
-            Route::prefix('api')->middleware(['throttle:600,1,vatssa-discord-bot', 'bindings'])
+            // Not the 'api' group: its throttle:60,1 counter is shared with /api/users.
+            // The routes file sets its own limits.
+            Route::prefix('api')->middleware(['bindings'])
                 ->group(base_path('routes/vatssa-api.php'));
         }
     }
 
     /**
      * Instant Discord role sync: when CC data that decides a role changes, queue
-     * that member for the role sync bot (it polls every 10 seconds).
+     * that member for the role sync bot (it polls every 5 seconds).
      *
      * A row moved to another member queues both. Training uses created + updated,
      * not saved: wasRecentlyCreated stays true for the whole request, so a later
@@ -102,6 +107,26 @@ class VatssaServiceProvider extends ServiceProvider
      */
     private function registerDiscordSyncListeners(): void
     {
+        Event::listen(Login::class, function (Login $login) {
+            if ($login->user instanceof User) {
+                VatssaVatsimFacts::fromUser($login->user);
+            }
+            VatssaDiscordSyncController::queueAuto((int) $login->user->getAuthIdentifier(), 'login', true);
+        });
+        View::composer('vatssa.user.discord-sync', function ($view) {
+            $target = $view->getData()['user'] ?? null;
+            if ($target instanceof User && Auth::user()?->can('vatssaDiscordSync', $target)) {
+                VatssaDiscordSyncController::queueOnView($target->id);
+            }
+        });
+        // After upstream's member refresh (04:00), so a live login's data is this morning's.
+        $this->callAfterResolving(Schedule::class, function (Schedule $schedule) {
+            $schedule->command('vatssa:vatsim-pull')->dailyAt('04:30');
+            // In the background: up to 40 one-second checks must not hold up upstream's jobs.
+            $schedule->command('vatssa:vatsim-pull --lookups')->everyMinute()->withoutOverlapping(15)->runInBackground();
+            $schedule->command('vatssa:discord-daily')->dailyAt('06:00');
+        });
+
         $queue = function ($model): void {
             VatssaDiscordSyncController::queueAuto((int) $model->user_id);
             if ($model->wasChanged('user_id')) {
@@ -141,6 +166,7 @@ class VatssaServiceProvider extends ServiceProvider
                 VatssaDiscordSyncController::forgetUser($user->id);
                 VatssaGroup::forgetUser($user->id);
             } elseif ($user->wasChanged(['rating', 'division'])) {
+                VatssaVatsimFacts::fromUser($user);
                 VatssaDiscordSyncController::queueAuto($user->id);
             }
         });

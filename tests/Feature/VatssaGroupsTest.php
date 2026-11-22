@@ -51,7 +51,7 @@ class VatssaGroupsTest extends TestCase
 
     private function queued(int $cid): int
     {
-        return DB::table('vatssa_discord_sync_requests')->where('user_id', $cid)->where('source', 'auto')->count();
+        return (int) DB::table('vatssa_discord_queue')->where('user_id', $cid)->value('generation');
     }
 
     #[Test]

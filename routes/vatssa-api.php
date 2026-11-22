@@ -7,22 +7,26 @@ use Illuminate\Support\Facades\Route;
 
 /*
 | VATSSA API routes for the Discord role sync bot. Loaded by VatssaServiceProvider
-| under /api with its own rate limit (throttle:600,1,vatssa-discord-bot) and
-| bindings, not upstream's api group. Every route needs the bot's own token
+| under /api with bindings, not upstream's api group, and its own rate limits. The bot
+| makes about two calls per member, so a rule change needs far more than an API client. Every route needs the bot's own token
 | (VATSSA_DISCORD_BOT_TOKEN); a CC API key opens none of them.
 */
 
-Route::middleware(VatssaDiscordBotToken::class)->group(function () {
-    Route::get('/vatssa/discord-sync-requests', [VatssaDiscordSyncController::class, 'index'])
-        ->name('api.vatssa.discord-sync.index');
-    Route::post('/vatssa/discord-sync-requests/{id}/result', [VatssaDiscordSyncController::class, 'result'])
-        ->whereNumber('id')->name('api.vatssa.discord-sync.result');
-    Route::post('/vatssa/discord-presence', [VatssaDiscordSyncController::class, 'presence'])
-        ->name('api.vatssa.discord-presence');
+Route::middleware(['throttle:3000,1,vatssa-discord-bot', VatssaDiscordBotToken::class])->group(function () {
+    Route::post('/vatssa/discord-queue/claim', [VatssaDiscordSyncController::class, 'claim'])
+        ->name('api.vatssa.discord-queue.claim');
+    Route::post('/vatssa/discord-queue/{cid}/result', [VatssaDiscordSyncController::class, 'result'])
+        ->whereNumber('cid')->name('api.vatssa.discord-queue.result');
+    Route::post('/vatssa/discord-members', [VatssaDiscordSyncController::class, 'members'])
+        ->name('api.vatssa.discord-members');
+    Route::post('/vatssa/discord-roles', [VatssaDiscordSyncController::class, 'roles'])
+        ->name('api.vatssa.discord-roles');
+    Route::post('/vatssa/discord-guild-roles', [VatssaDiscordSyncController::class, 'guildRoles'])
+        ->name('api.vatssa.discord-guild-roles');
 });
 
 // Groups for any CC API key (read-only is enough), like upstream's /api/users.
-Route::middleware('api-token')->group(function () {
+Route::middleware(['throttle:600,1,vatssa-api', 'api-token'])->group(function () {
     Route::get('/vatssa/groups', [VatssaGroupController::class, 'apiIndex'])->name('api.vatssa.groups.index');
     Route::get('/vatssa/members/{cid}', [VatssaGroupController::class, 'apiMember'])->whereNumber('cid')->name('api.vatssa.members.show');
 });

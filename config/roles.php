@@ -122,8 +122,6 @@ return [
         // VATSSA: grant authority, one per grantable role. Renamed from upstream's
         // director/moderator/training-staff/staff/buddy to the VATSSA role keys.
         // UserPolicy::updateRole builds "roles.{$requestedRole}.manage", so these
-        // VATSSA: groups (VatssaGroup). Admin holds it through '**'.
-        'vatssa.groups.manage',
         // MUST stay spelled exactly like the keys above or nobody can grant anything.
         'roles.atc-training-manager.manage',
         'roles.pipeline-coordinator.manage',
@@ -131,6 +129,12 @@ return [
         'roles.mentor.manage',
         'roles.feedback-team.manage',
         'roles.event-staff.manage',             // admin only, through '**'
+
+        // VATSSA: admin holds these through '**'.
+        'vatssa.groups.manage',
+        'vatssa.discord.members.view',
+        'vatssa.discord.rules.view',
+        'vatssa.discord.rules.manage',
     ],
 
     'matrix' => [
