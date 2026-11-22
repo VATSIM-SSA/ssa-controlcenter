@@ -10,6 +10,7 @@ use App\Models\Training;
 use App\Models\User;
 use App\Services\VatssaTrainingFlags;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Notification;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
@@ -155,7 +156,7 @@ class VatssaTrainingAttentionTest extends TestCase
         $this->training->update(['stalled_at' => now()]);
         $this->app->instance(VatssaTrainingFlags::class, new class extends VatssaTrainingFlags
         {
-            public function clearOnClose(Training $training): void
+            public function clearOnStatusChange(Training $training, Carbon $changedAt): void
             {
                 throw new \RuntimeException('database unavailable');
             }
@@ -210,7 +211,7 @@ class VatssaTrainingAttentionTest extends TestCase
         $this->training->update(['status' => TrainingStatus::CLOSED_BY_STAFF->value]);
 
         $this->actingAs($coordinator)->post(route('training.action.attention', $this->training), ['attention' => 1])->assertForbidden();
-        $this->assertNull(app(VatssaTrainingFlags::class)->set($this->training, 'attention', true, $coordinator->id));
+        $this->assertSame(VatssaTrainingFlags::CLOSED, app(VatssaTrainingFlags::class)->set($this->training, 'attention', true, $coordinator->id));
         $this->assertNull($this->training->fresh()->attention_at);
     }
 
@@ -240,7 +241,10 @@ class VatssaTrainingAttentionTest extends TestCase
     /**
      * The badge words are drawn by CSS from data-label (so the State filter
      * ignores them). Feature tests cannot render CSS, so guard the rule itself:
-     * without it the badges would show icons only.
+     * without it the badges would show icons only. Column rules must stay
+     * inside the Open requests table block, however they are indented: My
+     * students, Closed requests and Member overview reuse the same data-field
+     * names.
      */
     #[Test]
     public function the_badge_label_rule_is_in_the_theme(): void
@@ -250,10 +254,140 @@ class VatssaTrainingAttentionTest extends TestCase
         $this->assertMatchesRegularExpression('/\.vatssa-flag::after\s*\{[^}]*content:\s*attr\(data-label\)/', $scss);
         $this->assertStringContainsString('@import "themes/custom"', file_get_contents(resource_path('sass/app.scss')));
 
-        // Column rules stay inside the Open requests table: other lists reuse
-        // the same data-field names.
-        $this->assertDoesNotMatchRegularExpression('/^th\[data-field=/m', $scss);
-        $this->assertStringContainsString('table[data-cookie-id-table="trainings"] {', $scss);
+        $open = 'table[data-cookie-id-table="trainings"] {';
+        $start = strpos($scss, $open);
+        $this->assertNotFalse($start, 'The Open requests table block is missing.');
+
+        $depth = 0;
+        for ($i = $start + strlen($open) - 1; $i < strlen($scss); $i++) {
+            $depth += match ($scss[$i]) {
+                '{' => 1,
+                '}' => -1,
+                default => 0,
+            };
+            if ($depth === 0) {
+                break;
+            }
+        }
+        $outside = substr($scss, 0, $start) . substr($scss, $i + 1);
+
+        $this->assertStringContainsString('data-field="state"', substr($scss, $start, $i - $start));
+        $this->assertStringNotContainsString('[data-field=', $outside);
+        $this->assertStringNotContainsString('data-cookie-id-table="trainings"', $outside);
+    }
+
+    /**
+     * A form rendered before someone else changed the training is refused
+     * rather than undoing their change; the flag keeps its newer state. Here
+     * the first request is retried from its original page.
+     */
+    #[Test]
+    public function a_change_from_an_older_page_is_refused(): void
+    {
+        $flags = app(VatssaTrainingFlags::class);
+        $first = $this->coordinator();
+        $second = $this->coordinator();
+
+        $pageVersion = $flags->version($this->training);
+        $this->actingAs($first)->post(route('training.action.attention', $this->training), ['attention' => 1, 'version' => $pageVersion]);
+        $afterSet = $flags->version($this->training);
+        $this->actingAs($second)->post(route('training.action.attention', $this->training), ['attention' => 0, 'version' => $afterSet]);
+        $this->assertNull($this->training->fresh()->attention_at);
+
+        $this->actingAs($first)->post(route('training.action.attention', $this->training), ['attention' => 1, 'version' => $pageVersion])
+            ->assertSessionHasErrors();
+        $this->assertNull($this->training->fresh()->attention_at);
+        $this->assertSame(2, $this->training->activities()->where('type', 'COMMENT')->count());
+    }
+
+    /**
+     * A double click sends the same page version twice: the second is simply
+     * "already done", not an error.
+     */
+    #[Test]
+    public function a_double_click_is_harmless(): void
+    {
+        $version = app(VatssaTrainingFlags::class)->version($this->training);
+        $coordinator = $this->coordinator();
+
+        $this->actingAs($coordinator)->post(route('training.action.stalled', $this->training), ['stalled' => 1, 'version' => $version]);
+        $this->actingAs($coordinator)->post(route('training.action.stalled', $this->training), ['stalled' => 1, 'version' => $version])
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame(1, $this->training->activities()->where('type', 'COMMENT')->count());
+    }
+
+    #[Test]
+    public function the_training_page_sends_its_version(): void
+    {
+        $version = app(VatssaTrainingFlags::class)->version($this->training);
+
+        $this->actingAs($this->coordinator())->get($this->training->path())
+            ->assertOk()
+            ->assertSee('name="version" value="' . $version . '"', false);
+    }
+
+    /**
+     * If the close's own clearing failed, the flags left behind are cleared
+     * when the training reopens, with a timeline entry each.
+     */
+    #[Test]
+    public function reopening_clears_flags_left_from_before(): void
+    {
+        $this->training->update(['attention_at' => now()->subDay(), 'stalled_at' => now()->subDay()]);
+        $real = app(VatssaTrainingFlags::class);
+        $this->app->instance(VatssaTrainingFlags::class, new class extends VatssaTrainingFlags
+        {
+            public function clearOnStatusChange(Training $training, Carbon $changedAt): void
+            {
+                throw new \RuntimeException('database unavailable');
+            }
+        });
+        $this->training->update(['status' => TrainingStatus::CLOSED_BY_STAFF->value]);
+        $this->assertNotNull($this->training->fresh()->stalled_at);
+
+        $this->app->instance(VatssaTrainingFlags::class, $real);
+        $this->training->update(['status' => TrainingStatus::ACTIVE_TRAINING->value]);
+
+        $training = $this->training->fresh();
+        $this->assertNull($training->attention_at);
+        $this->assertNull($training->stalled_at);
+        $this->assertContains('Stalled cleared automatically: it was set before the training was reopened.',
+            $this->training->activities()->pluck('comment')->all());
+    }
+
+    /**
+     * Reopening clears only flags older than the reopen: one set afterwards
+     * stays.
+     */
+    #[Test]
+    public function a_flag_set_after_the_reopen_is_kept(): void
+    {
+        $reopenedAt = now()->subMinute();
+        $this->training->update(['stalled_at' => now()->subDays(2), 'attention_at' => now()]);
+
+        app(VatssaTrainingFlags::class)->clearOnStatusChange($this->training, $reopenedAt);
+
+        $training = $this->training->fresh();
+        $this->assertNull($training->stalled_at);
+        $this->assertNotNull($training->attention_at);
+    }
+
+    /**
+     * If the status moved again before the clearing ran (closed, then reopened
+     * and flagged by someone else), the clearing for the close does nothing.
+     */
+    #[Test]
+    public function a_clear_for_an_outdated_status_does_nothing(): void
+    {
+        $this->training->update(['stalled_at' => now()]);
+        $closedCopy = Training::find($this->training->id);
+        $closedCopy->status = TrainingStatus::CLOSED_BY_STAFF;
+
+        app(VatssaTrainingFlags::class)->clearOnStatusChange($closedCopy, now()->subMinute());
+
+        $this->assertNotNull($this->training->fresh()->stalled_at);
+        $this->assertSame(0, $this->training->activities()->where('type', 'COMMENT')->count());
     }
 
     #[Test]
