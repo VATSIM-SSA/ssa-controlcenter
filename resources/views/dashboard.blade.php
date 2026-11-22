@@ -280,7 +280,8 @@
                     <img class="img-fluid px-3 px-sm-4 mb-4" style="width: 25rem;" src="images/undraw_speech_to_text_vatsim.svg" alt="">
                 </div>
                 <p>Are you interested in becoming an Air Traffic Controller? Wish to receive training for a higher rating? Request training below and you will be notified when a space is available.</p>
-                
+                <p>Please ensure you are in the <a href="{{ Setting::get('linkDiscord') }}" target="_blank">VATSSA Discord</a> and that you have logged into the @if(Setting::get('linkMoodle'))<a href="{{ Setting::get('linkMoodle') }}" target="_blank">Training Platform</a>@else<span>Training Platform</span>@endif at least once before registering for training. If you do not do so, your training will be closed.</p>
+
                 @can('apply', \App\Models\Training::class)
                 <div class="d-grid">
                     <a href="{{ route('training.apply') }}" class="btn btn-success">
