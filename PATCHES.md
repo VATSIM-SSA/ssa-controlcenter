@@ -23,9 +23,9 @@ underneath an added file. So each section below names its own detector, and
 
 ## Modified upstream files
 
-Eighteen, but they are two different things and should be read as such.
+Nineteen, but they are two different things and should be read as such.
 
-**Eight are code and configuration.** These are the real divergence. Each one is
+**Nine are code and configuration.** These are the real divergence. Each one is
 a conflict on some future release, each needs judgement to resolve, and this
 list growing is the thing to resist.
 
@@ -36,12 +36,15 @@ they carry risk.
 
 | | Count |
 |---|---|
-| Code and configuration | 8 |
+| Code and configuration | 9 |
 | Brand assets | 10 |
-| Added files | 48 |
+| Added files | 67 |
 | Force-added past `.gitignore` | 3 |
 
 ### `config/roles.php`
+
+**Also (2026-11-19):** one VATSSA permission in the catalogue, `vatssa.groups.manage`
+(groups; admin holds it through `**`). Listed, so `AuthServiceProvider` makes it a gate.
 
 **Why it diverges.** VATSSA runs its own roles (`admin`, `atc-training-manager`,
 `pipeline-coordinator`, `mentor`, `nav-editor`, `feedback-team`) in place of
@@ -82,9 +85,15 @@ never ship phpunit, faker, debugbar or boost.
 A **build arg, never an env var**, so it cannot be flipped by editing a `.env` on
 the box.
 
+**Also (2026-11-19):** `chown -R www-data:www-data /app/storage` after upstream
+creates `storage/app/public/files`. Upstream creates it as root after the
+`--chown=www-data` copy; the named storage volume takes its ownership from the image
+and Apache runs as www-data, so attachment uploads failed without an error while
+the `files` row was still written (twelve rows on production with no file).
+
 **Detector:** a git merge conflict at absorption, plus the guard step in
 `.github/workflows/deploy.yml` that fails a production build carrying dev
-dependencies.
+dependencies, plus `tests/Feature/VatssaAttachmentStorageTest.php` for the chown.
 
 **What to check when it conflicts.** Upstream restructuring its build stages is
 the likely cause. Reapply the arg to whichever stage ends up producing the
@@ -120,15 +129,34 @@ The logic lives in added files; the views carry only what a view has to:
   title buttons, and `@include('vatssa.training.theory-badge')` in place of the
   pre-training tick next to the state.
 - `index.blade.php` (Open requests): the badge include, in place of the tick.
+  And (2026-11-12) the State column's hover note lists staff comments only when
+  the viewer passes `TrainingActivityPolicy::view` for COMMENT. Upstream showed
+  every comment to anyone the row is listed for, which includes a staff member
+  looking at their own training as a student. An upstream bug; candidate for an
+  upstream contribution.
 - `show.blade.php` and `reports/activities.blade.php`: the activity feed's
   `PRETRAINING` branches also render `THEORY`, icon and text. Two lines each.
 
 **Detector:** `tests/Feature/VatssaTheoryCompletedTest.php` asserts the button,
-the badge on Open requests and the missing pre-training button.
+the badge on Open requests and the missing pre-training button;
+`VatssaTrainingAttentionTest::the_open_requests_note_hides_staff_comments_from_the_student`
+asserts the hover-note guard.
 
 **What to check when it conflicts.** Re-add the includes wherever upstream now
 renders the state and the title buttons. If upstream reworks the activity feed,
 keep `THEORY` rendering like `PRETRAINING`.
+
+### Discord sync button: `user/show.blade.php`
+
+**Why it diverges.** The profile page has no slot to plug into. One line,
+`@include('vatssa.user.discord-sync')`, at the bottom of the profile card
+(2026-11-18).
+
+**Detector:** `tests/Feature/VatssaDiscordSyncTest.php` asserts the button shows
+to staff and not to a plain member.
+
+**What to check when it conflicts.** Re-add the include inside whichever card
+now shows the VATSIM ID and name.
 
 ---
 
@@ -172,6 +200,31 @@ attributes stripped.
 
 These never conflict. That is the point, and it is also the risk, so each one
 names what it leans on and what would tell you it broke.
+
+### Attachment upload and serving hardening
+
+These holes are in upstream's code too. Worth offering upstream, privately first.
+
+- `TrainingObjectAttachmentController`: `store` also authorizes `update` on the
+  report or examination. `saveAttachments` saves one named field, not every file
+  in the request.
+- `TrainingReportController`, `TrainingExaminationController`: `files` must be an
+  array, because a lone file skips the `files.*` rule.
+- `FileController::get`: `nosniff` always; only PDF, PNG and JPEG render inline,
+  anything else downloads.
+- `container/entrypoint.sh`: at start, hands an existing storage volume to
+  www-data if the files folder is owned by anyone else.
+
+**Detector:** `tests/Feature/VatssaAttachmentStorageTest.php`.
+
+### `database/migrations-vatssa/2026_09_16_100000_vatssa_repair_attachment_uuid_pk.php`
+
+Repairs `training_object_attachments.id` on any database descended from the
+DigitalOcean install, where it stayed `bigint AUTO_INCREMENT` under a model that
+writes UUIDs (every upload failed). Production was repaired by hand on 16 Sep 2026;
+this makes a restore from an old dump safe. It reads the live column type first and
+does nothing on a correct table except drop the leftover `uuid` column; MySQL only.
+**Detector:** `tests/Feature/VatssaAttachmentStorageTest.php`.
 
 ### `database/migrations-vatssa/2026_08_26_100000_vatssa_reference_data.php`
 
@@ -235,30 +288,99 @@ The theory mark itself. The form posts the state it wants (`completed` 0/1),
 so a double click or a stale page cannot flip it back.
 **Detector:** `VatssaTheoryCompletedTest`.
 
-### Training flags (Requires attention, Stalled): `app/Http/Controllers/VatssaTrainingFlagController.php`, `resources/views/vatssa/training/flag-*`, `database/migrations/2026_11_12_120000_vatssa_add_stalled_at_to_trainings.php`, `database/migrations/2026_11_12_130000_vatssa_add_attention_at_to_trainings.php`
+### Training flags (Requires attention, Stalled): `app/Services/VatssaTrainingFlags.php`, `app/Http/Controllers/VatssaTrainingFlagController.php`, `resources/views/vatssa/training/flag-*`, `database/migrations/2026_11_12_120000_vatssa_add_stalled_at_to_trainings.php`, `database/migrations/2026_11_12_130000_vatssa_add_attention_at_to_trainings.php`
 
 Staff set or clear two flags on a training (2026-11-12), beside the theory mark:
 **Requires attention** (amber) and **Stalled** (red). Same people as the theory
-mark (`toggleTrainingFlags` in `VatssaServiceProvider`: `training.update` in the
-training's area, open trainings only). `trainings.attention_at` and
-`trainings.stalled_at` hold when each was set (null = not set); migrations on the
-default path for the same reason as the theory one. A training that closes loses
-both (a `Training::saving` hook in `VatssaServiceProvider`). Add a flag by adding
-a column and an entry to `VatssaTrainingFlagController::FLAGS`.
+mark (`toggleTrainingFlags`: `training.update` in the training's area, open
+trainings only). `trainings.attention_at` and `trainings.stalled_at` hold when
+each was set (null = not set); migrations on the default path for the same reason
+as the theory one. Add a flag by adding a column and an entry to
+`VatssaTrainingFlags::FLAGS`.
 
-**No upstream file touched.** The buttons and badges are included from the
-VATSSA theory partials (`theory-button`, `theory-badge`), which upstream views
-already include. Each change is written to the timeline as a staff COMMENT, which
-upstream already renders and hides from students, so no new activity type and no
-activity-feed edit. The badges show to the same audience as comments: the
-training's mentors and `training.activities.view` in its area.
+All the work is in `VatssaTrainingFlags` (review fixes, 2026-11-12):
+- a change takes a row lock and re-reads the training, so two clicks give one
+  change, and a training closed meanwhile is refused;
+- the change, its activity-log entry and its timeline comment are one
+  transaction, so a flag never changes without its history;
+- when a training closes (`Training::saved` hook in `VatssaServiceProvider`),
+  any flag still set in the database is cleared and the clearing is written to
+  the timeline. It reads the row, not the model, so a model loaded before a flag
+  was set still clears it. The theory mark is kept.
+
+**Upstream files:** none for the flags themselves. The buttons and badges are
+included from the VATSSA theory partials, which upstream views already include;
+history is a staff COMMENT, which upstream renders and hides from students; the
+badge words are drawn by CSS from `data-label` (`.vatssa-flag` in
+`_custom.scss`) so the Open requests State filter lists only the status. The Open
+requests column rules (State width, ATC Hours, one-line rows) are scoped to
+`table[data-cookie-id-table="trainings"]`, because My students, Closed requests
+and Member overview reuse the same `data-field` names. The
+hover-note guard in `training/index.blade.php` is listed under *Theory mark*.
 
 **Leans on:** the theory include points in `training/show.blade.php` and
 `training/index.blade.php`, `TrainingActivityController::create` with type
 `COMMENT`, `TrainingActivityPolicy::view` hiding COMMENT from students, the
-`status` enum cast on `Training`.
+`status` enum cast on `Training`, upstream closing trainings through Eloquent
+(`updateStatus` / `update`), not a query-builder update.
 **Detector:** `tests/Feature/VatssaTrainingStalledTest.php`,
-`tests/Feature/VatssaTrainingAttentionTest.php`.
+`tests/Feature/VatssaTrainingAttentionTest.php` (including a guard that the
+`.vatssa-flag` CSS rule exists).
+
+### Groups: `app/Models/VatssaGroup*.php` (4), `app/Http/Controllers/VatssaGroupController.php`, `resources/views/vatssa/groups/*` (2), `resources/views/vatssa/sidebar/groups.blade.php`, `database/migrations/2026_11_19_100000_vatssa_create_groups.php`, `tests/Feature/VatssaGroupsTest.php`
+
+Groups at `/groups` (2026-11-19): named lists of people kept by VATSIM ID, so
+members need no CC account yet. Ported from the EuroScope plugin package
+(`vatssa-plugin`, not in git), group part only; the plugin's own group migrations
+must not be installed beside these. Rights: `vatssa.groups.manage` for everything;
+a group's settings managers rename it and appoint member managers; member managers
+add and remove members. Bulk add and remove (paste VATSIM IDs, or tick), archive,
+then delete with the name typed. Members and managers are only marked removed; every
+change is a `vatssa_group_events` line. Each membership change queues that member for
+the Discord role sync (model listeners). A deleted user leaves every group and is
+removed from every history and "by" field. Names are unique; member changes run under
+a per-group cache lock; CIDs must be 800000 to 3000000 or a VATSIM sandbox account. API for any CC key:
+`GET /api/vatssa/groups`, `GET /api/vatssa/members/{cid}`.
+**Leans on:** the permission catalogue becoming gates, `x-sidebar.item`,
+`ActivityLogService`, `User::name`.
+**Detector:** `tests/Feature/VatssaGroupsTest.php`.
+
+### Discord sync: `app/Http/Controllers/VatssaDiscordSyncController.php`, `app/Http/Controllers/VatssaDiscordRuleController.php`, `app/Livewire/VatssaDiscord*.php`, `resources/views/livewire/vatssa-discord-*.blade.php`, `app/Services/VatssaDiscordRules.php`, `app/Services/VatssaDiscordRuleStore.php`, `app/Services/VatssaVatsimFacts.php`, `app/Console/Commands/VatssaDiscordSeedRules.php`, `resources/views/vatssa/discord/rules/`, `app/Console/Commands/VatssaDiscordDaily.php`, `app/Console/Commands/VatssaVatsimPull.php`, `app/Http/Middleware/VatssaDiscordBotToken.php`, `config/vatssa.php`, `routes/vatssa-api.php`, `resources/views/vatssa/user/discord-sync.blade.php`, `resources/views/vatssa/discord/members.blade.php`, the `2026_11_18` and `2026_11_21` Discord migrations
+
+All additions. Described in `docs-vatssa/discord-sync.md`. **CC never calls the bot.**
+Gate `vatssaDiscordSync` in `VatssaServiceProvider`: `users.manage` for anyone, a
+mentor only for members they teach. Matrix: `vatssa.discord.members.view`,
+`vatssa.discord.rules.view`, `vatssa.discord.rules.manage`. **CC decides every role** through
+the rules; the bot applies the answer from `POST /api/vatssa/discord-roles`.
+
+**Writes `users` only with `VATSSA_VATSIM_WRITE_USERS=true`** (default off; `vatssa:vatsim-leavers` previews it). The nightly pull (04:30, after upstream's `update:member:data` at
+04:00) and individual checks update rating, region, division and subdivision through the
+model. Upstream's `update:member:details` (05:00) then closes trainings and removes
+mentors for anyone who left, so only an individual VATSIM answer naming another division
+counts as leaving, at most 45 a day. Schedules are added from `VatssaServiceProvider`, so
+`Console/Kernel.php` is unchanged.
+
+**Shared state.** `vatssa_discord_state`, never the settings package: `Setting::save()`
+deletes any key created after that process loaded its settings, and the scheduler saves
+every minute.
+
+**Limits.** The API routes file runs under `bindings`, not the `api` group, whose 60/min
+counter is shared with `/api/users`. Bot routes: `throttle:3000,1,vatssa-discord-bot`. API
+key routes: `throttle:600,1,vatssa-api`.
+The button: `throttle:30,1,vatssa-discord-button`. The bot token must be 32+
+characters or the routes refuse everyone.
+
+**Trap.** PHP turns numeric array keys into integers, and MySQL compares an integer with
+a string column as a float, so a Discord ID used as a key can match its neighbours.
+Cast to string before any query. SQLite does not show this, so run the sync tests on
+MySQL after changing `members()`.
+
+**Leans on:** Eloquent events and `user_id` on `Endorsement`, `RoleAssignment`, `Training`,
+`AtcActivity`; `User::isTeaching`; `UserDelete` setting `void@void.void`; the `user.show`
+route; `UserPolicy::view`; the `bindings` alias; `ThrottleRequests`' prefix argument;
+VATSIM's `/v2/orgs/{mode}/{code}` and `/v2/members/{cid}`.
+**Detector:** `tests/Feature/VatssaDiscordSyncTest.php`, `tests/Feature/VatssaVatsimFactsTest.php`,
+`tests/Feature/VatssaDiscordRulesTest.php`.
 
 ### `database/migrations/2026_11_11_120000_vatssa_add_theory_completed_to_trainings.php`
 
@@ -343,6 +465,10 @@ workflow went green.
 ---
 
 ### `resources/views/layouts/sidebar.blade.php`
+
+**Also (2026-11-19):** one line after the Users section,
+`@include('vatssa.sidebar.groups')`, the Groups link for group staff and managers.
+**Detector:** `tests/Feature/VatssaGroupsTest.php` (sidebar test).
 
 Two items in the Reports section render with no `@can` guard while every other
 item in that section has one: **Mentors** and **Feedback**. Their controllers

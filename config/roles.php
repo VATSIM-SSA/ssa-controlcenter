@@ -129,6 +129,12 @@ return [
         'roles.mentor.manage',
         'roles.feedback-team.manage',
         'roles.event-staff.manage',             // admin only, through '**'
+
+        // VATSSA: admin holds these through '**'.
+        'vatssa.groups.manage',
+        'vatssa.discord.members.view',
+        'vatssa.discord.rules.view',
+        'vatssa.discord.rules.manage',
     ],
 
     'matrix' => [

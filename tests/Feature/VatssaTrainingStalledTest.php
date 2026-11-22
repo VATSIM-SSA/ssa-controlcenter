@@ -11,7 +11,9 @@ use Illuminate\Support\Facades\Notification;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
-// VATSSA: staff-only "Training stalled" flag, recorded as a staff comment.
+/**
+ * VATSSA: staff-only "Stalled" flag, recorded as a staff comment.
+ */
 class VatssaTrainingStalledTest extends TestCase
 {
     use RefreshDatabase;
@@ -67,6 +69,9 @@ class VatssaTrainingStalledTest extends TestCase
         ]);
     }
 
+    /**
+     * The date stays when it was first flagged, and only one comment exists.
+     */
     #[Test]
     public function setting_the_state_it_already_has_changes_nothing(): void
     {
@@ -77,7 +82,6 @@ class VatssaTrainingStalledTest extends TestCase
         $this->travel(1)->days();
         $this->actingAs($coordinator)->post(route('training.action.stalled', $this->training), ['stalled' => 1]);
 
-        // The date is when it was first flagged, and only one comment exists.
         $this->assertEquals($since, $this->training->fresh()->stalled_at);
         $this->assertSame(1, $this->training->activities()->where('type', 'COMMENT')->count());
     }
