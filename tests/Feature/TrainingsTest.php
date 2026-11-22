@@ -1762,4 +1762,27 @@ class TrainingsTest extends TestCase
                 $s1->name . '</span> part completed',
             ], false);
     }
+
+    #[Test]
+    public function the_training_platform_is_plain_text_when_no_moodle_link_is_set(): void
+    {
+        Http::fake(['api.vatsim.net/*' => Http::response(['obs' => 0])]);
+        config(['app.mode' => 'division', 'app.owner_code' => 'SSA']);
+        Setting::set('trainingEnabled', true);
+        $applicant = User::factory()->create(['rating' => VatsimRating::OBS->value, 'division' => 'SSA']);
+
+        Setting::set('linkMoodle', '');
+        foreach ([route('dashboard'), route('training.apply')] as $page) {
+            $this->actingAs($applicant)->get($page)->assertOk()
+                ->assertSee('<span>Training Platform</span>', false)
+                ->assertDontSee('>Training Platform</a>', false);
+        }
+
+        Setting::set('linkMoodle', 'https://moodle.example');
+        foreach ([route('dashboard'), route('training.apply')] as $page) {
+            $this->actingAs($applicant)->get($page)->assertOk()
+                ->assertSee('<a href="https://moodle.example" target="_blank">Training Platform</a>', false)
+                ->assertDontSee('<span>Training Platform</span>', false);
+        }
+    }
 }
