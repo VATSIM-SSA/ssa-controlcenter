@@ -625,12 +625,14 @@ class VatssaDiscordRulesTest extends TestCase
     public function discord_links_sit_in_the_users_and_administration_menus_for_admins_only(): void
     {
         $html = $this->actingAs($this->admin())->get(route('dashboard'))->assertOk()->getContent();
-        $users = strpos($html, 'id="collapseMem"');
-        $admin = strpos($html, 'id="collapseUtilities"');
+        $page = new \DOMDocument;
+        @$page->loadHTML($html);
+        $links = new \DOMXPath($page);
 
-        $this->assertGreaterThan($users, strpos($html, 'Discord members'));
-        $this->assertLessThan($admin, strpos($html, 'Discord members'));
-        $this->assertGreaterThan($admin, strpos($html, 'Discord rules'));
+        $this->assertSame(1, $links->query('//*[@id="collapseMem"]//a[contains(., "Discord members")]')->length);
+        $this->assertSame(1, $links->query('//*[@id="collapseUtilities"]//a[contains(., "Discord rules")]')->length);
+        $this->assertSame(1, $links->query('//a[contains(., "Discord members")]')->length);
+        $this->assertSame(1, $links->query('//a[contains(., "Discord rules")]')->length);
 
         $this->actingAs(User::factory()->create())->get(route('dashboard'))->assertOk()
             ->assertDontSee('Discord members')->assertDontSee('Discord rules');
