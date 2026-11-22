@@ -314,7 +314,7 @@ a per-group cache lock; CIDs must be 800000 to 3000000 or a VATSIM sandbox accou
 `ActivityLogService`, `User::name`.
 **Detector:** `tests/Feature/VatssaGroupsTest.php`.
 
-### Discord sync: `app/Http/Controllers/VatssaDiscordSyncController.php`, `app/Http/Controllers/VatssaDiscordRuleController.php`, `app/Services/VatssaDiscordRules.php`, `app/Services/VatssaVatsimFacts.php`, `app/Console/Commands/VatssaDiscordSeedRules.php`, `resources/views/vatssa/discord/rules/`, `app/Console/Commands/VatssaDiscordDaily.php`, `app/Console/Commands/VatssaVatsimPull.php`, `app/Http/Middleware/VatssaDiscordBotToken.php`, `config/vatssa.php`, `routes/vatssa-api.php`, `resources/views/vatssa/user/discord-sync.blade.php`, `resources/views/vatssa/discord/members.blade.php`, the `2026_11_18` and `2026_11_21` Discord migrations
+### Discord sync: `app/Http/Controllers/VatssaDiscordSyncController.php`, `app/Http/Controllers/VatssaDiscordRuleController.php`, `app/Livewire/VatssaDiscord*.php`, `resources/views/livewire/vatssa-discord-*.blade.php`, `app/Services/VatssaDiscordRules.php`, `app/Services/VatssaDiscordRuleStore.php`, `app/Services/VatssaVatsimFacts.php`, `app/Console/Commands/VatssaDiscordSeedRules.php`, `resources/views/vatssa/discord/rules/`, `app/Console/Commands/VatssaDiscordDaily.php`, `app/Console/Commands/VatssaVatsimPull.php`, `app/Http/Middleware/VatssaDiscordBotToken.php`, `config/vatssa.php`, `routes/vatssa-api.php`, `resources/views/vatssa/user/discord-sync.blade.php`, `resources/views/vatssa/discord/members.blade.php`, the `2026_11_18` and `2026_11_21` Discord migrations
 
 All additions. Described in `docs-vatssa/discord-sync.md`. **CC never calls the bot.**
 Gate `vatssaDiscordSync` in `VatssaServiceProvider`: `users.manage` for anyone, a
