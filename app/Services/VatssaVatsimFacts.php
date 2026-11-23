@@ -10,6 +10,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Sleep;
 use RuntimeException;
 
@@ -39,6 +40,9 @@ class VatssaVatsimFacts
     /** VATSIM allows about 10 calls a minute per server. This leaves room for members' page loads and the bot. */
     public const LOOKUPS_PER_RUN = 5;
 
+    /** Upstream's commands that use nearly all of VATSIM's limit. */
+    private const ATC_COMMANDS = ['update:atc:status', 'update:atc:hours'];
+
     private const RATING_NAMES = [
         'INA' => 'Inactive', 'SUS' => 'Suspended', 'OBS' => 'Pilot/Observer', 'S1' => 'Tower Trainee', 'S2' => 'Tower Controller',
         'S3' => 'TMA Controller', 'C1' => 'Enroute Controller', 'C3' => 'Senior Controller', 'I1' => 'Instructor',
@@ -50,6 +54,9 @@ class VatssaVatsimFacts
      */
     public function pull(): int
     {
+        if ($this->retryHeld()) {
+            throw new RuntimeException('VATSIM asked us to wait, so the division list was not requested.');
+        }
         $owner = config('app.owner_code');
         $items = $this->fetchDivision($owner);
 
@@ -157,7 +164,47 @@ class VatssaVatsimFacts
      */
     private function lookupsHeld(): bool
     {
-        return now()->timestamp < max((int) VatssaDiscordState::get('vatsim_blocked_until', 0), (int) VatssaDiscordState::get('vatsim_atc_job_until', 0));
+        return $this->retryHeld() || collect(VatssaDiscordState::get('vatsim_atc_jobs') ?? [])->contains(fn ($until) => (int) $until > now()->timestamp);
+    }
+
+    private function retryHeld(): bool
+    {
+        return now()->timestamp < (int) VatssaDiscordState::get('vatsim_blocked_until', 0);
+    }
+
+    /**
+     * Hold lookups while an ATC hours command runs. Each run is tracked, so one finishing
+     * cannot release another, and expires after three hours in case it dies. Never throws:
+     * this must not stop upstream's job.
+     */
+    public static function atcJob(string $command, bool $running): void
+    {
+        if (! in_array($command, self::ATC_COMMANDS, true)) {
+            return;
+        }
+        try {
+            $key = getmypid() . ':' . $command;
+            VatssaDiscordState::change('vatsim_atc_jobs', function ($jobs) use ($key, $running) {
+                $jobs = array_filter((array) $jobs, fn ($until) => (int) $until > now()->timestamp);
+                if ($running) {
+                    $jobs[$key] = now()->addHours(3)->timestamp;
+                } else {
+                    unset($jobs[$key]);
+                }
+
+                return (object) $jobs;
+            });
+        } catch (\Throwable $e) {
+            report($e);
+        }
+    }
+
+    /**
+     * A 429, or a 503 that says how long to wait.
+     */
+    private function asksToWait(Response $response): bool
+    {
+        return $response->status() === 429 || ($response->status() === 503 && $response->hasHeader('Retry-After'));
     }
 
     /**
@@ -175,11 +222,15 @@ class VatssaVatsimFacts
                 $seconds = 300;
             }
         }
-        VatssaDiscordState::put('vatsim_blocked_until', now()->timestamp + min(max($seconds, 0) + 1, 86400));
+        $seconds = min(max($seconds, 0) + 1, 86400);
+        $until = now()->timestamp + $seconds;
+        VatssaDiscordState::change('vatsim_blocked_until', fn ($old) => max((int) $old, $until));
+        Log::warning('VATSIM asked CC to wait', ['status' => $response->status(), 'seconds' => $seconds]);
     }
 
     /**
-     * Ask VATSIM about one member. Returns done, retry (no usable answer) or stop (rate limited).
+     * Ask VATSIM about one member. Returns done, retry (no usable answer) or stop (told to wait).
+     * Only VATSIM's own 404 body means no such member: a proxy's 404 must change nothing.
      */
     private function checkOne(object $row, string $owner): string
     {
@@ -191,13 +242,12 @@ class VatssaVatsimFacts
         };
 
         $response = Http::withUserAgent(self::USER_AGENT)->acceptJson()->timeout(10)->get(self::API . "/members/{$row->cid}");
-        if ($response->status() === 429) {
+        if ($this->asksToWait($response)) {
             $this->holdLookups($response);
 
             return 'stop';
         }
         if ($response->status() === 404) {
-            // Only VATSIM's own answer means no such member: a proxy's 404 must change nothing.
             $detail = $response->json('detail');
             if (! is_string($detail) || rtrim($detail, '.') !== 'Not Found') {
                 return $retry();
@@ -394,7 +444,7 @@ class VatssaVatsimFacts
         do {
             $response = Http::withUserAgent(self::USER_AGENT)->withHeaders(['X-API-Key' => $token])->acceptJson()->timeout(60)
                 ->get($url, ['include_inactive' => 1, 'limit' => 1000, 'offset' => $items->count()]);
-            if ($response->status() === 429) {
+            if ($this->asksToWait($response)) {
                 $this->holdLookups($response);
             }
             $body = $response->successful() ? $response->json() : null;
