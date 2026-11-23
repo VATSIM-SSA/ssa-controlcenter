@@ -502,6 +502,26 @@ class VatssaDiscordSyncController extends Controller
     }
 
     /**
+     * Bot API: full names for the online ATC board. A CID left out has no usable name in CC.
+     */
+    public function controllerNames(Request $request): JsonResponse
+    {
+        /** @var array{cids: list<int>} $data */
+        $data = $request->validate([
+            'cids' => 'present|array|max:200',
+            'cids.*' => 'required|integer|min:1',
+        ]);
+
+        $names = User::whereIn('id', $data['cids'])
+            ->where(fn ($q) => $q->whereNull('email')->orWhere('email', '!=', self::PSEUDONYMISED_EMAIL))
+            ->get(['id', 'first_name', 'last_name'])
+            ->mapWithKeys(fn (User $u) => [$u->id => trim($u->first_name . ' ' . $u->last_name)])
+            ->filter();
+
+        return response()->json(['names' => (object) $names->all()]);
+    }
+
+    /**
      * Bot API: the server's roles, so the rule page shows names. An empty list is a fault.
      */
     public function guildRoles(Request $request): Response

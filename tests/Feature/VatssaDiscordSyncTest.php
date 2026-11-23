@@ -688,4 +688,18 @@ class VatssaDiscordSyncTest extends TestCase
         $groups = Route::getRoutes()->getByName('api.vatssa.groups.index')->gatherMiddleware();
         $this->assertContains('throttle:600,1,vatssa-api', $groups);
     }
+
+    #[Test]
+    public function controller_names_need_the_bot_token_and_skip_pseudonymised_members(): void
+    {
+        $url = route('api.vatssa.controller-names');
+        $this->postJson($url, ['cids' => [$this->member->id]])->assertUnauthorized();
+
+        $this->member->update(['first_name' => 'Thandi', 'last_name' => 'Mokoena']);
+        $gone = User::factory()->create(['email' => 'void@void.void']);
+        $answer = $this->postJson($url, ['cids' => [$this->member->id, $gone->id, 9999999]], $this->auth())->assertOk();
+
+        $this->assertSame([(string) $this->member->id => 'Thandi Mokoena'], $answer->json('names'));
+        $this->postJson($url, ['cids' => ['abc']], $this->auth())->assertUnprocessable();
+    }
 }
