@@ -122,7 +122,7 @@
 
 
 
-        @can('fir.management.reports.view')
+        @if(auth()->user()->can('fir.management.reports.view') || auth()->user()->can('viewFeedback', \App\Models\ManagementReport::class))
             {{-- Divider --}}
             <div class="sidebar-divider"></div>
 
@@ -151,7 +151,7 @@
             </x-sidebar.section>
         @endif
 
-        @if(auth()->user()->canAny(['system.health.view', 'users.manage', 'vatssa.discord.rules.view']) || auth()->user()->can('viewAny', App\Models\Position::class))
+        @if(auth()->user()->canAny(['system.health.view', 'notifications.templates.manage', 'vatssa.discord.rules.view']) || auth()->user()->can('viewAny', App\Models\Position::class))
 
             {{-- Nav Item - Utilities Collapse Menu --}}
             <x-sidebar.section icon="fa-cogs" title="Administration" :active="Route::is('admin.*') || Route::is('positions.*') || Route::is('vote.overview') || Route::is('vatssa.discord.rules.*')" id="collapseUtilities">
@@ -161,7 +161,7 @@
                     <x-sidebar.item :href="route('admin.logs')" title="Logs" collapse />
                 @endcan
 
-                @can('users.manage')
+                @can('notifications.templates.manage')
                     <x-sidebar.item :href="route('admin.templates')" title="Notification templates" collapse />
                 @endcan
                 @can('viewAny', App\Models\Position::class)
