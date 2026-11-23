@@ -12,6 +12,13 @@
                 </h6> 
             </div>
             <div class="card-body">
+                {{-- VATSSA: the Online ATC message links here with the controller and position filled in. --}}
+                @php
+                    $linkedController = request()->query('controller');
+                    $linkedController = is_string($linkedController) && ctype_digit($linkedController) ? $linkedController : '';
+                    $linkedPosition = request()->query('position');
+                    $linkedPosition = is_string($linkedPosition) && $positions->contains('callsign', $linkedPosition) ? $linkedPosition : '';
+                @endphp
                 <form action="{!! action('FeedbackController@store') !!}" method="POST">
                     @csrf
 
@@ -42,7 +49,7 @@
                                 name="controller"
                                 list="controllersList"
                                 multiple="multiple"
-                                value="{{ old('controller') }}"
+                                value="{{ old('controller', $linkedController) }}"
                                 >
 
                             <datalist id="controllersList">
@@ -68,7 +75,7 @@
                                 name="position"
                                 list="positionsList"
                                 multiple="multiple"
-                                value="{{ old('position') }}"
+                                value="{{ old('position', $linkedPosition) }}"
                                 >
 
                             <datalist id="positionsList">
