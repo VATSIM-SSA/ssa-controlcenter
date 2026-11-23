@@ -151,13 +151,19 @@ class VatssaDiscordRulesTest extends TestCase
         $full->roleAssignments()->create(['role' => 'mentor', 'area_id' => $this->area->id]);
         $training = Training::factory()->create(['user_id' => $full->id, 'area_id' => $this->area->id, 'status' => 0, 'type' => 1]);
         $withoutTrainee = ['app', 'approved', 'examiner', 'fss', 'member', 'mentor', 'solo'];
-        $this->assertSame($withoutTrainee, $this->seeded($full->fresh()->id)); // the waiting list is not training
+        $this->assertSame([...$withoutTrainee, 'trainee'], $this->seeded($full->fresh()->id)); // the queue counts
 
-        $training->update(['status' => 1, 'type' => 5]);
-        $this->assertSame($withoutTrainee, $this->seeded($full->fresh()->id)); // nor is familiarisation
+        $training->update(['type' => 5]);
+        $this->assertSame($withoutTrainee, $this->seeded($full->fresh()->id)); // familiarisation in the queue does not
+
+        $training->update(['status' => 1]);
+        $this->assertSame($withoutTrainee, $this->seeded($full->fresh()->id)); // nor once it has started
 
         $training->update(['type' => 1]);
         $this->assertSame([...$withoutTrainee, 'trainee'], $this->seeded($full->fresh()->id));
+
+        $training->update(['status' => -1]);
+        $this->assertSame($withoutTrainee, $this->seeded($full->fresh()->id)); // a finished training does not
     }
 
     #[Test]
