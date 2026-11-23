@@ -85,6 +85,9 @@ class VatssaDiscordSyncController extends Controller
     public function store(User $user): RedirectResponse
     {
         $this->authorize('vatssaDiscordSync', $user);
+        if ($user->email === self::PSEUDONYMISED_EMAIL) {
+            return redirect()->route('user.show', $user->id)->withErrors('This member has been erased, so there is nothing to sync.');
+        }
 
         self::queue([$user->id], 'button', Auth::id(), 0, true);
         VatssaVatsimFacts::refresh($user->id);
@@ -219,6 +222,8 @@ class VatssaDiscordSyncController extends Controller
                 ->orderByRaw("reason IN ('daily', 'rule')")->orderBy('available_at')->limit($limit)->lockForUpdate()->get();
 
             $out = [];
+            // Long enough for the bot to work through the whole batch.
+            $lease = self::LEASE_SECONDS + 15 * $rows->count();
             foreach ($rows as $row) {
                 $where = DB::table(self::QUEUE)->where('user_id', $row->user_id);
                 if ($row->attempts >= self::MAX_ATTEMPTS) {
@@ -227,7 +232,7 @@ class VatssaDiscordSyncController extends Controller
 
                     continue;
                 }
-                $where->update(['state' => 'leased', 'lease_until' => $now->copy()->addSeconds(self::LEASE_SECONDS), 'attempts' => $row->attempts + 1]);
+                $where->update(['state' => 'leased', 'lease_until' => $now->copy()->addSeconds($lease), 'attempts' => $row->attempts + 1]);
                 $out[] = ['cid' => (int) $row->user_id, 'generation' => (int) $row->generation, 'fresh' => (bool) $row->fresh, 'reason' => $row->reason];
             }
 
@@ -307,13 +312,13 @@ class VatssaDiscordSyncController extends Controller
     {
         $data = $request->validate([
             'complete' => 'required|boolean',
-            'at' => 'required|numeric|min:0',
+            'at' => 'required|numeric|min:0|max:' . (now()->timestamp + 300),
             'members' => 'present|array|max:50000',
             'members.*.discord_id' => ['required', 'string', 'regex:/^\d{15,21}$/'],
             'members.*.cid' => 'present|nullable|integer|min:0',
             'members.*.name' => 'nullable|string|max:100',
             'members.*.bot' => 'sometimes|boolean',
-            'members.*.joined_at' => 'nullable|numeric|min:0',
+            'members.*.joined_at' => 'nullable|numeric|min:0|max:' . (now()->timestamp + 300),
             'members.*.roles' => 'sometimes|array|max:300',
             'members.*.roles.*' => ['string', 'regex:/^\d{15,21}$/'],
             'left' => 'sometimes|array|max:50000',
@@ -353,7 +358,7 @@ class VatssaDiscordSyncController extends Controller
             }
 
             $counts = $sent->pluck('cid')->filter()->countBy();
-            $known = User::whereIn('id', $counts->keys())->where('email', '!=', self::PSEUDONYMISED_EMAIL)->pluck('id')->flip();
+            $known = User::whereIn('id', $counts->keys())->where(fn ($q) => $q->whereNull('email')->orWhere('email', '!=', self::PSEUDONYMISED_EMAIL))->pluck('id')->flip();
             // CIDs VATSIM just confirmed for exactly one account outrank a link only being kept.
             $confirmed = $sent->filter(fn (array $m) => ($m['cid'] ?? 0) > 0 && $counts[$m['cid']] === 1 && $known->has($m['cid']))
                 ->map(fn (array $m) => (int) $m['cid'])->values()->flip();
@@ -411,7 +416,7 @@ class VatssaDiscordSyncController extends Controller
 
                 if ($user !== $was) {
                     if ($was && $user) {
-                        $log($id, $user, 'relinked', "CID {$was} to {$user}");
+                        $log($id, $user, 'relinked', "Now CID {$user}"); // never the old CID: it is someone else's
                     } elseif ($was) {
                         $log($id, $was, 'unlinked');
                     } else {
@@ -439,8 +444,13 @@ class VatssaDiscordSyncController extends Controller
                 $row = $existing->get($id);
                 // Someone seen after this list began joined while it was being built: not gone.
                 if ($row && $row->in_server && (! $data['complete'] || Carbon::parse($row->last_seen_at)->timestamp < $generatedAt)) {
-                    DB::table(self::MEMBERS)->where('discord_id', $id)->update(['in_server' => false, 'left_at' => $now]);
-                    $log($id, $row->user_id ? (int) $row->user_id : null, 'left');
+                    // Re-checked in the write: a join can commit after this list read the row.
+                    $left = DB::table(self::MEMBERS)->where('discord_id', $id)
+                        ->when($data['complete'], fn ($q) => $q->where('last_seen_at', '<', Carbon::createFromTimestamp((int) ceil($generatedAt))))
+                        ->update(['in_server' => false, 'left_at' => $now]);
+                    if ($left) {
+                        $log($id, $row->user_id ? (int) $row->user_id : null, 'left');
+                    }
                 }
             }
             foreach (array_chunk($history, 500) as $chunk) {
@@ -452,7 +462,13 @@ class VatssaDiscordSyncController extends Controller
         }, 3);
 
         if ($toQueue) {
-            self::queue(array_values(array_unique($toQueue)), 'join');
+            try {
+                self::queue(array_values(array_unique($toQueue)), 'join');
+            } catch (\Throwable $e) {
+                // A retry would see them as already here, so hand them to the next claim instead.
+                report($e);
+                DB::table(self::MEMBERS)->whereIn('user_id', array_values(array_unique($toQueue)))->update(['needs_sync' => true]);
+            }
         }
 
         if ($data['complete']) {

@@ -87,7 +87,7 @@ class VatssaVatsimFacts
                 DB::table(self::TABLE)->whereIn('cid', $chunk->values())->update(['in_org' => false, 'needs_lookup' => true]);
             }
 
-            $users = DB::table('users')->where('email', '!=', Sync::PSEUDONYMISED_EMAIL)->get(['id', 'rating', 'division', 'refresh_token'])
+            $users = DB::table('users')->where(fn ($q) => $q->whereNull('email')->orWhere('email', '!=', Sync::PSEUDONYMISED_EMAIL))->get(['id', 'rating', 'division', 'refresh_token'])
                 ->reject(fn ($user) => $onList->has((int) $user->id));
 
             // CC says they are ours but VATSIM's list does not: ask about each one.
@@ -209,17 +209,18 @@ class VatssaVatsimFacts
         }
         $body = $response->successful() ? $response->json() : null;
         if (! is_array($body) || (int) ($body['id'] ?? 0) !== (int) $row->cid || ! is_numeric($body['rating'] ?? null)
-            || ! is_string($body['division_id'] ?? null) || $body['division_id'] === '') {
-            return $retry();
+            || ! is_string($body['division_id'] ?? null) || $body['division_id'] === '' || strlen($body['division_id']) > 10
+            || strlen((string) ($body['region_id'] ?? '')) > 8) {
+            return $retry(); // too long for our columns: writing half of it would leave them disagreeing
         }
 
-        $user = User::where('id', $row->cid)->where('email', '!=', Sync::PSEUDONYMISED_EMAIL)->first();
+        $user = User::where('id', $row->cid)->where(fn ($q) => $q->whereNull('email')->orWhere('email', '!=', Sync::PSEUDONYMISED_EMAIL))->first();
         if ($user && config('vatssa.vatsim_write_users') && $user->division === $owner && $body['division_id'] !== $owner
             && ! $this->takeLeave()) {
             return $retry();
         }
-        if ($user) {
-            $this->applyToUser($user, $body);
+        if ($user && ! $this->applyToUser($user, $body)) {
+            return $retry();
         }
 
         DB::table(self::TABLE)->where('cid', $row->cid)->update(['rating' => (int) $body['rating'], 'division' => $body['division_id'],
@@ -237,10 +238,10 @@ class VatssaVatsimFacts
      *
      * @param  array<string, mixed>  $vatsim
      */
-    private function applyToUser(User $user, array $vatsim): void
+    private function applyToUser(User $user, array $vatsim): bool
     {
         if (! config('vatssa.vatsim_write_users')) {
-            return;
+            return true;
         }
         if ($rating = VatsimRating::tryFrom((int) $vatsim['rating'])) {
             $user->rating = $rating;
@@ -258,8 +259,12 @@ class VatssaVatsimFacts
         }
         try {
             $user->save();
+
+            return true;
         } catch (\Throwable $e) {
             report($e);
+
+            return false;
         }
     }
 
@@ -343,6 +348,7 @@ class VatssaVatsimFacts
     {
         try {
             (new self)->markForLookup(collect([$cid]));
+            DB::table(self::TABLE)->where('cid', $cid)->update(['checked_at' => null]); // a person asked: front of the line
         } catch (\Throwable $e) {
             report($e);
         }

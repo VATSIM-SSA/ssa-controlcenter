@@ -66,7 +66,7 @@ class GlobalSettingController extends Controller
             'linkContact' => 'required|url',
             'linkVisiting' => 'required|url',
             'linkDiscord' => 'required|url',
-            'linkMoodle' => '',
+            'linkMoodle' => 'nullable|url',
             'divisionApiEnabled' => '',
             'feedbackEnabled' => '',
             'feedbackForwardEmail' => 'nullable|email',

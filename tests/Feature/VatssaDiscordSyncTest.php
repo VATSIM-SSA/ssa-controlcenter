@@ -180,7 +180,7 @@ class VatssaDiscordSyncTest extends TestCase
         $this->claim()->assertJsonPath('data.0.cid', $this->member->id)->assertJsonPath('data.0.fresh', true);
         $this->claim()->assertJsonCount(0, 'data');
 
-        $this->travel(Sync::LEASE_SECONDS + 1)->seconds();
+        $this->travel(Sync::LEASE_SECONDS + 16)->seconds(); // one row adds 15 seconds
         $this->claim()->assertJsonCount(1, 'data');
         $this->assertSame(2, (int) $this->row()->attempts);
     }
@@ -191,7 +191,7 @@ class VatssaDiscordSyncTest extends TestCase
         Sync::queue([$this->member->id], 'button');
         for ($i = 0; $i < Sync::MAX_ATTEMPTS; $i++) {
             $this->claim()->assertJsonCount(1, 'data');
-            $this->travel(Sync::LEASE_SECONDS + 1)->seconds();
+            $this->travel(Sync::LEASE_SECONDS + 16)->seconds(); // one row adds 15 seconds
         }
         $this->claim()->assertJsonCount(0, 'data');
         $this->assertEquals(['idle', 'failed'], [$this->row()->state, $this->row()->result]);
@@ -489,10 +489,10 @@ class VatssaDiscordSyncTest extends TestCase
     }
 
     #[Test]
-    public function logging_in_queues_a_fresh_sync(): void
+    public function logging_in_queues_a_sync_without_a_vatsim_call(): void
     {
         event(new Login('web', $this->member, false));
-        $this->assertEquals(['login', 1], [$this->row()->reason, $this->row()->fresh]);
+        $this->assertEquals(['login', 0], [$this->row()->reason, $this->row()->fresh]);
     }
 
     #[Test]
@@ -671,7 +671,7 @@ class VatssaDiscordSyncTest extends TestCase
         $other = User::factory()->create();
         $this->send([$this->account(self::A, $this->member->id)]);
         $this->send([$this->account(self::A, $other->id)]);
-        $this->assertSame(1, DB::table('vatssa_discord_member_history')->where('detail', 'like', "CID {$this->member->id} to %")->count());
+        $this->assertSame(1, DB::table('vatssa_discord_member_history')->where('detail', "Now CID {$other->id}")->count());
 
         $this->member->email = Sync::PSEUDONYMISED_EMAIL;
         $this->member->save();

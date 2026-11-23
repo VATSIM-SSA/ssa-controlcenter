@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use anlutro\LaravelSettings\Facade as Setting;
 use App\Helpers\VatsimRating;
 use App\Http\Controllers\VatssaDiscordSyncController as Sync;
 use App\Models\User;
@@ -10,8 +11,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
- * VATSSA: decides every member's Discord roles. The only evaluator: the bot applies the
- * answer, and the rule page's preview runs this same code.
+ * VATSSA: decides every member's Discord roles. The only evaluator: the bot applies the answer.
  *
  * A rule's conditions must all hold (AND). A role is given if any enabled rule gives it, so
  * OR is two rules for one role. An account with no VATSIM link matches only rules made
@@ -26,7 +26,7 @@ class VatssaDiscordRules
         'endorsement' => 'Endorsement',
         'roster' => 'On the roster',
         'group' => 'CC group',
-        'training' => 'Open training',
+        'training' => 'In training',
         'not_vatsim' => 'Not VATSIM Member',
     ];
 
@@ -79,7 +79,7 @@ class VatssaDiscordRules
         $users = collect();
         foreach ($cids->chunk(500) as $chunk) {
             $users = $users->merge(User::with(['endorsements.ratings', 'roleAssignments', 'trainings', 'atcActivity'])
-                ->whereIn('id', $chunk->values())->where('email', '!=', Sync::PSEUDONYMISED_EMAIL)->get());
+                ->whereIn('id', $chunk->values())->where(fn ($q) => $q->whereNull('email')->orWhere('email', '!=', Sync::PSEUDONYMISED_EMAIL))->get());
         }
         $users = $users->keyBy('id');
         $erased = collect();
@@ -99,6 +99,10 @@ class VatssaDiscordRules
         $groups = $groups->groupBy('user_id')->map(fn ($rows) => $rows->pluck('group_id')->map(fn ($id) => (int) $id)->all());
         $activeGroups = DB::table('vatssa_groups')->whereNull('archived_at')->pluck('id')->map(fn ($id) => (int) $id)->flip();
         $activeAreas = DB::table('areas')->pluck('id')->map(fn ($id) => (int) $id)->flip();
+
+        // Upstream's check runs a query, so ask once per member and only if a rule needs it.
+        $needsRoster = $rules->contains(fn ($r) => collect($r->conditions)->contains(fn ($c) => $c['type'] === 'roster' && ($c['params']['area'] ?? 'any') === 'any'));
+        $byTotalHours = $needsRoster && Setting::get('atcActivityBasedOnTotalHours');
 
         $owner = config('app.owner_code');
         $out = ['roles' => [], 'unknown' => [], 'facts' => ['pulled_at' => $facts['pulled_at'], 'leaves_waiting' => $facts['leaves_waiting']]];
@@ -121,6 +125,7 @@ class VatssaDiscordRules
                     continue;
                 }
                 $subject = ['linked' => true, 'rating' => (int) $rating, 'home' => $division === $owner, 'user' => $user, 'groups' => $groups->get($cid, []),
+                    'rosterAny' => $needsRoster && $user && ($byTotalHours ? (bool) $user->isAtcActive() : $user->atcActivity->contains('atc_active', true)),
                     'activeGroups' => $activeGroups, 'activeAreas' => $activeAreas];
             }
 
@@ -189,9 +194,9 @@ class VatssaDiscordRules
                 default => (int) $a->area_id === (int) $p['area'],
             }),
             'roster' => $user !== null && (($p['area'] ?? 'any') === 'any'
-                ? (bool) $user->isAtcActive()
+                ? $subject['rosterAny']
                 : $user->atcActivity->contains(fn ($a) => (int) $a->area_id === (int) $p['area'] && $a->atc_active)),
-            'training' => $user !== null && $user->trainings->contains(fn ($t) => $t->status->isOpen()
+            'training' => $user !== null && $user->trainings->contains(fn ($t) => $t->status->isInProgress() && (int) $t->type !== 5 // not the waiting list or familiarisation
                 && (($p['area'] ?? 'any') === 'any' || (int) $t->area_id === (int) $p['area'])),
             'endorsement' => $user !== null && $this->endorsed($user, $p),
             default => false, // an unknown type never gives a role
@@ -254,7 +259,7 @@ class VatssaDiscordRules
             }),
             'roster' => 'On the roster (' . $area($p['area'] ?? 'any') . ')',
             'group' => 'In group ' . $groups->get((int) ($p['group'] ?? 0), '(deleted)'),
-            'training' => 'Open training (' . $area($p['area'] ?? 'any') . ')',
+            'training' => 'In training (' . $area($p['area'] ?? 'any') . ')',
             'not_vatsim' => 'Not VATSIM Member',
             default => $condition['type'],
         };

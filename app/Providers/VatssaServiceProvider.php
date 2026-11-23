@@ -114,7 +114,7 @@ class VatssaServiceProvider extends ServiceProvider
             if ($login->user instanceof User) {
                 VatssaVatsimFacts::fromUser($login->user);
             }
-            VatssaDiscordSyncController::queueAuto((int) $login->user->getAuthIdentifier(), 'login', true);
+            VatssaDiscordSyncController::queueAuto((int) $login->user->getAuthIdentifier(), 'login');
         });
         View::composer('vatssa.user.discord-sync', function ($view) {
             $target = $view->getData()['user'] ?? null;
