@@ -205,13 +205,13 @@ class VatssaVatsimFactsTest extends TestCase
     }
 
     #[Test]
-    public function the_scheduler_checks_five_members_a_run(): void
+    public function the_scheduler_checks_three_members_a_run(): void
     {
         DB::table('vatssa_vatsim_members')->insert(array_map(fn ($cid) => ['cid' => $cid, 'needs_lookup' => true], range(1000001, 1000006)));
         Http::fake(['api.vatsim.net/*' => Http::response(['detail' => 'Not Found'], 404)]);
 
-        $this->assertSame(5, app(VatssaVatsimFacts::class)->runLookups());
-        Http::assertSentCount(5);
+        $this->assertSame(3, app(VatssaVatsimFacts::class)->runLookups());
+        Http::assertSentCount(3);
     }
 
     #[Test]
