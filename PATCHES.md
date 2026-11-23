@@ -464,6 +464,14 @@ workflow went green.
 
 ---
 
+### `resources/views/feedback/create.blade.php`
+
+Reads `?controller=` and `?position=` so the Discord Online ATC message can open the form
+filled in. A controller must be digits and a position must exist, or the field stays empty.
+**Detector:** `tests/Feature/VatssaFeedbackLinkTest.php`.
+
+---
+
 ### `app/Console/Commands/CheckOnlineControllers.php`
 
 One condition: VATSSA's roster is global, so the check calls
