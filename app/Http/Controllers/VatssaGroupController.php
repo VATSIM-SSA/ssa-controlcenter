@@ -8,6 +8,7 @@ use App\Models\VatssaGroup;
 use App\Models\VatssaGroupManager;
 use App\Models\VatssaGroupMember;
 use App\Services\ActivityLogService;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -48,7 +49,11 @@ class VatssaGroupController extends Controller
             ['name.unique' => 'A group with that name already exists (it may be archived).'],
         );
 
-        $group = VatssaGroup::create($data + ['created_by' => $request->user()->id]);
+        try {
+            $group = VatssaGroup::create($data + ['created_by' => $request->user()->id]);
+        } catch (UniqueConstraintViolationException) { // two saves at once: the rule above passed for both
+            return back()->withInput()->withErrors(['name' => 'A group with that name already exists (it may be archived).']);
+        }
         $group->record('created', null, $group->name, $request->user()->id);
         ActivityLogService::info(LogName::Other, 'Group created: ' . $group->name);
 
@@ -80,16 +85,20 @@ class VatssaGroupController extends Controller
             ['name.unique' => 'A group with that name already exists (it may be archived).'],
         );
 
-        $this->locked($group, function (VatssaGroup $group) use ($request, $data) {
-            abort_unless($group->settingsEditableBy($request->user()), 403);
-            if ($data['name'] !== $group->name) {
-                $group->record('renamed', null, $group->name . ' → ' . $data['name'], $request->user()->id);
-            }
-            if (array_key_exists('description', $data) && $data['description'] !== $group->description) {
-                $group->record('described', null, $data['description'], $request->user()->id);
-            }
-            $group->update($data);
-        });
+        try {
+            $this->locked($group, function (VatssaGroup $group) use ($request, $data) {
+                abort_unless($group->settingsEditableBy($request->user()), 403);
+                if ($data['name'] !== $group->name) {
+                    $group->record('renamed', null, $group->name . ' → ' . $data['name'], $request->user()->id);
+                }
+                if (array_key_exists('description', $data) && $data['description'] !== $group->description) {
+                    $group->record('described', null, $data['description'], $request->user()->id);
+                }
+                $group->update($data);
+            });
+        } catch (UniqueConstraintViolationException) {
+            return back()->withInput()->withErrors(['name' => 'A group with that name already exists (it may be archived).']);
+        }
 
         return back()->with('success', 'Group saved.');
     }
@@ -287,8 +296,10 @@ class VatssaGroupController extends Controller
     /**
      * API: one member's active groups. Works for a VATSIM ID with no CC account.
      */
-    public function apiMember(int $cid): JsonResponse
+    public function apiMember(string $cid): JsonResponse
     {
+        abort_unless(strlen($cid) <= 10, 404); // a longer number would overflow the int below
+        $cid = (int) $cid;
         $groups = VatssaGroup::whereNull('archived_at')
             ->whereIn('id', VatssaGroupMember::where('user_id', $cid)->whereNull('removed_at')->select('group_id'))
             ->orderBy('name')->get(['id', 'name']);

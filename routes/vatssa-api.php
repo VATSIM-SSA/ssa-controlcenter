@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\Route;
 | (VATSSA_DISCORD_BOT_TOKEN); a CC API key opens none of them.
 */
 
-Route::middleware(['throttle:3000,1,vatssa-discord-bot', VatssaDiscordBotToken::class])->group(function () {
+Route::middleware([VatssaDiscordBotToken::class, 'throttle:3000,1,vatssa-discord-bot'])->group(function () {
     Route::post('/vatssa/discord-queue/claim', [VatssaDiscordSyncController::class, 'claim'])
         ->name('api.vatssa.discord-queue.claim');
     Route::post('/vatssa/discord-queue/{cid}/result', [VatssaDiscordSyncController::class, 'result'])

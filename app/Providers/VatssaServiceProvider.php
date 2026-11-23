@@ -20,6 +20,7 @@ use Illuminate\Auth\Events\Login;
 use Illuminate\Console\Events\CommandFinished;
 use Illuminate\Console\Events\CommandStarting;
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
@@ -114,7 +115,7 @@ class VatssaServiceProvider extends ServiceProvider
             if ($login->user instanceof User) {
                 VatssaVatsimFacts::fromUser($login->user);
             }
-            VatssaDiscordSyncController::queueAuto((int) $login->user->getAuthIdentifier(), 'login', true);
+            VatssaDiscordSyncController::queueAuto((int) $login->user->getAuthIdentifier(), 'login');
         });
         View::composer('vatssa.user.discord-sync', function ($view) {
             $target = $view->getData()['user'] ?? null;
@@ -125,22 +126,14 @@ class VatssaServiceProvider extends ServiceProvider
         // After upstream's member refresh (04:00), so a live login's data is this morning's.
         $this->callAfterResolving(Schedule::class, function (Schedule $schedule) {
             $schedule->command('vatssa:vatsim-pull')->dailyAt('04:30');
-            // In the background, so a slow VATSIM answer cannot hold up upstream's jobs.
+            $schedule->command('vatssa:vatsim-pull')->dailyAt('05:30')
+                ->when(fn () => ! Carbon::parse(VatssaDiscordState::get('vatsim_pull_at', '2000-01-01'))->isToday());
             $schedule->command('vatssa:vatsim-pull --lookups')->everyMinute()->withoutOverlapping(15)->runInBackground();
             $schedule->command('vatssa:discord-daily')->dailyAt('06:00');
         });
 
-        // The ATC hours job uses nearly all of VATSIM's limit. The expiry covers a job that dies.
-        Event::listen(CommandStarting::class, function (CommandStarting $event) {
-            if ($event->command === 'update:atc:status') {
-                VatssaDiscordState::put('vatsim_atc_job_until', now()->addHours(3)->timestamp);
-            }
-        });
-        Event::listen(CommandFinished::class, function (CommandFinished $event) {
-            if ($event->command === 'update:atc:status') {
-                VatssaDiscordState::put('vatsim_atc_job_until', 0);
-            }
-        });
+        Event::listen(CommandStarting::class, fn (CommandStarting $event) => VatssaVatsimFacts::atcJob((string) $event->command, true));
+        Event::listen(CommandFinished::class, fn (CommandFinished $event) => VatssaVatsimFacts::atcJob((string) $event->command, false));
 
         $queue = function ($model): void {
             VatssaDiscordSyncController::queueAuto((int) $model->user_id);

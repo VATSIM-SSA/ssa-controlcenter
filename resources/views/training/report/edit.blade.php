@@ -83,7 +83,7 @@
                     <div class="mb-3">
                         <label class="form-label" for="attachments">Attachments</label>
                         <div>
-                            <input type="file" name="file" id="add-file" class="@error('file') is-invalid @enderror" accept=".pdf, .xls, .xlsx, .doc, .docx, .txt, .png, .jpg, .jpeg" onchange="uploadFile(this)" multiple>
+                            <input type="file" name="file" id="add-file" class="@error('file') is-invalid @enderror" accept=".pdf, .xls, .xlsx, .doc, .docx, .txt, .png, .jpg, .jpeg" onchange="uploadFile(this)">
                         </div>
                         @error('file')
                             <span class="text-danger">{{ $errors->first('file') }}</span>

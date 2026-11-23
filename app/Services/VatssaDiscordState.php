@@ -40,6 +40,18 @@ class VatssaDiscordState
     }
 
     /**
+     * Change a value under a row lock, so two processes cannot overwrite each other.
+     */
+    public static function change(string $name, callable $change): void
+    {
+        DB::transaction(function () use ($name, $change) {
+            DB::table(self::TABLE)->insertOrIgnore(['name' => $name, 'value' => 'null', 'updated_at' => now()]);
+            $value = DB::table(self::TABLE)->where('name', $name)->lockForUpdate()->value('value');
+            DB::table(self::TABLE)->where('name', $name)->update(['value' => json_encode($change(json_decode($value, true))), 'updated_at' => now()]);
+        });
+    }
+
+    /**
      * Take one of `$limit` places. False when none are left.
      */
     public static function reserve(string $name, int $limit): bool

@@ -14,7 +14,7 @@ On a member's profile, under their VATSIM ID and name:
 
 **Discord members** (sidebar) lists every account in the server with its CID, Not VATSIM accounts, bots and people who left. Permission: `vatssa.discord.members.view`, admin by default.
 
-**Discord rules** (sidebar): a rule is a name, conditions that must all hold, and the Discord roles it gives. A role is given if any enabled rule gives it. Conditions: VATSIM division or rating, CC role, endorsement, roster, CC group, open training, Not VATSIM Member, each of which can be negated. **Preview changes** shows what a save would do. Every change is in the rule history and can be restored. Permissions: `vatssa.discord.rules.view` and `vatssa.discord.rules.manage`, admin by default. `php artisan vatssa:discord-seed-rules` creates the starting rules once.
+**Discord rules** (sidebar): a rule is a name, conditions that must all hold, and the Discord roles it gives. A role is given if any enabled rule gives it. Conditions: VATSIM division or rating, CC role, endorsement, roster, CC group, in training (not the waiting list or familiarisation), Not VATSIM Member, each of which can be negated. Every change is in the rule history and can be restored. Permissions: `vatssa.discord.rules.view` and `vatssa.discord.rules.manage`, admin by default. `php artisan vatssa:discord-seed-rules` creates the starting rules once.
 
 ## How it works
 
@@ -31,7 +31,7 @@ On a member's profile, under their VATSIM ID and name:
 
 **One Discord account per CID.** The database enforces it. If two accounts claim a CID, the bot asks VATSIM about both, and the stale one loses it.
 
-**API for the bot.** All under `/api/vatssa/`, all behind the bot token `VATSSA_DISCORD_BOT_TOKEN` (at least 32 characters). A Control Center API key opens none of them. Own rate limit: 600 a minute.
+**API for the bot.** All under `/api/vatssa/`, all behind the bot token `VATSSA_DISCORD_BOT_TOKEN` (at least 32 characters). A Control Center API key opens none of them. Own rate limit: 3000 a minute, counted after the token check.
 
 | Call | Does |
 |---|---|
