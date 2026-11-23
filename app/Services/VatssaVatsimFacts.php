@@ -38,7 +38,7 @@ class VatssaVatsimFacts
     public const MAX_LEAVES_PER_DAY = 45;
 
     /** VATSIM allows about 10 calls a minute per server. This leaves room for members' page loads and the bot. */
-    public const LOOKUPS_PER_RUN = 5;
+    public const LOOKUPS_PER_RUN = 3;
 
     /** Upstream's commands that use nearly all of VATSIM's limit. */
     private const ATC_COMMANDS = ['update:atc:status', 'update:atc:hours'];
@@ -122,7 +122,7 @@ class VatssaVatsimFacts
     }
 
     /**
-     * Check waiting members, five a minute from the scheduler. After a rate limit, none until
+     * Check waiting members, three a minute from the scheduler. After a rate limit, none until
      * VATSIM's wait is over, so these checks never hold up a member's training request.
      */
     public function runLookups(int $limit = self::LOOKUPS_PER_RUN): int
