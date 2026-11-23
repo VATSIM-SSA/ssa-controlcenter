@@ -464,6 +464,15 @@ workflow went green.
 
 ---
 
+### `app/Console/Commands/CheckOnlineControllers.php`
+
+One condition: VATSSA's roster is global, so the check calls
+`VatssaControlAuthorisation::problem()` instead of upstream's per-area
+`isAllowedToControlOnline()`.
+**Detector:** `tests/Feature/VatssaControlAuthorisationTest.php`.
+
+---
+
 ### `resources/views/layouts/sidebar.blade.php`
 
 **Also (2026-11-19):** one line after the Users section,

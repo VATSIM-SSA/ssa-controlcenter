@@ -25,6 +25,8 @@ Route::middleware([VatssaDiscordBotToken::class, 'throttle:3000,1,vatssa-discord
         ->name('api.vatssa.discord-guild-roles');
     Route::post('/vatssa/controller-names', [VatssaDiscordSyncController::class, 'controllerNames'])
         ->name('api.vatssa.controller-names');
+    Route::post('/vatssa/controller-authorisation', [VatssaDiscordSyncController::class, 'controllerAuthorisation'])
+        ->name('api.vatssa.controller-authorisation');
 });
 
 // Groups for any CC API key (read-only is enough), like upstream's /api/users.

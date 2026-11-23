@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Helpers\LogName;
 use App\Models\User;
 use App\Services\ActivityLogService;
+use App\Services\VatssaControlAuthorisation;
 use App\Services\VatssaDiscordRules;
 use App\Services\VatssaDiscordState;
 use App\Services\VatssaVatsimFacts;
@@ -542,6 +543,34 @@ class VatssaDiscordSyncController extends Controller
             ->filter();
 
         return response()->json(['names' => (object) $names->all()]);
+    }
+
+    /**
+     * Bot API: which online controllers may not be on their position, and why.
+     */
+    public function controllerAuthorisation(Request $request, VatssaControlAuthorisation $check): JsonResponse
+    {
+        /** @var array{controllers: list<array{callsign: string, cid: int, type: string}>} $data */
+        $data = $request->validate([
+            'controllers' => 'present|array|max:200',
+            'controllers.*.callsign' => ['required', 'string', 'max:20', 'regex:/^[A-Za-z0-9_-]+$/'],
+            'controllers.*.cid' => 'required|integer|min:1',
+            'controllers.*.type' => 'required|in:DEL,GND,TWR,APP,CTR,FSS',
+        ]);
+
+        $users = User::with(['endorsements.ratings', 'trainings', 'atcActivity'])
+            ->whereIn('id', array_column($data['controllers'], 'cid'))
+            ->where(fn ($q) => $q->whereNull('email')->orWhere('email', '!=', self::PSEUDONYMISED_EMAIL))
+            ->get()->keyBy('id');
+
+        $problems = [];
+        foreach ($data['controllers'] as $controller) {
+            if ($why = $check->problem($users->get((int) $controller['cid']), $controller['type'])) {
+                $problems[$controller['callsign']] = $why;
+            }
+        }
+
+        return response()->json(['problems' => (object) $problems]);
     }
 
     /**
