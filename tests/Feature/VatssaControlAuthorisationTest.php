@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Area;
 use App\Models\AtcActivity;
 use App\Models\Endorsement;
+use App\Models\Position;
 use App\Models\Rating;
 use App\Models\Training;
 use App\Models\User;
@@ -114,18 +115,33 @@ class VatssaControlAuthorisationTest extends TestCase
     }
 
     #[Test]
-    public function visitors_stop_at_their_endorsement_and_solo_alone_adds_no_step(): void
+    public function visitors_stop_at_their_endorsement(): void
     {
         $visitor = $this->person(5, false, 'EUD'); // C1 with an S3 visiting endorsement
         $this->endorse($visitor, 'VISITING', 'S3');
         $this->assertSame(['DEL', 'GND', 'TWR', 'APP'], $this->positions($visitor));
         $this->assertSame('Visiting endorsement does not cover CTR', app(VatssaControlAuthorisation::class)->problem($visitor->fresh(['endorsements.ratings', 'trainings', 'atcActivity']), 'CTR'));
 
-        $solo = $this->person(2, false);
-        $this->endorse($solo, 'SOLO', 'S2');
-        $this->assertSame(['DEL', 'GND'], $this->positions($solo));
-        $this->train($solo, 2);
-        $this->assertSame(['DEL', 'GND', 'TWR'], $this->positions($solo));
+    }
+
+    #[Test]
+    public function a_solo_covers_only_its_exact_position(): void
+    {
+        $check = app(VatssaControlAuthorisation::class);
+        $user = $this->person(2, false); // S1, not on the roster
+        $this->endorse($user, 'SOLO', 'S2');
+        $endorsement = Endorsement::where('user_id', $user->id)->sole();
+        $endorsement->positions()->attach(Position::factory()->create(['callsign' => 'FALE_TWR', 'area_id' => $this->area->id])->id);
+        $user = $user->fresh(['endorsements.ratings', 'endorsements.positions', 'trainings', 'atcActivity']);
+
+        $this->assertNull($check->problem($user, 'TWR', 'FALE_TWR'));
+        $this->assertNull($check->problem($user, 'TWR', 'fale_twr'));
+        $this->assertNotNull($check->problem($user, 'TWR', 'FACT_TWR'));
+        $this->assertNotNull($check->problem($user, 'GND', 'FALE_GND'));
+        $this->assertNotNull($check->problem($user));
+
+        $endorsement->forceFill(['revoked' => true])->save();
+        $this->assertNotNull($check->problem($user->fresh(['endorsements.ratings', 'endorsements.positions', 'trainings', 'atcActivity']), 'TWR', 'FALE_TWR'));
     }
 
     #[Test]

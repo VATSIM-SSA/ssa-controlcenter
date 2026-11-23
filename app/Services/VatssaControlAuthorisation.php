@@ -26,21 +26,25 @@ class VatssaControlAuthorisation
 
     /**
      * Why this person may not control this position, or null if they may. An empty type
-     * checks only that they may control at all.
+     * checks only that they may control at all. A SOLO covers exactly the positions on it.
      */
-    public function problem(?User $user, string $type = ''): ?string
+    public function problem(?User $user, string $type = '', ?string $callsign = null): ?string
     {
         if (! $user) {
             return 'No Control Center account';
         }
         $held = $user->endorsements->filter(fn (Endorsement $e) => ! $e->revoked && ! $e->expired
             && (! $e->valid_to || Carbon::parse($e->valid_to)->isFuture()));
-        $solo = $held->contains('type', 'SOLO');
+        if ($callsign !== null && $held->where('type', 'SOLO')->contains(
+            fn (Endorsement $e) => $e->positions->contains(fn ($p) => strcasecmp((string) $p->callsign, $callsign) === 0)
+        )) {
+            return null;
+        }
         $training = $user->trainings->filter(fn ($t) => in_array($t->status, [TrainingStatus::ACTIVE_TRAINING, TrainingStatus::AWAITING_EXAM], true));
         $visiting = $held->where('type', 'VISITING');
 
-        if (! $solo && $training->isEmpty() && $visiting->isEmpty() && ! $user->isAtcActive()) {
-            return 'Not on the roster, with no visiting or solo endorsement or active training';
+        if ($training->isEmpty() && $visiting->isEmpty() && ! $user->isAtcActive()) {
+            return 'Not on the roster, with no visiting endorsement, active training or solo for this position';
         }
         if ($type === 'FSS') {
             return $this->holdsFss($held) ? null : 'FSS needs an FSS endorsement';

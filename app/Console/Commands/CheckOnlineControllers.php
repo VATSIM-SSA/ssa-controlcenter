@@ -82,7 +82,7 @@ class CheckOnlineControllers extends Command
                     $position = Position::firstWhere('callsign', $d['callsign']);
                     $area = (isset($position->area)) ? $position->area : null;
 
-                    if (isset($user) && app(VatssaControlAuthorisation::class)->problem($user) !== null) { // VATSSA: the roster is global
+                    if (isset($user) && app(VatssaControlAuthorisation::class)->problem($user, '', $d['callsign']) !== null) { // VATSSA: the roster is global
                         if (! isset($user->last_inactivity_warning) || (isset($user->last_inactivity_warning) && Carbon::now()->gt(Carbon::parse($user->last_inactivity_warning)->addHours(6)))) {
                             // Send warning to user
                             $user->notify(new InactiveOnlineNotification($user));

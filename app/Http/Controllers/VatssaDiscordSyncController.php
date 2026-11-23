@@ -238,16 +238,16 @@ class VatssaDiscordSyncController extends Controller
             }
 
             return $out;
-        });
+        }, 3);
 
         // Accounts with no CID have no queue row. Sent once; the sweep is the safety net.
         $accounts = DB::transaction(function () use ($limit) {
             $ids = DB::table(self::MEMBERS)->where('needs_sync', true)->where('in_server', true)
-                ->limit($limit)->lockForUpdate()->pluck('discord_id')->map(fn ($id) => (string) $id)->all();
+                ->orderBy('discord_id')->limit($limit)->lockForUpdate()->pluck('discord_id')->map(fn ($id) => (string) $id)->all();
             DB::table(self::MEMBERS)->whereIn('discord_id', $ids)->update(['needs_sync' => false]);
 
             return $ids;
-        });
+        }, 3); // a member list can hold the same rows, and MySQL may pick this one to retry
 
         // An approval expires, so a bot that was offline cannot act on an old one.
         $approval = VatssaDiscordState::pull(self::BOT_APPROVE);
@@ -558,14 +558,14 @@ class VatssaDiscordSyncController extends Controller
             'controllers.*.type' => 'required|in:DEL,GND,TWR,APP,CTR,FSS',
         ]);
 
-        $users = User::with(['endorsements.ratings', 'trainings', 'atcActivity'])
+        $users = User::with(['endorsements.ratings', 'endorsements.positions', 'trainings', 'atcActivity'])
             ->whereIn('id', array_column($data['controllers'], 'cid'))
             ->where(fn ($q) => $q->whereNull('email')->orWhere('email', '!=', self::PSEUDONYMISED_EMAIL))
             ->get()->keyBy('id');
 
         $problems = [];
         foreach ($data['controllers'] as $controller) {
-            if ($why = $check->problem($users->get((int) $controller['cid']), $controller['type'])) {
+            if ($why = $check->problem($users->get((int) $controller['cid']), $controller['type'], $controller['callsign'])) {
                 $problems[$controller['callsign']] = $why;
             }
         }
