@@ -149,8 +149,15 @@ class VatssaDiscordRulesTest extends TestCase
         $this->endorse($full, 'SOLO', 'S3');
         $this->endorse($full, 'FACILITY', 'AFRx FSS');
         $full->roleAssignments()->create(['role' => 'mentor', 'area_id' => $this->area->id]);
-        Training::factory()->create(['user_id' => $full->id, 'area_id' => $this->area->id, 'status' => 0]);
-        $this->assertSame(['app', 'approved', 'examiner', 'fss', 'member', 'mentor', 'solo', 'trainee'], $this->seeded($full->fresh()->id));
+        $training = Training::factory()->create(['user_id' => $full->id, 'area_id' => $this->area->id, 'status' => 0, 'type' => 1]);
+        $withoutTrainee = ['app', 'approved', 'examiner', 'fss', 'member', 'mentor', 'solo'];
+        $this->assertSame($withoutTrainee, $this->seeded($full->fresh()->id)); // the waiting list is not training
+
+        $training->update(['status' => 1, 'type' => 5]);
+        $this->assertSame($withoutTrainee, $this->seeded($full->fresh()->id)); // nor is familiarisation
+
+        $training->update(['type' => 1]);
+        $this->assertSame([...$withoutTrainee, 'trainee'], $this->seeded($full->fresh()->id));
     }
 
     #[Test]
@@ -353,19 +360,6 @@ class VatssaDiscordRulesTest extends TestCase
     }
 
     #[Test]
-    public function the_preview_counts_what_a_save_would_do(): void
-    {
-        $this->roleOnServer(self::ROLE, 'Streamer');
-        $member = $this->person(3);
-        DB::table('vatssa_discord_members')->insert(['discord_id' => self::D, 'user_id' => $member->id, 'vatsim_linked' => true, 'role_ids' => '[]', 'last_seen_at' => now()]);
-
-        Livewire::actingAs($this->admin())->test(VatssaDiscordRuleEditor::class, ['ruleId' => null])
-            ->set('name', 'New rule')->set('roles', [self::ROLE])
-            ->assertSee('+ Streamer: 1 member')->assertSee('From 1 accounts');
-        $this->assertSame(0, DB::table('vatssa_discord_rules')->count());
-    }
-
-    #[Test]
     public function deleting_keeps_the_role_by_default_and_can_remove_it(): void
     {
         $this->roleOnServer(self::ROLE);
@@ -517,22 +511,6 @@ class VatssaDiscordRulesTest extends TestCase
     }
 
     #[Test]
-    public function the_preview_shows_only_what_this_edit_changes(): void
-    {
-        $this->roleOnServer(self::ROLE, 'Edited');
-        $this->roleOnServer(self::ROLE2, 'Out of step');
-        $member = $this->person(3);
-        $this->rule([['division', ['value' => 'visitor']]], [self::ROLE2], true, 'Other rule'); // member has it, should not
-        $id = $this->rule([['division', ['value' => 'home']]], [self::ROLE], true, 'Edited rule');
-        DB::table('vatssa_discord_members')->insert(['discord_id' => self::D, 'user_id' => $member->id, 'vatsim_linked' => true,
-            'role_ids' => json_encode([self::ROLE, self::ROLE2]), 'last_seen_at' => now()]);
-
-        Livewire::actingAs($this->admin())->test(VatssaDiscordRuleEditor::class, ['ruleId' => $id])
-            ->assertSee('No role changes.')->assertDontSee('Out of step: 1')
-            ->set('conditions.0.division', 'visitor')->assertSee('− Edited: 1 member');
-    }
-
-    #[Test]
     public function a_negated_condition_on_something_gone_gives_nothing(): void
     {
         $user = $this->person(3);
@@ -607,7 +585,7 @@ class VatssaDiscordRulesTest extends TestCase
     }
 
     #[Test]
-    public function searching_roles_keeps_picks_and_does_not_recalculate_the_preview(): void
+    public function searching_roles_keeps_picks_and_reads_no_members(): void
     {
         $this->roleOnServer(self::ROLE, 'Streamer');
         $this->roleOnServer(self::ROLE2, 'Examiner');
@@ -619,5 +597,22 @@ class VatssaDiscordRulesTest extends TestCase
         $this->assertSame([], collect(DB::getQueryLog())->pluck('query')->filter(fn ($q) => str_contains($q, 'vatssa_discord_members'))->all());
 
         $editor->set('roleSearch', '')->assertSet('roles', [self::ROLE])->assertSee('Streamer');
+    }
+
+    #[Test]
+    public function discord_links_sit_in_the_users_and_administration_menus_for_admins_only(): void
+    {
+        $html = $this->actingAs($this->admin())->get(route('dashboard'))->assertOk()->getContent();
+        $page = new \DOMDocument;
+        @$page->loadHTML($html);
+        $links = new \DOMXPath($page);
+
+        $this->assertSame(1, $links->query('//*[@id="collapseMem"]//a[contains(., "Discord members")]')->length);
+        $this->assertSame(1, $links->query('//*[@id="collapseUtilities"]//a[contains(., "Discord rules")]')->length);
+        $this->assertSame(1, $links->query('//a[contains(., "Discord members")]')->length);
+        $this->assertSame(1, $links->query('//a[contains(., "Discord rules")]')->length);
+
+        $this->actingAs(User::factory()->create())->get(route('dashboard'))->assertOk()
+            ->assertDontSee('Discord members')->assertDontSee('Discord rules');
     }
 }

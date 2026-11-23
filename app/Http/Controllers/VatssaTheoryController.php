@@ -8,6 +8,7 @@ use App\Services\ActivityLogService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 
 /**
  * VATSSA: staff mark a training's theory as passed, or take the mark back.
@@ -23,18 +24,27 @@ class VatssaTheoryController extends Controller
         $this->authorize('toggleTheoryCompleted', $training);
 
         $newState = (bool) $request->validate(['completed' => 'required|boolean'])['completed'];
-        $oldState = (bool) $training->theory_completed;
         $label = $newState ? 'completed' : 'not completed';
 
-        if ($newState === $oldState) {
+        // Locked, so two staff pressing at once make one timeline entry.
+        $changed = DB::transaction(function () use ($training, $newState, $label) {
+            $locked = Training::whereKey($training->id)->lockForUpdate()->firstOrFail();
+            $oldState = (bool) $locked->theory_completed;
+            if ($newState === $oldState) {
+                return false;
+            }
+            $locked->theory_completed = $newState;
+            $locked->save();
+
+            ActivityLogService::warning(LogName::Training, 'Theory marked as ' . $label . ' on training ' . $training->id);
+            TrainingActivityController::create($training->id, 'THEORY', (int) $newState, (int) $oldState, Auth::id());
+
+            return true;
+        });
+
+        if (! $changed) {
             return redirect($training->path())->withSuccess('Theory was already marked as ' . $label);
         }
-
-        $training->theory_completed = $newState;
-        $training->save();
-
-        ActivityLogService::warning(LogName::Training, 'Theory marked as ' . $label . ' on training ' . $training->id);
-        TrainingActivityController::create($training->id, 'THEORY', (int) $newState, (int) $oldState, Auth::id());
 
         return redirect($training->path())->withSuccess('Theory marked as ' . $label);
     }

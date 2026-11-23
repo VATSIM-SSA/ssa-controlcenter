@@ -8,5 +8,5 @@ return [
 
     // Off: VATSIM's answers are stored and previewed (vatssa:vatsim-leavers), `users` is not
     // touched. On: `users` follows VATSIM, and upstream's 05:00 job closes leavers' trainings.
-    'vatsim_write_users' => (bool) env('VATSSA_VATSIM_WRITE_USERS', false),
+    'vatsim_write_users' => filter_var(env('VATSSA_VATSIM_WRITE_USERS', false), FILTER_VALIDATE_BOOL),
 ];

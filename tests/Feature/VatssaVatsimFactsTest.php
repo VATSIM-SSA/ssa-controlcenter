@@ -7,7 +7,9 @@ use App\Http\Controllers\VatssaDiscordSyncController as Sync;
 use App\Models\Area;
 use App\Models\Training;
 use App\Models\User;
+use App\Services\VatssaDiscordState;
 use App\Services\VatssaVatsimFacts;
+use GuzzleHttp\Psr7\Response as GuzzleResponse;
 use Illuminate\Console\Events\CommandFinished;
 use Illuminate\Console\Events\CommandStarting;
 use Illuminate\Console\Scheduling\Schedule;
@@ -15,11 +17,13 @@ use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Factory;
+use Illuminate\Http\Client\Response as ClientResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Sleep;
 use PHPUnit\Framework\Attributes\Test;
+use ReflectionMethod;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\NullOutput;
 use Tests\TestCase;
@@ -218,6 +222,7 @@ class VatssaVatsimFactsTest extends TestCase
 
         app(VatssaVatsimFacts::class)->runLookups();
 
+        Http::assertSentCount(1);
         $this->assertSame([3, 'SSA', 1], [(int) $this->fact(1000001)->rating, $this->fact(1000001)->division, (int) $this->fact(1000001)->needs_lookup]);
     }
 
@@ -236,6 +241,60 @@ class VatssaVatsimFactsTest extends TestCase
     }
 
     #[Test]
+    public function one_atc_command_finishing_does_not_release_another(): void
+    {
+        DB::table('vatssa_vatsim_members')->insert(['cid' => 1000001, 'needs_lookup' => true]);
+        Http::fake(['api.vatsim.net/*' => Http::response(['detail' => 'Not Found'], 404)]);
+
+        event(new CommandStarting('update:atc:status', new ArrayInput([]), new NullOutput));
+        event(new CommandStarting('update:atc:hours', new ArrayInput([]), new NullOutput));
+        event(new CommandFinished('update:atc:hours', new ArrayInput([]), new NullOutput, 0));
+        $this->assertSame(0, app(VatssaVatsimFacts::class)->runLookups());
+        Http::assertNothingSent();
+
+        event(new CommandFinished('update:atc:status', new ArrayInput([]), new NullOutput, 0));
+        $this->assertSame(1, app(VatssaVatsimFacts::class)->runLookups());
+    }
+
+    #[Test]
+    public function a_shorter_wait_never_replaces_a_longer_one(): void
+    {
+        $this->freezeTime();
+        $facts = app(VatssaVatsimFacts::class);
+        $hold = new ReflectionMethod($facts, 'holdLookups');
+        $hold->invoke($facts, new ClientResponse(new GuzzleResponse(429, ['Retry-After' => '600'])));
+        $hold->invoke($facts, new ClientResponse(new GuzzleResponse(429, ['Retry-After' => '60'])));
+
+        $this->assertSame(now()->timestamp + 601, (int) VatssaDiscordState::get('vatsim_blocked_until'));
+    }
+
+    #[Test]
+    public function a_503_with_a_wait_holds_the_checks(): void
+    {
+        DB::table('vatssa_vatsim_members')->insert([['cid' => 1000001, 'needs_lookup' => true], ['cid' => 1000002, 'needs_lookup' => true]]);
+        Http::fake(['api.vatsim.net/*' => Http::response([], 503, ['Retry-After' => '120'])]);
+
+        app(VatssaVatsimFacts::class)->runLookups();
+        app(VatssaVatsimFacts::class)->runLookups();
+        Http::assertSentCount(1);
+    }
+
+    #[Test]
+    public function the_nightly_pull_waits_out_a_hold(): void
+    {
+        config(['vatsim.core_api_token' => 'test']);
+        VatssaDiscordState::put('vatsim_blocked_until', now()->addMinutes(5)->timestamp);
+        Http::fake();
+
+        try {
+            app(VatssaVatsimFacts::class)->pull();
+            $this->fail('The pull should wait.');
+        } catch (\RuntimeException) {
+        }
+        Http::assertNothingSent();
+    }
+
+    #[Test]
     public function a_retry_after_date_is_obeyed(): void
     {
         $this->freezeTime();
@@ -246,6 +305,10 @@ class VatssaVatsimFactsTest extends TestCase
         $this->travel(119)->minutes();
         app(VatssaVatsimFacts::class)->runLookups();
         Http::assertSentCount(1);
+
+        $this->travel(2)->minutes();
+        app(VatssaVatsimFacts::class)->runLookups();
+        Http::assertSentCount(2);
     }
 
     #[Test]

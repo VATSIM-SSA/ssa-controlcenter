@@ -122,7 +122,10 @@ class FileController extends Controller
             $filename = $filename . '.' . $extension;
         }
 
-        Storage::putFileAs('public/files/', $file, $filename);
+        // VATSSA: the disk returns false on a failed write. Never record a file that is not there.
+        if (! Storage::putFileAs('public/files/', $file, $filename)) {
+            throw new \RuntimeException('Could not store the uploaded file.');
+        }
 
         File::create([
             'id' => $id,

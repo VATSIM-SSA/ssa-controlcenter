@@ -180,7 +180,7 @@ class VatssaDiscordSyncTest extends TestCase
         $this->claim()->assertJsonPath('data.0.cid', $this->member->id)->assertJsonPath('data.0.fresh', true);
         $this->claim()->assertJsonCount(0, 'data');
 
-        $this->travel(Sync::LEASE_SECONDS + 1)->seconds();
+        $this->travel(Sync::LEASE_SECONDS + 16)->seconds(); // one row adds 15 seconds
         $this->claim()->assertJsonCount(1, 'data');
         $this->assertSame(2, (int) $this->row()->attempts);
     }
@@ -191,7 +191,7 @@ class VatssaDiscordSyncTest extends TestCase
         Sync::queue([$this->member->id], 'button');
         for ($i = 0; $i < Sync::MAX_ATTEMPTS; $i++) {
             $this->claim()->assertJsonCount(1, 'data');
-            $this->travel(Sync::LEASE_SECONDS + 1)->seconds();
+            $this->travel(Sync::LEASE_SECONDS + 16)->seconds(); // one row adds 15 seconds
         }
         $this->claim()->assertJsonCount(0, 'data');
         $this->assertEquals(['idle', 'failed'], [$this->row()->state, $this->row()->result]);
@@ -489,10 +489,10 @@ class VatssaDiscordSyncTest extends TestCase
     }
 
     #[Test]
-    public function logging_in_queues_a_fresh_sync(): void
+    public function logging_in_queues_a_sync_without_a_vatsim_call(): void
     {
         event(new Login('web', $this->member, false));
-        $this->assertEquals(['login', 1], [$this->row()->reason, $this->row()->fresh]);
+        $this->assertEquals(['login', 0], [$this->row()->reason, $this->row()->fresh]);
     }
 
     #[Test]
@@ -671,7 +671,7 @@ class VatssaDiscordSyncTest extends TestCase
         $other = User::factory()->create();
         $this->send([$this->account(self::A, $this->member->id)]);
         $this->send([$this->account(self::A, $other->id)]);
-        $this->assertSame(1, DB::table('vatssa_discord_member_history')->where('detail', 'like', "CID {$this->member->id} to %")->count());
+        $this->assertSame(1, DB::table('vatssa_discord_member_history')->where('detail', "Now CID {$other->id}")->count());
 
         $this->member->email = Sync::PSEUDONYMISED_EMAIL;
         $this->member->save();
@@ -687,5 +687,19 @@ class VatssaDiscordSyncTest extends TestCase
 
         $groups = Route::getRoutes()->getByName('api.vatssa.groups.index')->gatherMiddleware();
         $this->assertContains('throttle:600,1,vatssa-api', $groups);
+    }
+
+    #[Test]
+    public function controller_names_need_the_bot_token_and_skip_pseudonymised_members(): void
+    {
+        $url = route('api.vatssa.controller-names');
+        $this->postJson($url, ['cids' => [$this->member->id]])->assertUnauthorized();
+
+        $this->member->update(['first_name' => 'Thandi', 'last_name' => 'Mokoena']);
+        $gone = User::factory()->create(['email' => 'void@void.void']);
+        $answer = $this->postJson($url, ['cids' => [$this->member->id, $gone->id, 9999999]], $this->auth())->assertOk();
+
+        $this->assertSame([(string) $this->member->id => 'Thandi Mokoena'], $answer->json('names'));
+        $this->postJson($url, ['cids' => ['abc']], $this->auth())->assertUnprocessable();
     }
 }

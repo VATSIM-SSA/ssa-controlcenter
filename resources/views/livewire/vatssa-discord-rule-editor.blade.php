@@ -127,15 +127,11 @@
                     </div>
                 </div>
 
-                <div class="card shadow mb-3">
-                    <div class="card-header py-3 fw-bold d-flex justify-content-between">What this changes
-                        <span class="spinner-border spinner-border-sm" wire:loading aria-label="Working"></span></div>
-                    <div class="card-body">
-                        @unless($confirmingDelete)
-                            @include('livewire.partials.vatssa-discord-effect', ['effect' => $effect])
-                        @endunless
+                @if($droppedRoles && ! $confirmingDelete)
+                    <div class="card shadow mb-3">
+                        <div class="card-body">@include('livewire.partials.vatssa-discord-dropped')</div>
                     </div>
-                </div>
+                @endif
             </div>
         </div>
     </div>
@@ -146,7 +142,7 @@
                 <div class="modal-content">
                     <div class="modal-header"><h5 class="modal-title" id="deleteRuleLabel">Delete {{ $name }}?</h5>
                         <button type="button" class="btn-close" wire:click="$set('confirmingDelete', false)" aria-label="Close"></button></div>
-                    <div class="modal-body">@include('livewire.partials.vatssa-discord-effect', ['effect' => $effect])</div>
+                    <div class="modal-body">@if($droppedRoles)@include('livewire.partials.vatssa-discord-dropped')@else This rule will be removed. @endif</div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-icon btn-light" wire:click="$set('confirmingDelete', false)">Cancel</button>
                         <button type="button" class="btn btn-danger" wire:click="delete">Delete rule</button>

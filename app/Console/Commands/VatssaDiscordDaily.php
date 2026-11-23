@@ -17,7 +17,7 @@ class VatssaDiscordDaily extends Command
     public function handle(): int
     {
         $waiting = DB::table('vatssa_discord_queue')->where('state', '!=', 'idle')->pluck('user_id')->flip();
-        $ids = User::where('email', '!=', VatssaDiscordSyncController::PSEUDONYMISED_EMAIL)->pluck('id')
+        $ids = User::where(fn ($q) => $q->whereNull('email')->orWhere('email', '!=', VatssaDiscordSyncController::PSEUDONYMISED_EMAIL))->pluck('id')
             ->reject(fn ($id) => $waiting->has($id))->map(fn ($id) => (int) $id)->values()->all();
 
         VatssaDiscordSyncController::queue($ids, 'daily');

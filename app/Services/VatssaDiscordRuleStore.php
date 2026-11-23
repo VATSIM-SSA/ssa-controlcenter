@@ -11,7 +11,7 @@ use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 /**
- * VATSSA: checks, saves, previews and restores Discord rules for the rule pages.
+ * VATSSA: checks, saves and restores Discord rules for the rule pages.
  */
 class VatssaDiscordRuleStore
 {
@@ -138,51 +138,28 @@ class VatssaDiscordRuleStore
     }
 
     /**
-     * What a save would change, using the real evaluator against the roles the bot last saw.
-     * People with no CC account are not counted: CC keeps no CID for them.
+     * Roles this rule gives today that nothing would give after this edit, by name.
+     *
+     * @param  array<int, string>  $roles  what the rule would give; empty for a delete
+     * @return array<int, string>
      */
-    public function preview(?int $id, ?array $data): array
+    public function droppedRoles(?int $id, array $roles): array
     {
-        $current = $this->engine->all();
-        $proposed = $current->reject(fn ($r) => $r->id === $id)->values();
-        if ($data) {
-            $proposed->push((object) [...$data, 'id' => $id ?? 0]);
+        $all = $this->engine->all();
+        $old = $all->firstWhere('id', $id);
+        if (! $old || ! $old->enabled) {
+            return [];
         }
-
-        $before = $this->engine->managed($current);
-        $after = $this->engine->managed($proposed);
-        $members = DB::table('vatssa_discord_members')->where('in_server', true)->where('is_bot', false)->whereNotNull('role_ids')
-            ->where(fn ($q) => $q->whereNotNull('user_id')->orWhere('vatsim_linked', false))->get(['discord_id', 'user_id', 'role_ids']);
-        $have = $members->mapWithKeys(fn ($m) => ['d' . $m->discord_id => array_map('strval', json_decode($m->role_ids, true) ?: [])]);
-
-        // Only what this edit changes: a member already out of step for another reason is not its doing.
-        $accounts = $members->map(fn ($m) => ['discord_id' => (string) $m->discord_id, 'cid' => (int) $m->user_id])->all();
-        $was = $this->engine->evaluate($accounts, $current)['roles'];
-        $wanted = $this->engine->evaluate($accounts, $proposed);
-
-        $adds = $removes = [];
-        foreach ($wanted['roles'] as $discordId => $want) {
-            $discordId = (string) $discordId;
-            $roles = $have['d' . $discordId] ?? [];
-            $old = $was[$discordId] ?? [];
-            foreach (array_diff($want, $old, $roles) as $role) {
-                $adds['r' . $role] = ($adds['r' . $role] ?? 0) + 1;
-            }
-            foreach (array_intersect(array_diff($old, $want), $roles, $after) as $role) {
-                $removes['r' . $role] = ($removes['r' . $role] ?? 0) + 1;
-            }
+        $still = $all->reject(fn ($r) => $r->id === $id)->filter(fn ($r) => $r->enabled)->flatMap(fn ($r) => $r->roles)
+            ->merge($roles)->map(fn ($r) => (string) $r)->all();
+        $gone = array_values(array_diff(array_map('strval', $old->roles), $still));
+        if (! $gone) {
+            return [];
         }
+        $names = DB::table('vatssa_discord_guild_roles')->whereIn('discord_role_id', $gone)->get(['discord_role_id', 'name'])
+            ->mapWithKeys(fn ($r) => ['r' . $r->discord_role_id => $r->name]);
 
-        $names = DB::table('vatssa_discord_guild_roles')->pluck('name', 'discord_role_id')->mapWithKeys(fn ($n, $k) => ['r' . $k => $n]);
-        $list = fn (array $counts) => collect($counts)->map(fn ($n, $key) => ['role' => $names->get($key) ?? substr($key, 1), 'members' => $n])->values()->all();
-
-        return [
-            'adds' => $list($adds), 'removes' => $list($removes), 'counted' => $members->count(),
-            'dropped' => collect(array_diff($before, $after))->map(fn ($role) => [
-                'role' => $names->get('r' . $role) ?? $role,
-                'members' => $have->filter(fn ($r) => in_array($role, $r, true))->count(),
-            ])->values()->all(),
-        ];
+        return array_map(fn ($role) => $names->get('r' . $role, $role), $gone);
     }
 
     /**
@@ -248,6 +225,13 @@ class VatssaDiscordRuleStore
         }
         if (! $before && ! $exists) {
             return 'That rule no longer exists.';
+        }
+        if ($before) {
+            try {
+                $before = $this->validate([...$before, 'conditions' => array_map(fn ($c) => $this->toRow($c), $before['conditions'])], $exists ? (int) $entry->rule_id : null);
+            } catch (ValidationException $e) {
+                return 'That version cannot come back: ' . collect($e->errors())->flatten()->first();
+            }
         }
         $this->save($exists ? (int) $entry->rule_id : null, $before, 'restored', false, (int) $entry->rule_id);
 

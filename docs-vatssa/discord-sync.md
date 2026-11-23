@@ -14,7 +14,7 @@ On a member's profile, under their VATSIM ID and name:
 
 **Discord members** (sidebar) lists every account in the server with its CID, Not VATSIM accounts, bots and people who left. Permission: `vatssa.discord.members.view`, admin by default.
 
-**Discord rules** (sidebar): a rule is a name, conditions that must all hold, and the Discord roles it gives. A role is given if any enabled rule gives it. Conditions: VATSIM division or rating, CC role, endorsement, roster, CC group, open training, Not VATSIM Member, each of which can be negated. **Preview changes** shows what a save would do. Every change is in the rule history and can be restored. Permissions: `vatssa.discord.rules.view` and `vatssa.discord.rules.manage`, admin by default. `php artisan vatssa:discord-seed-rules` creates the starting rules once.
+**Discord rules** (sidebar): a rule is a name, conditions that must all hold, and the Discord roles it gives. A role is given if any enabled rule gives it. Conditions: VATSIM division or rating, CC role, endorsement, roster, CC group, in training (not the waiting list or familiarisation), Not VATSIM Member, each of which can be negated. Every change is in the rule history and can be restored. Permissions: `vatssa.discord.rules.view` and `vatssa.discord.rules.manage`, admin by default. `php artisan vatssa:discord-seed-rules` creates the starting rules once.
 
 ## How it works
 
@@ -31,7 +31,7 @@ On a member's profile, under their VATSIM ID and name:
 
 **One Discord account per CID.** The database enforces it. If two accounts claim a CID, the bot asks VATSIM about both, and the stale one loses it.
 
-**API for the bot.** All under `/api/vatssa/`, all behind the bot token `VATSSA_DISCORD_BOT_TOKEN` (at least 32 characters). A Control Center API key opens none of them. Own rate limit: 600 a minute.
+**API for the bot.** All under `/api/vatssa/`, all behind the bot token `VATSSA_DISCORD_BOT_TOKEN` (at least 32 characters). A Control Center API key opens none of them. Own rate limit: 3000 a minute, counted after the token check.
 
 | Call | Does |
 |---|---|
@@ -40,6 +40,7 @@ On a member's profile, under their VATSIM ID and name:
 | `POST discord-members` | who is in the server; a complete list marks anyone missing as left, an older complete list is refused |
 | `POST discord-roles` | the roles CC decided for each account, and which roles it manages; an account with no VATSIM data yet comes back as unknown |
 | `POST discord-guild-roles` | the server's roles, for the rule page |
+| `POST controller-names` | full names for the Online ATC board. Send `{"cids": [1234567]}`, at most 200 positive integers. Returns `{"names": {"1234567": "First Last"}}`. A CID with no usable name, or a pseudonymised member, is left out |
 
 **Privacy.** A deleted or pseudonymised member's queue row, Discord link, history and VATSIM details are removed, including their CID in another account's history. A pseudonymised member gets no managed roles, and the bot cannot link or queue them again. CIDs are stored against Discord accounts only for CC users. If a pseudonymised member signs in again, their link comes back at the next sweep. A permanently deleted user leaves no record to check against, so if they are still on VATSIM's SSA list, their CID, rating and division return at the next nightly pull, with no name or Discord link. The privacy policy amendment is flagged for review in January 2027.
 

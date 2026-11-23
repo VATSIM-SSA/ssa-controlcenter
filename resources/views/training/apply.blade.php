@@ -136,6 +136,16 @@
                                     <label class="form-label" for="remarkTextarea">Remark</label>
                                     <textarea class="form-control" name="comment" id="remarkTextarea" rows="2" placeholder="Please don't repeat information from the application" maxlength="500"></textarea>
                                 </div>
+
+                                <hr>
+
+                                <div class="mb-3 form-check">
+                                    <input type="checkbox" class="form-check-input" :class="{ 'is-invalid': errAcknowledged }" id="requirementsAcknowledged" name="requirementsAcknowledged" value="1" v-model="requirementsAcknowledged" @change="errAcknowledged = false">
+                                    <label class="form-check-label" for="requirementsAcknowledged">I am in the <a href="{{ Setting::get('linkDiscord') }}" target="_blank">VATSSA Discord</a> and have logged into the @if(Setting::get('linkMoodle'))<a href="{{ Setting::get('linkMoodle') }}" target="_blank">Training Platform</a>@else<span>Training Platform</span>@endif at least once. I understand that my training will be closed if I have not.</label>
+                                    <div v-show="errAcknowledged" class="text-danger" style="display: none">Please confirm this before submitting</div>
+                                </div>
+
+                                <button type="submit" id="training-submit-btn" class="btn btn-success" v-on:click="submit">Submit training request<div class="submit-spinner spinner-border spinner-border-sm" role="status">&nbsp;</div></button>
                             </div>
 
                             <div class="col-xl-6 col-lg-12 col-md-12 mb-12">
@@ -143,14 +153,6 @@
                             </div>
 
                         </div>
-
-                        <div class="mb-3 form-check">
-                            <input type="checkbox" class="form-check-input" :class="{ 'is-invalid': errAcknowledged }" id="requirementsAcknowledged" name="requirementsAcknowledged" value="1" v-model="requirementsAcknowledged" @change="errAcknowledged = false">
-                            <label class="form-check-label" for="requirementsAcknowledged">I am in the <a href="{{ Setting::get('linkDiscord') }}" target="_blank">VATSSA Discord</a> and have logged into the @if(Setting::get('linkMoodle'))<a href="{{ Setting::get('linkMoodle') }}" target="_blank">Training Platform</a>@else<span>Training Platform</span>@endif at least once. I understand that my training will be closed if I have not.</label>
-                            <div v-show="errAcknowledged" class="text-danger" style="display: none">Please confirm this before submitting</div>
-                        </div>
-
-                        <button type="submit" id="training-submit-btn" class="btn btn-success" v-on:click="submit">Submit training request<div class="submit-spinner spinner-border spinner-border-sm" role="status">&nbsp;</div></button>
                     </div>
                 </div>
             </div>

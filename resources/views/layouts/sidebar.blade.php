@@ -81,12 +81,17 @@
         Members
         </div>
 
-        @can('users.manage')
+        @if(auth()->user()->canAny(['users.manage', 'vatssa.discord.members.view']))
 
             {{-- Nav Item - Pages Collapse Menu --}}
-            <x-sidebar.section icon="fa-users" title="Users" :active="Route::is('users') || Route::is('users.other')" id="collapseMem">
-                <x-sidebar.item :href="route('users')" title="Member Overview" collapse />
-                <x-sidebar.item :href="route('users.other')" title="Other Users" collapse />
+            <x-sidebar.section icon="fa-users" title="Users" :active="Route::is('users') || Route::is('users.other') || Route::is('vatssa.discord.members')" id="collapseMem">
+                @can('users.manage')
+                    <x-sidebar.item :href="route('users')" title="Member Overview" collapse />
+                    <x-sidebar.item :href="route('users.other')" title="Other Users" collapse />
+                @endcan
+                @can('vatssa.discord.members.view')
+                    <x-sidebar.item :href="route('vatssa.discord.members')" title="Discord members" collapse />
+                @endcan
             </x-sidebar.section>
 
         @endif
@@ -117,7 +122,7 @@
 
 
 
-        @can('fir.management.reports.view')
+        @if(auth()->user()->can('fir.management.reports.view') || auth()->user()->can('viewFeedback', \App\Models\ManagementReport::class))
             {{-- Divider --}}
             <div class="sidebar-divider"></div>
 
@@ -146,21 +151,24 @@
             </x-sidebar.section>
         @endif
 
-        @if(auth()->user()->canAny(['system.health.view', 'users.manage']) || auth()->user()->can('viewAny', App\Models\Position::class))
+        @if(auth()->user()->canAny(['system.health.view', 'notifications.templates.manage', 'vatssa.discord.rules.view']) || auth()->user()->can('viewAny', App\Models\Position::class))
 
             {{-- Nav Item - Utilities Collapse Menu --}}
-            <x-sidebar.section icon="fa-cogs" title="Administration" :active="Route::is('admin.*') || Route::is('positions.*') || Route::is('vote.overview')" id="collapseUtilities">
+            <x-sidebar.section icon="fa-cogs" title="Administration" :active="Route::is('admin.*') || Route::is('positions.*') || Route::is('vote.overview') || Route::is('vatssa.discord.rules.*')" id="collapseUtilities">
                 @can('system.health.view')
                     <x-sidebar.item :href="route('admin.settings')" title="Settings" collapse />
                     <x-sidebar.item :href="route('vote.overview')" title="Votes" collapse />
                     <x-sidebar.item :href="route('admin.logs')" title="Logs" collapse />
                 @endcan
 
-                @can('users.manage')
+                @can('notifications.templates.manage')
                     <x-sidebar.item :href="route('admin.templates')" title="Notification templates" collapse />
                 @endcan
                 @can('viewAny', App\Models\Position::class)
                     <x-sidebar.item :href="route('positions.index')" title="Positions" collapse />
+                @endcan
+                @can('vatssa.discord.rules.view')
+                    <x-sidebar.item :href="route('vatssa.discord.rules.index')" title="Discord rules" collapse />
                 @endcan
             </x-sidebar.section>
 

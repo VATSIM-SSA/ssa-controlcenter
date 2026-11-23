@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\Route;
 | (VATSSA_DISCORD_BOT_TOKEN); a CC API key opens none of them.
 */
 
-Route::middleware(['throttle:3000,1,vatssa-discord-bot', VatssaDiscordBotToken::class])->group(function () {
+Route::middleware([VatssaDiscordBotToken::class, 'throttle:3000,1,vatssa-discord-bot'])->group(function () {
     Route::post('/vatssa/discord-queue/claim', [VatssaDiscordSyncController::class, 'claim'])
         ->name('api.vatssa.discord-queue.claim');
     Route::post('/vatssa/discord-queue/{cid}/result', [VatssaDiscordSyncController::class, 'result'])
@@ -23,6 +23,8 @@ Route::middleware(['throttle:3000,1,vatssa-discord-bot', VatssaDiscordBotToken::
         ->name('api.vatssa.discord-roles');
     Route::post('/vatssa/discord-guild-roles', [VatssaDiscordSyncController::class, 'guildRoles'])
         ->name('api.vatssa.discord-guild-roles');
+    Route::post('/vatssa/controller-names', [VatssaDiscordSyncController::class, 'controllerNames'])
+        ->name('api.vatssa.controller-names');
 });
 
 // Groups for any CC API key (read-only is enough), like upstream's /api/users.
