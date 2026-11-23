@@ -185,7 +185,7 @@ class VatssaDiscordSyncController extends Controller
     public static function forgetUser(int $userId): void
     {
         try {
-            $accounts = DB::table(self::MEMBERS)->where('user_id', $userId)->pluck('discord_id');
+            $accounts = DB::table(self::MEMBERS)->where('user_id', $userId)->orWhere('vatsim_cid', $userId)->pluck('discord_id');
             DB::table(self::QUEUE)->where('user_id', $userId)->delete();
             DB::table(self::HISTORY)->where('user_id', $userId)->orWhereIn('discord_id', $accounts)
                 ->orWhere('detail', 'like', "CID {$userId} to %")->delete();
@@ -304,9 +304,9 @@ class VatssaDiscordSyncController extends Controller
      * complete list is refused too: far likelier a bot fault than a fact.
      *
      * cid: a number is the link, 0 is "VATSIM says not linked", null is "no answer", which
-     * keeps what we had. Only CIDs of CC users who are neither deleted nor pseudonymised
-     * are stored; anyone else counts as linked with no CID kept, so an erased person
-     * stays erased. A CID sent for two accounts changes nothing for either.
+     * keeps what we had. user_id links a CC user who is neither deleted nor pseudonymised.
+     * vatsim_cid is VATSIM's answer, also for people with no CC account, and is never kept
+     * for a pseudonymised member. A CID sent for two accounts changes nothing for either.
      */
     public function members(Request $request): Response
     {
@@ -359,6 +359,7 @@ class VatssaDiscordSyncController extends Controller
 
             $counts = $sent->pluck('cid')->filter()->countBy();
             $known = User::whereIn('id', $counts->keys())->where(fn ($q) => $q->whereNull('email')->orWhere('email', '!=', self::PSEUDONYMISED_EMAIL))->pluck('id')->flip();
+            $erased = User::whereIn('id', $counts->keys())->where('email', self::PSEUDONYMISED_EMAIL)->pluck('id')->flip();
             // CIDs VATSIM just confirmed for exactly one account outrank a link only being kept.
             $confirmed = $sent->filter(fn (array $m) => ($m['cid'] ?? 0) > 0 && $counts[$m['cid']] === 1 && $known->has($m['cid']))
                 ->map(fn (array $m) => (int) $m['cid'])->values()->flip();
@@ -393,6 +394,12 @@ class VatssaDiscordSyncController extends Controller
                 $id = (string) $id; // see the note on $sent
                 $old = $existing->get($id);
                 [$user, $linked] = $targets[$id];
+                $sentCid = $m['cid'] === null ? null : (int) $m['cid'];
+                $vatsimCid = match (true) {
+                    $sentCid === null, $sentCid > 0 && $counts[$sentCid] > 1 => $old?->vatsim_cid,
+                    $sentCid === 0, $erased->has($sentCid) => null,
+                    default => $sentCid,
+                };
                 $joined = isset($m['joined_at']) ? Carbon::createFromTimestamp((float) $m['joined_at']) : ($old->joined_at ?? null);
 
                 if (! $old) {
@@ -425,7 +432,7 @@ class VatssaDiscordSyncController extends Controller
                 }
 
                 $rows[] = [
-                    'discord_id' => $id, 'user_id' => $user, 'vatsim_linked' => $linked, 'name' => $m['name'] ?? $old?->name,
+                    'discord_id' => $id, 'user_id' => $user, 'vatsim_cid' => $vatsimCid, 'vatsim_linked' => $linked, 'name' => $m['name'] ?? $old?->name,
                     'is_bot' => (bool) ($m['bot'] ?? $old?->is_bot ?? false), 'in_server' => true, 'joined_at' => $joined,
                     'left_at' => null, 'last_synced_at' => $old?->last_synced_at, 'last_seen_at' => $now,
                     'role_ids' => array_key_exists('roles', $m) ? json_encode(array_values($m['roles'])) : ($old?->role_ids),
@@ -433,7 +440,7 @@ class VatssaDiscordSyncController extends Controller
                 ];
             }
             foreach (array_chunk($rows, 500) as $chunk) {
-                DB::table(self::MEMBERS)->upsert($chunk, ['discord_id'], ['user_id', 'vatsim_linked', 'name', 'is_bot', 'in_server', 'joined_at', 'left_at', 'last_seen_at', 'role_ids', 'needs_sync']);
+                DB::table(self::MEMBERS)->upsert($chunk, ['discord_id'], ['user_id', 'vatsim_cid', 'vatsim_linked', 'name', 'is_bot', 'in_server', 'joined_at', 'left_at', 'last_seen_at', 'role_ids', 'needs_sync']);
             }
 
             $gone = $data['complete']

@@ -569,6 +569,60 @@ class VatssaDiscordSyncTest extends TestCase
     }
 
     #[Test]
+    public function a_member_with_no_cc_account_keeps_their_cid_and_can_be_found(): void
+    {
+        $this->send([$this->account(self::A, 7654321, 'nocc'), $this->account(self::B, null, 'waiting')]);
+        $row = fn (string $id) => DB::table('vatssa_discord_members')->where('discord_id', $id)->first();
+        $this->assertSame([null, 7654321], [$row(self::A)->user_id, (int) $row(self::A)->vatsim_cid]);
+
+        $page = Livewire::actingAs($this->withRole('admin'))->test(VatssaDiscordMembers::class);
+        $page->set('search', '7654321')->assertSee('nocc')->assertDontSee('waiting');
+        $page->set('search', '')->call('setTab', 'not_checked')->assertSee('waiting')->assertDontSee('nocc');
+
+        $this->send([$this->account(self::A, null, 'nocc'), $this->account(self::B, null, 'waiting')]);
+        $this->assertSame(7654321, (int) $row(self::A)->vatsim_cid);
+        $this->send([$this->account(self::A, 0, 'nocc'), $this->account(self::B, null, 'waiting')]);
+        $this->assertNull($row(self::A)->vatsim_cid);
+    }
+
+    #[Test]
+    public function the_member_table_filters_each_column(): void
+    {
+        $role = '200000000000000001';
+        DB::table('vatssa_discord_guild_roles')->insert(['discord_role_id' => $role, 'name' => 'Filter role', 'position' => 1, 'assignable' => true, 'retired' => true]);
+        $this->send([
+            ['discord_id' => self::A, 'cid' => $this->member->id, 'name' => 'alice', 'bot' => false, 'joined_at' => 1700000000, 'roles' => [$role]],
+            $this->account(self::B, 7654321, 'nocc'),
+            $this->account('100000000000000003', null, 'waiting'),
+            $this->account('100000000000000004', 0, 'plain'),
+            $this->account('100000000000000005', 0, 'robot', true),
+        ]);
+        DB::table('vatssa_discord_members')->where('discord_id', self::A)->update(['last_synced_at' => now()]);
+
+        $page = Livewire::actingAs($this->withRole('admin'))->test(VatssaDiscordMembers::class);
+        foreach (['vatsim' => 'alice', 'no_cc' => 'nocc', 'not_checked' => 'waiting', 'not_vatsim' => 'plain', 'bot' => 'robot'] as $status => $name) {
+            $page->set('filterStatus', $status)->assertViewHas('members', fn ($rows) => $rows->pluck('name')->all() === [$name]);
+        }
+        $page->set('filterStatus', '')->set('filterRole', $role)->assertViewHas('members', fn ($rows) => $rows->pluck('name')->all() === ['alice']);
+        $page->set('filterRole', '')->set('filterChecked', 'yes')->assertViewHas('members', fn ($rows) => $rows->pluck('name')->all() === ['alice']);
+        $page->set('filterChecked', '')->set('filterCid', '76543')->assertViewHas('members', fn ($rows) => $rows->pluck('name')->all() === ['nocc']);
+        $page->set('filterCid', 'abc')->assertSee('Nobody matches those filters.')->assertSee('Filter by CID');
+        $page->set('filterCid', '')->set('filterName', 'wait')->assertViewHas('members', fn ($rows) => $rows->pluck('name')->all() === ['waiting']);
+    }
+
+    #[Test]
+    public function an_erased_members_cid_is_never_kept(): void
+    {
+        $this->send([$this->account(self::A, $this->member->id)]);
+        $this->member->email = Sync::PSEUDONYMISED_EMAIL;
+        $this->member->save();
+        $this->assertSame(0, DB::table('vatssa_discord_members')->where('vatsim_cid', $this->member->id)->count());
+
+        $this->send([$this->account(self::A, $this->member->id)]);
+        $this->assertSame(0, DB::table('vatssa_discord_members')->where('vatsim_cid', $this->member->id)->count());
+    }
+
+    #[Test]
     public function the_members_page_is_admin_only_and_filters(): void
     {
         $this->send([$this->account(self::A, $this->member->id, 'alice'), $this->account(self::B, 0, 'plainbob')]);

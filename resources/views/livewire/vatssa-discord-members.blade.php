@@ -16,18 +16,39 @@
             <input type="search" class="form-control form-control-sm" style="width: 15rem" placeholder="Name, CID or Discord ID" aria-label="Search" wire:model.live.debounce.250ms="search">
         </div>
 
-        @if($members->isEmpty())
-            <div class="card-body"><p class="mb-0">{{ trim($search) !== '' ? 'Nobody matches that search.' : 'Nobody here yet.' }}</p></div>
-        @else
             <div class="table-responsive">
                 <table class="table table-hover table-leftpadded vd-table mb-0" width="100%" cellspacing="0">
-                    <thead class="table-light"><tr><th>Discord</th><th>CID</th><th>Status</th><th>Managed roles</th><th>Roles checked</th><th></th></tr></thead>
+                    <thead class="table-light">
+                        <tr><th>Discord</th><th>CID</th><th>Status</th><th>Managed roles</th><th>Roles checked</th><th></th></tr>
+                        <tr>
+                            <th><input type="search" class="form-control form-control-sm" placeholder="Filter" aria-label="Filter by Discord name" wire:model.live.debounce.250ms="filterName"></th>
+                            <th><input type="search" inputmode="numeric" class="form-control form-control-sm" placeholder="Filter" aria-label="Filter by CID" wire:model.live.debounce.250ms="filterCid"></th>
+                            <th><select class="form-select form-select-sm" aria-label="Filter by status" wire:model.live="filterStatus">
+                                <option value="">All</option>
+                                <option value="vatsim">VATSIM</option>
+                                <option value="no_cc">VATSIM, no CC account</option>
+                                <option value="not_checked">Not checked</option>
+                                <option value="not_vatsim">Not VATSIM</option>
+                                <option value="bot">Bot</option>
+                            </select></th>
+                            <th><select class="form-select form-select-sm" aria-label="Filter by managed role" wire:model.live="filterRole">
+                                <option value="">All</option>
+                                @foreach($roleFilters as $role)<option value="{{ $role['id'] }}">{{ $role['name'] }}</option>@endforeach
+                            </select></th>
+                            <th><select class="form-select form-select-sm" aria-label="Filter by roles checked" wire:model.live="filterChecked">
+                                <option value="">All</option>
+                                <option value="yes">Checked</option>
+                                <option value="no">Not yet</option>
+                            </select></th>
+                            <th></th>
+                        </tr>
+                    </thead>
                     <tbody>
-                    @foreach($members as $member)
+                    @forelse($members as $member)
                         @php($roles = collect(json_decode($member->role_ids ?? '[]', true) ?: [])->filter(fn ($id) => in_array((string) $id, $managed, true))->map(fn ($id) => $roleNames->get('r' . $id) ?? $id)->values())
                         <tr wire:key="member-{{ $member->discord_id }}">
                             <td><div class="fw-bold">{{ $member->name ?? 'Unknown name' }}</div><div class="small text-muted">{{ $member->discord_id }}</div></td>
-                            <td>@if($member->user_id)<a href="{{ route('user.show', $member->user_id) }}">{{ $member->user_id }}</a>@else<span class="text-muted">None</span>@endif</td>
+                            <td>@if($member->user_id)<a href="{{ route('user.show', $member->user_id) }}">{{ $member->user_id }}</a>@elseif($member->vatsim_cid){{ $member->vatsim_cid }}@else<span class="text-muted">None</span>@endif</td>
                             <td class="text-nowrap">
                                 @if($member->is_bot) Bot
                                 @elseif($member->user_id) VATSIM
@@ -46,11 +67,12 @@
                                 <button type="button" class="btn btn-sm btn-icon btn-light" wire:click="openHistory('{{ $member->discord_id }}')" aria-label="History of {{ $member->name ?? $member->discord_id }}"><i class="fas fa-clock-rotate-left"></i></button>
                             </td>
                         </tr>
-                    @endforeach
+                    @empty
+                        <tr><td colspan="6" class="text-muted">{{ $filtered ? 'Nobody matches those filters.' : 'Nobody here yet.' }}</td></tr>
+                    @endforelse
                     </tbody>
                 </table>
             </div>
-        @endif
         @if($members->hasPages())<div class="card-footer">{{ $members->links() }}</div>@endif
     </div>
 
