@@ -196,7 +196,7 @@ class VatssaDiscordRules
             'roster' => $user !== null && (($p['area'] ?? 'any') === 'any'
                 ? $subject['rosterAny']
                 : $user->atcActivity->contains(fn ($a) => (int) $a->area_id === (int) $p['area'] && $a->atc_active)),
-            'training' => $user !== null && $user->trainings->contains(fn ($t) => $t->status->isInProgress() && (int) $t->type !== 5 // not the waiting list or familiarisation
+            'training' => $user !== null && $user->trainings->contains(fn ($t) => $t->status->isOpen() && (int) $t->type !== 5 // the queue counts; familiarisation does not
                 && (($p['area'] ?? 'any') === 'any' || (int) $t->area_id === (int) $p['area'])),
             'endorsement' => $user !== null && $this->endorsed($user, $p),
             default => false, // an unknown type never gives a role
